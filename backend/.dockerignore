@@ -1,0 +1,33 @@
+# VCS / editor
+.git
+.gitignore
+.gitattributes
+.idea
+.vscode
+*.swp
+.DS_Store
+
+# Secrets / local env (never bake into the image)
+.env
+.env.*
+!.env.example
+
+# Not needed to build the binary
+tests
+docs
+deployments
+scripts
+migrations
+backups
+*.md
+Dockerfile
+.dockerignore
+
+# Build / test artifacts
+bin
+dist
+tmp
+coverage*
+*.out
+*.test
+*.log
