@@ -156,12 +156,30 @@ func spa(dir string) http.Handler {
 	files := http.FileServer(http.Dir(dir))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := filepath.Join(dir, filepath.FromSlash(strings.TrimPrefix(r.URL.Path, "/")))
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			if strings.HasPrefix(r.URL.Path, "/assets/") {
+		st, err := os.Stat(p)
+		if err == nil && !st.IsDir() {
+			switch {
+			case strings.HasPrefix(r.URL.Path, "/assets/"):
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			case strings.HasPrefix(r.URL.Path, "/app/"):
+				// App CTV bản web (Flutter, tên file không đổi theo bản): luôn hỏi lại máy chủ để nhận bản mới
+				w.Header().Set("Cache-Control", "no-cache")
 			}
 			files.ServeHTTP(w, r)
 			return
+		}
+		// Thư mục con có index.html riêng (app CTV bản web ở /app/): trả index.html của nó
+		if err == nil && st.IsDir() && r.URL.Path != "/" {
+			if html, err := os.ReadFile(filepath.Join(p, "index.html")); err == nil {
+				if !strings.HasSuffix(r.URL.Path, "/") {
+					http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
+					return
+				}
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.Header().Set("Cache-Control", "no-store")
+				_, _ = w.Write(html)
+				return
+			}
 		}
 		// File tĩnh không có (hoặc không đọc được): 404 thật, không trả index.html dưới URL của file JS/CSS
 		if strings.HasPrefix(r.URL.Path, "/assets/") || path.Ext(r.URL.Path) != "" {

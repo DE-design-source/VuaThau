@@ -159,9 +159,17 @@ ol{margin:6px 0 0;padding-left:22px}li{margin:6px 0}
   <p>App cho cộng tác viên: chụp ảnh công trình, nộp hồ sơ, xem tiền về</p>
 </header>
 <main>
-{{if .Zalo}}<div class="alert"><b>Zalo không tải được app.</b> Bấm nút bên dưới để mở bằng Chrome. Không được thì bấm <b>⋯</b> góc trên bên phải, chọn <b>Mở bằng trình duyệt</b>.</div>{{end}}
+{{if and .Zalo (not .IPhone)}}<div class="alert"><b>Zalo không tải được app.</b> Bấm nút bên dưới để mở bằng Chrome. Không được thì bấm <b>⋯</b> góc trên bên phải, chọn <b>Mở bằng trình duyệt</b>.</div>{{end}}
 {{if .IPhone}}
-  <div class="card"><h2>Bạn đang dùng iPhone</h2><p style="margin:0;color:var(--muted)">App hiện chỉ có cho Android. Liên hệ người quản lý Vua Thầu để được hỗ trợ nộp hồ sơ.</p></div>
+  <a class="btn" href="/app/">Mở app trên iPhone</a>
+  <p class="muted">Không cần tải từ App Store · dùng Safari</p>
+  {{if .Zalo}}<div class="alert">Đang mở trong Zalo: bấm <b>⋯</b> góc trên bên phải, chọn <b>Mở bằng trình duyệt</b> (Safari) rồi làm theo các bước dưới.</div>{{end}}
+  <div class="card"><h2>Đưa app ra màn hình chính</h2><ol>
+    <li>Mở trang này bằng <b>Safari</b>, bấm <b>Mở app trên iPhone</b>.</li>
+    <li>Bấm nút <b>Chia sẻ</b> (ô vuông có mũi tên lên) ở thanh dưới.</li>
+    <li>Kéo xuống, chọn <b>Thêm vào MH chính</b>, bấm <b>Thêm</b>.</li>
+    <li>Từ giờ mở app bằng biểu tượng <b>Vua Thầu</b> trên màn hình chính. Lần đầu chụp ảnh, bấm <b>Cho phép</b> camera và vị trí.</li>
+  </ol></div>
 {{else if and .APK .Zalo}}
   <a class="btn" href="intent://{{.Host}}/tai-app#Intent;scheme=https;package=com.android.chrome;end">Mở bằng Chrome để tải</a>
 {{else if .APK}}

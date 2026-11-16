@@ -1,7 +1,8 @@
 ﻿# Triển khai backend Go + web quản lý lên máy chủ (chạy trên Windows, từ thư mục gốc repo VuaThau):
 #   powershell -ExecutionPolicy Bypass -File deploy\server\deploy.ps1
 # Cần: Go, Node/npm, ssh/scp với host "vps" trong ~/.ssh/config. Máy chủ không phải biên dịch gì.
-param([string]$HostName = "vps", [string]$Dir = "/opt/vuathau-nt")
+# App CTV bản web cho iPhone (/app/): build từ repo app Flutter nằm cạnh repo này (bỏ qua: -SkipApp).
+param([string]$HostName = "vps", [string]$Dir = "/opt/vuathau-nt", [switch]$SkipApp)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $stage = Join-Path $env:TEMP "vtnt-deploy"
@@ -10,6 +11,13 @@ New-Item -ItemType Directory -Force "$stage\bin", "$stage\migrations" | Out-Null
 
 Write-Host "== web"
 Push-Location "$root\frontend"; npm run build; if ($LASTEXITCODE) { throw "npm build lỗi" }; Pop-Location
+
+$app = Join-Path (Split-Path -Parent $root) "app-Vua-Thau-"
+$withApp = (-not $SkipApp) -and (Test-Path "$app\pubspec.yaml")
+if ($withApp) {
+  Write-Host "== app CTV bản web (/app/)"
+  Push-Location $app; flutter build web --release --base-href /app/; if ($LASTEXITCODE) { throw "flutter build web lỗi" }; Pop-Location
+}
 
 Write-Host "== api (linux/amd64)"
 Push-Location "$root\backend"
@@ -32,6 +40,7 @@ scp -q "$stage\Dockerfile" "${HostName}:$Dir/api.new/"
 scp -q "$stage\bin\api" "$stage\bin\ntctl" "${HostName}:$Dir/api.new/bin/"
 scp -q "$stage\migrations\*" "${HostName}:$Dir/api.new/migrations/"
 scp -q -r "$root\frontend\dist" "${HostName}:$Dir/api.new/web"
+if ($withApp) { scp -q -r "$app\build\web" "${HostName}:$Dir/api.new/web/app" }
 scp -q "$stage\docker-compose.yml" "${HostName}:$Dir/docker-compose.yml"
 
 Write-Host "== dựng image, chạy migration, khởi động lại"
