@@ -5,7 +5,7 @@ import { getBlob } from '@/api/axiosClient'
 import houseApi from '@/api/houseApi'
 import { clearToast, currentToast, subscribeToast, toast } from '@/services/toast'
 import { saveBlob } from '@/utils/download'
-import { hsId, vnDate } from '@/utils/format'
+import { aiDiffText, hsId, vnDate } from '@/utils/format'
 import useCfg from '@/hooks/useCfg'
 import Loader from './Loader'
 import Button from './Button'
@@ -194,7 +194,14 @@ export function PhotoGrid({ ps }) {
             <AuthImage key={p.id} path={`/photos/${p.id}`} alt={`Ảnh ${at + 1}`} />
           </div>
           <div className="lightbox-info" onClick={(e) => e.stopPropagation()}>
-            <span className="inline"><Icon name="clock" size={15} /> <span className="mono">{p.exif_time || p.ai_time || 'Không đọc được giờ chụp'}</span></span>
+            <span className="inline"><Icon name="clock" size={15} /> <span className="mono">{p.exif_time || p.ai_time || 'Không đọc được giờ chụp'}</span>
+              {p.exif_time && p.ai_time && p.ai_time !== p.exif_time && <span className="muted"> · giờ in trên ảnh (AI đọc): <span className="mono">{p.ai_time}</span></span>}
+            </span>
+            {p.is_site && (
+              <span className="inline muted">
+                <Icon name="check" size={14} /> AI thấy công trình đang xây
+              </span>
+            )}
             <span className="inline">
               <Icon name="pin" size={15} /> {p.address || (lat != null ? `${lat.toFixed(5)}, ${p.lng.toFixed(5)}` : 'Không có vị trí')}
               {lat != null && (
@@ -258,6 +265,11 @@ export function HouseTable({ rows, showCtv = true, selectable, selected, onToggl
                       {r.dup && (
                         <small className="text-warn d-block inline">
                           <Icon name="alert" size={13} /> {r.dup}
+                        </small>
+                      )}
+                      {r.ai_diff && (
+                        <small className="text-warn d-block inline">
+                          <Icon name="alert" size={13} /> AI đọc trên ảnh khác {aiDiffText(r.ai_diff)}
                         </small>
                       )}
                     </span>

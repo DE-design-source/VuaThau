@@ -72,3 +72,17 @@ export const today = () => new Date().toISOString().slice(0, 10)
 
 /** Mã hồ sơ dạng HS-00081 (giống app). */
 export const hsId = (id) => `HS-${String(id).padStart(5, '0')}`
+
+/** Ô thông tin AI đọc trên ảnh (khoá ai_diff của hồ sơ) → nhãn. */
+export const AI_LABEL = {
+  contractor_name: 'tên nhà thầu',
+  contractor_phone: 'SĐT nhà thầu',
+  floors: 'số tầng',
+  stage: 'giai đoạn',
+}
+
+/** "tên nhà thầu, SĐT nhà thầu" từ ai_diff; '' nếu không lệch. */
+export const aiDiffText = (diff) =>
+  Object.keys(diff || {})
+    .map((k) => AI_LABEL[k] || k)
+    .join(', ')
