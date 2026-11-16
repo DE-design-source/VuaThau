@@ -83,7 +83,7 @@ export const copyGmap = (lat, lng, toast) =>
 /** Màu công trình theo lần chụp gần nhất: chưa quá staleDays ngày vàng nhạt, quá thì xanh lá (cần cập nhật). */
 export const AGE_FRESH = '#FCE38A'
 export const AGE_FRESH_LINE = '#B7791F'
-export const AGE_STALE = '#16A34A'
+export const AGE_STALE = '#22C55E' // xanh lá tươi (giống app)
 export const isStale = (lastAt, staleDays = 30) => !!lastAt && Date.now() - new Date(lastAt).getTime() > staleDays * 864e5
 /** Chữ hiện khi rê chuột vào 1 công trình. */
 export const ageTip = (lastAt, staleDays = 30) =>
