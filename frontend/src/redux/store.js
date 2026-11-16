@@ -1,7 +1,8 @@
 import { configureStore } from '@reduxjs/toolkit'
-import authReducer, { logout } from './slices/authSlice'
-import { setUnauthorizedHandler } from '@/api/axiosClient'
+import authReducer, { logout, renewToken } from './slices/authSlice'
+import { setSessionHandlers, setNtToken } from '@/api/ntClient'
 import storageService from '@/services/storageService'
+import { toast } from '@/services/toast'
 
 export const store = configureStore({
   reducer: {
@@ -10,19 +11,26 @@ export const store = configureStore({
   devTools: import.meta.env.DEV,
 })
 
-// Persist the auth token whenever it changes (login / register / logout).
+// Lưu token mỗi khi đổi (đăng nhập / đăng xuất / đổi mật khẩu).
 let currentToken = store.getState().auth.token
 store.subscribe(() => {
   const { token } = store.getState().auth
   if (token !== currentToken) {
     currentToken = token
     storageService.setToken(token)
+    setNtToken(token)
   }
 })
 
-// Any 401 from the API logs the user out.
-setUnauthorizedHandler(() => {
-  if (store.getState().auth.token) store.dispatch(logout())
+// Hết phiên, bị khoá: đăng xuất và báo lý do. Đổi mật khẩu: dùng token mới.
+setSessionHandlers({
+  end: (msg) => {
+    if (store.getState().auth.token) {
+      store.dispatch(logout())
+      toast(msg)
+    }
+  },
+  renew: (t) => store.dispatch(renewToken(t)),
 })
 
 export default store

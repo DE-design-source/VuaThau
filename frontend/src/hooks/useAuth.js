@@ -1,18 +1,9 @@
 import { useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import {
-  clearAuthError,
-  fetchMe,
-  login,
-  logout,
-  register,
-  selectAuth,
-} from '@/redux/slices/authSlice'
+import { clearAuthError, fetchMe, login, logout, selectAuth } from '@/redux/slices/authSlice'
+import ntClient from '@/api/ntClient'
 
-/**
- * Auth state + actions. login/register/fetchMe return a promise that
- * resolves with the payload or rejects with the error message (via unwrap()).
- */
+/** Trạng thái đăng nhập + thao tác. login/fetchMe trả promise (unwrap) để trang tự bắt lỗi. */
 export default function useAuth() {
   const dispatch = useDispatch()
   const { user, token, status, error } = useSelector(selectAuth)
@@ -22,12 +13,15 @@ export default function useAuth() {
     token,
     status,
     error,
+    role: user?.role,
     isAuthenticated: Boolean(token),
     isLoading: status === 'loading',
-    login: useCallback((credentials) => dispatch(login(credentials)).unwrap(), [dispatch]),
-    register: useCallback((payload) => dispatch(register(payload)).unwrap(), [dispatch]),
+    login: useCallback((cred) => dispatch(login(cred)).unwrap(), [dispatch]),
     fetchMe: useCallback(() => dispatch(fetchMe()).unwrap(), [dispatch]),
-    logout: useCallback(() => dispatch(logout()), [dispatch]),
+    logout: useCallback(() => {
+      ntClient.post('/logout').catch(() => {})
+      dispatch(logout())
+    }, [dispatch]),
     clearError: useCallback(() => dispatch(clearAuthError()), [dispatch]),
   }
 }
