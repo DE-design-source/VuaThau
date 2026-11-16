@@ -1,7 +1,8 @@
 ﻿# Triển khai backend Go + web quản lý lên máy chủ (chạy trên Windows, từ thư mục gốc repo VuaThau):
 #   powershell -ExecutionPolicy Bypass -File deploy\server\deploy.ps1
 # Cần: Go, Node/npm, ssh/scp với host "vps" trong ~/.ssh/config. Máy chủ không phải biên dịch gì.
-# App CTV bản web cho iPhone (/app/): build từ repo app Flutter nằm cạnh repo này (bỏ qua: -SkipApp).
+# App CTV bản web cho iPhone (/app/): build từ repo app Flutter nằm cạnh repo này.
+# -SkipApp: không build lại, GIỮ bản /app/ đang chạy trên máy chủ (chép từ bản trước sang).
 param([string]$HostName = "vps", [string]$Dir = "/opt/vuathau-nt", [switch]$SkipApp)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -44,5 +45,5 @@ if ($withApp) { scp -q -r "$app\build\web" "${HostName}:$Dir/api.new/web/app" }
 scp -q "$stage\docker-compose.yml" "${HostName}:$Dir/docker-compose.yml"
 
 Write-Host "== dựng image, chạy migration, khởi động lại"
-ssh $HostName "set -e; cd $Dir; rm -rf api.old; [ -d api ] && mv api api.old; mv api.new api; chmod +x api/bin/*; docker compose build -q api; for f in api/migrations/*.sql; do docker exec -i vtnt-db psql -q -v ON_ERROR_STOP=1 --single-transaction -U vuathau -d vuathau < `$f; done; docker compose up -d api; sleep 8; docker inspect -f 'vtnt-api {{.State.Health.Status}}' vtnt-api; curl -s -w ' [%{http_code}]\n' http://127.0.0.1:8095/health"
+ssh $HostName "set -e; cd $Dir; rm -rf api.old; [ -d api ] && mv api api.old; mv api.new api; if [ ! -d api/web/app ] && [ -d api.old/web/app ]; then cp -r api.old/web/app api/web/app; echo 'giu ban /app/ dang chay'; fi; chmod +x api/bin/*; docker compose build -q api; for f in api/migrations/*.sql; do docker exec -i vtnt-db psql -q -v ON_ERROR_STOP=1 --single-transaction -U vuathau -d vuathau < `$f; done; docker compose up -d api; sleep 8; docker inspect -f 'vtnt-api {{.State.Health.Status}}' vtnt-api; curl -s -w ' [%{http_code}]\n' http://127.0.0.1:8095/health"
 Write-Host "Xong. Bản trước nằm ở $Dir/api.old (quay lại: mv api.old api && docker compose build api && docker compose up -d api)"
