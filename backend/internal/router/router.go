@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -150,8 +151,20 @@ func spa(dir string) http.Handler {
 			files.ServeHTTP(w, r)
 			return
 		}
-		w.Header().Set("Cache-Control", "no-cache")
-		http.ServeFile(w, r, filepath.Join(dir, "index.html"))
+		// File tĩnh không có (hoặc không đọc được): 404 thật, không trả index.html dưới URL của file JS/CSS
+		if strings.HasPrefix(r.URL.Path, "/assets/") || path.Ext(r.URL.Path) != "" {
+			http.NotFound(w, r)
+			return
+		}
+		// Đường dẫn của React Router: trả index.html, không kèm Last-Modified / ETag để trình duyệt luôn lấy bản mới
+		html, err := os.ReadFile(filepath.Join(dir, "index.html"))
+		if err != nil {
+			response.Error(w, http.StatusNotFound, "route not found")
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(html)
 	})
 }
 
