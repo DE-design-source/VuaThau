@@ -27,6 +27,7 @@ type SalePoint struct {
 	CTVName    string    `json:"ctv_name"` // chỉ tên CTV (sale lọc theo CTV); không SĐT, tiền, ngân hàng
 	At         time.Time `json:"at"`
 	LastAt     time.Time `json:"last_at"` // lần chụp gần nhất ở công trình này (service điền)
+	CoverID    *int64    `json:"cover_id"` // hình đại diện: ảnh đầu của lần chụp gần nhất (service điền)
 }
 
 // SaleCTV: 1 CTV trong ô lọc của sale: chỉ tên và số công trình.

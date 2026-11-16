@@ -10,8 +10,9 @@ import useCfg from '@/hooks/useCfg'
 import mapApi from '@/api/mapApi'
 import MapSearch from '@/components/MapSearch'
 import SiteList from '@/components/SiteList'
+import { fillCover, siteTip } from '@/utils/siteTip'
 import { Button, Empty, Kpi, PageHead, PageState, Pill } from '@/components/ui'
-import { AGE_FRESH, AGE_FRESH_LINE, AGE_STALE, ageTip, esc, gmapUrl, hsId, isStale, vnDate } from '@/utils/format'
+import { AGE_FRESH, AGE_FRESH_LINE, AGE_STALE, esc, gmapUrl, hsId, isStale, vnDate } from '@/utils/format'
 
 // Màu điểm theo trạng thái (giống tông nhãn trạng thái)
 const TONE = { cho_duyet: 'wait', tra_lai: 'warn', da_duyet: 'ok', da_chi: 'done', tu_choi: 'bad' }
@@ -92,6 +93,7 @@ export default function MapPage() {
   const statuses = cfg?.statuses || {}
   const sum = (k) => ctvs.reduce((n, c) => n + (c[k] || 0), 0)
   const withSites = provinces.filter((p) => p.total > 0)
+  const provOf = Object.fromEntries(provinces.map((p) => [p.code, p.name]))
   const byProvince = [...provinces].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'vi'))
 
   return (
@@ -157,7 +159,7 @@ export default function MapPage() {
             fitKey={`${cur.ctv}|${cur.status}|${cur.from}|${cur.to}|${cur.province}`}
             color={mode === 'age' ? (p) => (isStale(p.last_at, d.dup_days) ? AGE_STALE : AGE_FRESH) : undefined}
             stroke={(p) => (fresh.has(p.id) ? '#dc2626' : mode === 'age' && !isStale(p.last_at, d.dup_days) ? AGE_FRESH_LINE : '#fff')}
-            tip={(p) => ageTip(p.last_at, d.dup_days)}
+            tip={(p) => siteTip(p, { staleDays: d.dup_days, prov: provOf[p.province], status: statuses[p.status]?.label })}
             staleDays={d.dup_days}
             paintKey={`${mode}|${fresh.size}`}
             focus={focus}
@@ -466,7 +468,20 @@ export function SiteMap({ points, provinces, selected, onProvince, fitKey, pop, 
     for (const p of points) {
       const c = color ? color(p) : cssVar(`--tone-${TONE[p.status] || 'wait'}`, '#2563eb')
       const mk = L.circleMarker([p.lat, p.lng], { radius: 7, color: stroke ? stroke(p) : '#fff', weight: 1.5, fillColor: c, fillOpacity: 0.95 })
-      if (tip) mk.bindTooltip(tip(p), { direction: 'top', offset: [0, -6], className: 'prov-tip' })
+      if (tip) {
+        // Thẻ cao ~310px: hiện phía trên chấm; không đủ chỗ thì phía dưới; vẫn không đủ thì sang trái / phải (không bị cắt). Đăng ký trước bindTooltip để chạy trước khi thẻ mở.
+        mk.on('mouseover', () => {
+          const tt = mk.getTooltip()
+          if (!tt) return
+          const { x, y } = m.latLngToContainerPoint(mk.getLatLng())
+          const { x: W, y: H } = m.getSize()
+          const [dir, off] = y >= 330 ? ['top', [0, -8]] : H - y >= 330 ? ['bottom', [0, 8]] : x < W / 2 ? ['right', [10, 0]] : ['left', [-10, 0]]
+          tt.options.direction = dir
+          tt.options.offset = off
+        })
+        mk.bindTooltip(tip(p), { direction: 'top', offset: [0, -8], className: 'site-tip-wrap', opacity: 1 })
+        if (p.cover_id) mk.on('tooltipopen', (e) => fillCover(e.tooltip.getElement(), p.cover_id))
+      }
       mk.bindPopup(
         pop ? pop(p) : `<div class="map-pop"><span class="mono">${hsId(p.id)}</span> · ${esc(labels[p.status]?.label || p.status)}` +
           `${p.source === 'inbox' ? ' · Messenger' : ''}<br><b>${esc(p.address || '(chưa có địa chỉ)')}</b>` +

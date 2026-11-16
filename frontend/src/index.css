@@ -2054,3 +2054,57 @@ details summary {
     max-height: 70vh;
   }
 }
+
+/* Thẻ rê chuột trên bản đồ: hình đại diện + thông tin chính của công trình */
+.leaflet-tooltip.site-tip-wrap {
+  padding: 0;
+  width: 250px;
+  white-space: normal;
+  border: 1px solid var(--color-border, #e3e6eb);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+.site-tip-img {
+  height: 140px;
+  background: #0b1220;
+}
+.site-tip-img img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.site-tip-img img:not([src]) {
+  visibility: hidden;
+}
+.site-tip-body {
+  display: grid;
+  gap: 3px;
+  padding: 9px 11px 10px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #1f2937;
+}
+.site-tip-top {
+  font-size: 11.5px;
+  color: #5b6474;
+}
+.site-tip-addr {
+  font-size: 13.5px;
+  color: #0b1220;
+}
+.site-tip-row span {
+  color: #5b6474;
+  margin-right: 4px;
+}
+.site-tip-row span::after {
+  content: ':';
+}
+.site-tip-when {
+  margin-top: 3px;
+  color: #5b6474;
+}
+.site-tip-when.stale {
+  color: #15803d;
+}

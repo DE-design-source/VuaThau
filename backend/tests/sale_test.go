@@ -53,6 +53,14 @@ func TestSale(t *testing.T) {
 		m.Points[0].CTVName != "Trần Bí Mật" {
 		t.Fatalf("sale map: %s", r.Raw)
 	}
+	for _, p := range m.Points {
+		if p.CoverID == nil {
+			t.Fatalf("thiếu hình đại diện: %+v", p)
+		}
+		if ph := e.getRaw(t, fmt.Sprintf("/api/v1/photos/%d", *p.CoverID), sale.AccessToken); ph.Status != 200 {
+			t.Fatalf("sale không xem được hình đại diện: %d", ph.Status)
+		}
+	}
 	other := e.register(t, "CTV Khác")
 	decodeData(t, e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/sale/map?ctv=%d", other.User.ID), sale.AccessToken, nil), &m)
 	if len(m.Points) != 0 {
