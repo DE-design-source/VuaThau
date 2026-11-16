@@ -137,6 +137,27 @@ func normPhone(s string) string {
 	return p
 }
 
+// Chatbot có khi ghi 2 số vào 1 ô: "0933.547.039 - 0922.121.030", "0945678300 / 0939793908".
+// Gạch nối có dấu cách hai bên mới là ngăn cách (gạch trong số như 0933-547-039 thì không).
+var phoneSep = regexp.MustCompile(`\s+[-–—]\s+|[/,;|]|\s+(?i:và|hoặc|or)\s+`)
+
+// firstPhone: SĐT hợp lệ đầu tiên trong ô; không tách được số hợp lệ nào thì giữ như normPhone.
+func firstPhone(s string) string {
+	for _, part := range phoneSep.Split(s, -1) {
+		p := normPhone(part)
+		if ValidPhone(p) {
+			return p
+		}
+		// 2 số dính liền không dấu ngăn cách: thử cắt sau 10 / 11 chữ số
+		for _, cut := range []int{10, 11} {
+			if len(p) > cut && ValidPhone(p[:cut]) && ValidPhone(normPhone(p[cut:])) {
+				return p[:cut]
+			}
+		}
+	}
+	return normPhone(s)
+}
+
 func randomHash() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
@@ -239,7 +260,7 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 			return false, false, nil
 		}
 		f := CleanFields(model.HouseFields{Address: addr, ContractorName: l.Fields["nha_thau"],
-			ContractorPhone: normPhone(l.Fields["sdt_nha_thau"]), Stage: stageOf(l.Fields["tien_do"])})
+			ContractorPhone: firstPhone(l.Fields["sdt_nha_thau"]), Stage: stageOf(l.Fields["tien_do"])})
 		if err := s.houses.UpdateFields(ctx, hid, f); err != nil {
 			return false, false, err
 		}
