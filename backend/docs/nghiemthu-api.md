@@ -156,6 +156,7 @@ với `Payout = {id, created_at, ref, house_count, total}`.
 | PUT | `/houses/{id}/info` | Sửa thông tin công trình (chưa thanh toán) → `{message}` |
 | GET | `/staff` | `{rows: [User]}` admin + kế toán |
 | POST | `/staff` | `{login, name, role, password}` → `{message, user}` |
+| POST | `/ctvs` | Tạo tài khoản CTV `{name, phone, password, bank_name?, bank_no?, bank_owner?}` → `{message, user}` (201; SĐT đã có: 409) |
 | POST | `/users/{id}/lock` | `{locked: bool}` → `{message}` |
 | POST | `/users/{id}/password` | `{password}` → `{message}` |
 | GET | `/settings` | `{price_min, price_more, min_photos, pay_min}` |

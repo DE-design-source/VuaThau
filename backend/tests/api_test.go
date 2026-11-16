@@ -924,6 +924,47 @@ func TestStaffManagement(t *testing.T) {
 		map[string]bool{"locked": true}), http.StatusForbidden)
 }
 
+func TestAdminAddCTV(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	admin := e.staff(t, model.RoleAdmin)
+	kt := e.staff(t, model.RoleKetoan)
+	body := map[string]string{"name": "Trần Văn B", "phone": "+84 912 345 678", "password": "123456"}
+
+	// kế toán không tạo được; dữ liệu sai: 400
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/ctvs", kt.AccessToken, body), http.StatusForbidden)
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/ctvs", admin.AccessToken,
+		map[string]string{"name": "B", "phone": "12345", "password": "123456"}), http.StatusBadRequest)
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/ctvs", admin.AccessToken,
+		map[string]string{"name": "B", "phone": "0912345678", "password": "123"}), http.StatusBadRequest)
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/ctvs", admin.AccessToken,
+		map[string]string{"name": "B", "phone": "0912345678", "password": "123456", "bank_name": "Vietcombank"}), http.StatusBadRequest)
+
+	// tạo được, SĐT +84 chuẩn hoá về 0; CTV đăng nhập app bằng SĐT + mật khẩu admin đặt
+	r := e.do(t, http.MethodPost, "/api/v1/ctvs", admin.AccessToken, body)
+	expectStatus(t, r, http.StatusCreated)
+	ctv := e.login(t, "0912345678", "123456")
+	if ctv.User.Role != model.RoleCTV || ctv.User.Name != "Trần Văn B" {
+		t.Fatalf("ctv: %+v", ctv.User)
+	}
+	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/ctv/home", ctv.AccessToken, nil), http.StatusOK)
+
+	// SĐT đã có: 409, báo tên CTV
+	r = e.do(t, http.MethodPost, "/api/v1/ctvs", admin.AccessToken, map[string]string{"name": "Khác", "phone": "0912345678", "password": "654321"})
+	expectStatus(t, r, http.StatusConflict)
+	if !strings.Contains(string(r.Raw), "Trần Văn B") {
+		t.Fatalf("conflict: %s", r.Raw)
+	}
+
+	// kèm ngân hàng
+	r = e.do(t, http.MethodPost, "/api/v1/ctvs", admin.AccessToken, map[string]string{"name": "C", "phone": "0987654321",
+		"password": "123456", "bank_name": "Vietcombank", "bank_no": "0123 456 789", "bank_owner": "nguyen van c"})
+	expectStatus(t, r, http.StatusCreated)
+	if !strings.Contains(string(r.Raw), "Vietcombank · 0123456789 · NGUYEN VAN C") {
+		t.Fatalf("bank: %s", r.Raw)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // 4. Messages (scaffold)
 // ---------------------------------------------------------------------------

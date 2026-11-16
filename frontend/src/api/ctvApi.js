@@ -4,6 +4,10 @@ const ctvApi = {
   /** { rows, found, page, pages } */
   list: ({ q, page } = {}) => axiosClient.get('/ctvs', { params: cleanParams({ q, page }) }),
 
+  /** Admin tạo tài khoản CTV (đăng nhập app bằng SĐT) -> { message, user } */
+  add: ({ name, phone, password, bank_name, bank_no, bank_owner }) =>
+    axiosClient.post('/ctvs', { name, phone, password, bank_name, bank_no, bank_owner }),
+
   /** { user, bank, money, rows, counts, pays, adjustments } */
   get: (id) => axiosClient.get(`/ctvs/${id}`),
 

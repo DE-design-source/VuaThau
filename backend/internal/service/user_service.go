@@ -39,6 +39,17 @@ type AddStaffInput struct {
 	Password string `json:"password"`
 }
 
+// AddCTVInput: admin tạo tài khoản CTV (đăng nhập app bằng SĐT + mật khẩu). Ngân hàng không bắt buộc:
+// bỏ trống cả 3 ô thì CTV tự thêm trong app (Tài khoản) trước khi nhận tiền.
+type AddCTVInput struct {
+	Name      string `json:"name"`
+	Phone     string `json:"phone"`
+	Password  string `json:"password"`
+	BankName  string `json:"bank_name"`
+	BankNo    string `json:"bank_no"`
+	BankOwner string `json:"bank_owner"`
+}
+
 type UserService interface {
 	GetByID(ctx context.Context, id int64) (*model.User, error)
 	List(ctx context.Context, limit, offset int) ([]model.User, error)
@@ -50,6 +61,7 @@ type UserService interface {
 
 	ListStaff(ctx context.Context) ([]model.User, error)
 	AddStaff(ctx context.Context, by *model.User, in AddStaffInput) (*model.User, string, error)
+	AddCTV(ctx context.Context, by *model.User, in AddCTVInput) (*model.User, string, error)
 	SetLocked(ctx context.Context, by *model.User, id int64, locked bool) (string, error)
 	ResetPassword(ctx context.Context, by *model.User, id int64, pw string) (string, error)
 
@@ -202,6 +214,38 @@ func (s *userService) AddStaff(ctx context.Context, by *model.User, in AddStaffI
 	}
 	_ = s.logs.Add(ctx, by.ID, ActAddStaff, nil, nil, fmt.Sprintf("%s (%s, %s)", name, login, roleLabel[in.Role]))
 	return u, fmt.Sprintf("Đã thêm %s %s, đăng nhập bằng %s.", roleLabel[in.Role], name, login), nil
+}
+
+func (s *userService) AddCTV(ctx context.Context, by *model.User, in AddCTVInput) (*model.User, string, error) {
+	phone, name := normPhone(in.Phone), truncate(in.Name, 100)
+	if name == "" || !ValidPhone(phone) {
+		return nil, "", fail(ErrInvalidInput, "Chưa tạo: cần họ tên và SĐT hợp lệ (10-11 số, bắt đầu bằng 0).")
+	}
+	if utf8.RuneCountInString(in.Password) < 6 || len(in.Password) > 72 {
+		return nil, "", fail(ErrInvalidInput, "Chưa tạo: mật khẩu cần ít nhất 6 ký tự.")
+	}
+	bank := ""
+	if strings.TrimSpace(in.BankName+in.BankNo+in.BankOwner) != "" {
+		if bank = BankFrom(in.BankName, in.BankNo, in.BankOwner); bank == "" {
+			return nil, "", fail(ErrInvalidInput, "Chưa tạo: ngân hàng cần đủ tên ngân hàng, số tài khoản (chỉ số) và tên chủ tài khoản, hoặc bỏ trống cả 3 ô.")
+		}
+	}
+	hash, err := hashPassword(in.Password)
+	if err != nil {
+		return nil, "", err
+	}
+	u := &model.User{Username: phone, Name: name, Role: model.RoleCTV, PasswordHash: hash, Bank: bank}
+	if err := s.auth.CreateUser(ctx, u); err != nil {
+		if errors.Is(err, repository.ErrDuplicate) {
+			if old, e := s.auth.FindByLogin(ctx, phone); e == nil && old.Role == model.RoleCTV {
+				return nil, "", fail(ErrConflict, "SĐT %s đã có tài khoản CTV %s. Mở trang CTV đó để đặt mật khẩu mới.", phone, old.Name)
+			}
+			return nil, "", fail(ErrConflict, "SĐT %s đã được dùng cho một tài khoản khác.", phone)
+		}
+		return nil, "", err
+	}
+	_ = s.logs.Add(ctx, by.ID, ActAddCTV, nil, nil, fmt.Sprintf("%s (%s)", name, phone))
+	return u, fmt.Sprintf("Đã tạo tài khoản CTV %s. Đăng nhập app bằng SĐT %s và mật khẩu vừa đặt.", name, phone), nil
 }
 
 func (s *userService) target(ctx context.Context, by *model.User, id int64) (*model.User, error) {

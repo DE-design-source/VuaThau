@@ -102,6 +102,7 @@ func New(d Deps) http.Handler {
 	mux.Handle("PUT /api/v1/houses/{id}/amount", role(h.SetAmount, admin, ketoan))
 	mux.Handle("GET /api/v1/houses", role(h.Overview, admin, ketoan))
 	mux.Handle("GET /api/v1/ctvs", role(u.CTVs, admin, ketoan))
+	mux.Handle("POST /api/v1/ctvs", role(u.AddCTV, admin))
 	mux.Handle("GET /api/v1/map", role(h.Map, admin, ketoan))
 	mux.Handle("GET /api/v1/ctvs/{id}", role(u.CTV, admin, ketoan))
 	mux.Handle("POST /api/v1/ctvs/{id}/adjustments", role(p.AddAdjustment, admin, ketoan))

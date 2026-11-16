@@ -270,6 +270,7 @@ const (
 	ActUnlock   = "Mở khoá tài khoản"
 	ActResetPW  = "Đặt lại mật khẩu"
 	ActAddStaff = "Thêm nhân viên"
+	ActAddCTV   = "Admin tạo tài khoản CTV"
 	ActSettings = "Sửa cấu hình"
 	ActSelfDel  = "CTV tự xoá tài khoản"
 )
