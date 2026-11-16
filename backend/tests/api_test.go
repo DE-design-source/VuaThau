@@ -1272,7 +1272,7 @@ func TestDownloadApp(t *testing.T) {
 	}
 	r := get("/tai-app/vuathau.apk", "")
 	if string(r.Raw) != "vuathau-nghiemthu-2.0.10-10.apk" || r.Header.Get("Content-Type") != "application/vnd.android.package-archive" ||
-		!strings.Contains(r.Header.Get("Content-Disposition"), `filename="VuaThau-NghiemThu-2.0.10.apk"`) {
+		!strings.Contains(r.Header.Get("Content-Disposition"), `filename="VuaThauMap-2.0.10.apk"`) {
 		t.Fatalf("apk: %s %v", r.Raw, r.Header)
 	}
 	if r := get("/tai-app", "Mozilla/5.0 (Linux; Android 14)"); !strings.Contains(string(r.Raw), `href="/tai-app/vuathau.apk"`) {

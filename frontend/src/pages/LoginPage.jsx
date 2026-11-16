@@ -33,10 +33,10 @@ export default function LoginPage() {
     <div className="login">
       <aside className="login-art" aria-hidden="true">
         <div className="login-brand">
-          <Mark size={34} />
+          <Mark size={56} />
           <span>
-            <b>Vua Thầu</b>
-            <small>Nghiệm thu</small>
+            <b>Vua Thầu Map</b>
+            <small>Quản lý nghiệm thu</small>
           </span>
         </div>
         <div className="login-pitch">
@@ -74,7 +74,7 @@ export default function LoginPage() {
               Đăng nhập
             </Button>
           </form>
-          <p className="muted small">Cộng tác viên đăng ký, nộp hồ sơ và xem thu nhập trên app Vua Thầu (Android).</p>
+          <p className="muted small">Cộng tác viên đăng ký, nộp hồ sơ và xem thu nhập trên app Vua Thầu Map (Android, iPhone).</p>
         </div>
       </section>
     </div>
