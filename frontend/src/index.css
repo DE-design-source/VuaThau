@@ -1839,3 +1839,42 @@ details summary {
   height: auto;
   font-size: 13px;
 }
+
+/* Bản đồ: cập nhật thời gian thực + lọc theo lịch sử (đầu trang) */
+.map-tools {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+.btn-live {
+  background: #e5484d;
+  color: #fff;
+  border: 0;
+  font-weight: 600;
+}
+.btn-live:hover {
+  background: #d93d42;
+}
+.btn-live.on {
+  background: var(--color-surface, #fff);
+  color: inherit;
+  border: 1px solid #e5484d;
+}
+.history {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+  color: #e5484d;
+  font-weight: 600;
+}
+.history .input {
+  width: auto;
+  border-color: #e5484d;
+}
+@media (max-width: 860px) {
+  .map-tools {
+    justify-items: start;
+  }
+}

@@ -15,6 +15,7 @@ import { AGE_FRESH, AGE_FRESH_LINE, AGE_STALE, ageTip, esc, gmapUrl, hsId, isSta
 // Màu điểm theo trạng thái (giống tông nhãn trạng thái)
 const TONE = { cho_duyet: 'wait', tra_lai: 'warn', da_duyet: 'ok', da_chi: 'done', tu_choi: 'bad' }
 const VN_CENTER = [16.0, 106.2]
+const LIVE_MS = 15000 // thời gian thực: tự tải lại mỗi 15 giây
 const VN_BOUNDS = [
   [8.3, 102.1],
   [23.4, 109.6],
@@ -43,10 +44,39 @@ export default function MapPage() {
   }
   const { data: d, err, busy, reload } = usePage(() => mapApi.get(cur), [cur.ctv, cur.status, cur.from, cur.to, cur.province])
   const cfg = useCfg()
-  const [f, setF] = useState(cur)
   const [tab, setTab] = useState(cur.province ? 'tinh' : 'ctv')
   // Tô màu chấm: theo lần chụp gần nhất của công trình (mặc định) hoặc theo trạng thái hồ sơ
   const [mode, setMode] = useState('age')
+  // Cập nhật theo thời gian thực: tự tải lại mỗi LIVE_MS, đánh dấu công trình mới xuất hiện
+  const [live, setLive] = useState(false)
+  const [liveAt, setLiveAt] = useState(null)
+  const [fresh, setFresh] = useState(() => new Set())
+  const known = useRef(null)
+  useEffect(() => {
+    if (!live) return
+    const t = setInterval(() => !document.hidden && reload(), LIVE_MS)
+    return () => clearInterval(t)
+  }, [live, reload])
+  useEffect(() => {
+    if (!d) return
+    const ids = new Set((d.points || []).map((p) => p.id))
+    if (live && known.current) {
+      const added = [...ids].filter((id) => !known.current.has(id))
+      if (added.length) setFresh((s) => new Set([...s, ...added]))
+      setLiveAt(new Date())
+    }
+    known.current = ids
+  }, [d, live])
+  const toggleLive = () => {
+    if (live) {
+      setLive(false)
+      setFresh(new Set())
+      return
+    }
+    setLive(true)
+    setLiveAt(new Date())
+    if (cur.to) set({ to: '' }) // xem tới hiện tại
+  }
   const set = (patch) => {
     const next = { ...cur, ...patch }
     setSp(Object.fromEntries(Object.entries(next).filter(([, v]) => v)))
@@ -67,7 +97,48 @@ export default function MapPage() {
       <PageHead
         title="Bản đồ công trình"
         sub={`Công trình CTV đã chụp (app và Messenger) trên 34 tỉnh, thành phố. Mỗi công trình chỉ nhận 1 hồ sơ trong ${d.dup_days} ngày.`}
-      />
+      >
+        <div className="map-tools">
+          <button type="button" className={`btn btn-live ${live ? 'on' : ''}`} onClick={toggleLive} aria-pressed={live}>
+            {live ? (
+              <span className="live">
+                <i /> Đang cập nhật theo thời gian thực
+              </span>
+            ) : (
+              'Cập nhật theo thời gian thực'
+            )}
+          </button>
+          {live && (
+            <small className="muted">
+              Tự tải lại mỗi {LIVE_MS / 1000} giây{liveAt ? ` · lần cuối ${liveAt.toLocaleTimeString('vi-VN')}` : ''}
+              {fresh.size > 0 && <b className="text-bad"> · {fresh.size} công trình mới</b>}
+            </small>
+          )}
+          <div className="history">
+            <span>Lọc theo lịch sử</span>
+            <input
+              className="input"
+              type="date"
+              value={cur.from}
+              max={cur.to || undefined}
+              onChange={(e) => set({ from: e.target.value })}
+              aria-label="Từ ngày"
+            />
+            <span className="muted">→</span>
+            <input
+              className="input"
+              type="date"
+              value={cur.to}
+              min={cur.from || undefined}
+              onChange={(e) => {
+                if (e.target.value) setLive(false) // xem quá khứ: tắt thời gian thực
+                set({ to: e.target.value })
+              }}
+              aria-label="Đến ngày"
+            />
+          </div>
+        </div>
+      </PageHead>
       <div className="kpis">
         <Kpi label="Công trình trên bản đồ" value={points.length} sub={[sel?.name, prov?.name].filter(Boolean).join(' · ') || 'theo bộ lọc'} />
         <Kpi label="Tỉnh, thành có công trình" value={`${withSites.length}/34`} />
@@ -76,13 +147,7 @@ export default function MapPage() {
         <Kpi label="Bị chặn vì chụp trùng" value={sum('dups')} tone={sum('dups') ? 'bad' : undefined} />
       </div>
 
-      <form
-        className="card filters"
-        onSubmit={(e) => {
-          e.preventDefault()
-          set({ from: f.from, to: f.to })
-        }}
-      >
+      <div className="card filters">
         <select className="input" value={cur.province} onChange={(e) => set({ province: e.target.value })} aria-label="Tỉnh, thành">
           <option value="">Cả nước (34 tỉnh, thành)</option>
           {[...provinces]
@@ -111,24 +176,17 @@ export default function MapPage() {
               </option>
             ))}
         </select>
-        <input className="input" type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} aria-label="Từ ngày" />
-        <input className="input" type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} aria-label="Đến ngày" />
-        <Button type="submit" variant="secondary" loading={busy}>
-          Lọc ngày
-        </Button>
+        {busy && <span className="muted">Đang tải…</span>}
         {Object.values(cur).some(Boolean) && (
           <Button
             variant="ghost"
             type="button"
-            onClick={() => {
-              setF({ ctv: '', status: '', from: '', to: '', province: '' })
-              setSp({})
-            }}
+            onClick={() => setSp({})}
           >
             Bỏ lọc
           </Button>
         )}
-      </form>
+      </div>
 
       {prov && prov.merged?.length > 0 && (
         <div className="note tone-wait">
@@ -148,7 +206,7 @@ export default function MapPage() {
             }}
             fitKey={`${cur.ctv}|${cur.status}|${cur.from}|${cur.to}|${cur.province}`}
             color={mode === 'age' ? (p) => (isStale(p.last_at, d.dup_days) ? AGE_STALE : AGE_FRESH) : undefined}
-            stroke={mode === 'age' ? (p) => (isStale(p.last_at, d.dup_days) ? '#fff' : AGE_FRESH_LINE) : undefined}
+            stroke={(p) => (fresh.has(p.id) ? '#dc2626' : mode === 'age' && !isStale(p.last_at, d.dup_days) ? AGE_FRESH_LINE : '#fff')}
             tip={(p) => ageTip(p.last_at, d.dup_days)}
             staleDays={d.dup_days}
           />
@@ -272,6 +330,7 @@ export function SiteMap({ points, provinces, selected, onProvince, fitKey, pop, 
   const map = useRef(null)
   const dots = useRef(null)
   const getMap = useCallback(() => map.current, [])
+  const fitted = useRef(null) // fitKey đã canh khung: tự tải lại (thời gian thực) không làm bản đồ nhảy
   const areas = useRef(null)
   const onProv = useRef(onProvince)
   const [geo, setGeo] = useState(null)
@@ -391,7 +450,8 @@ export function SiteMap({ points, provinces, selected, onProvince, fitKey, pop, 
       mk.addTo(g)
       latlngs.push([p.lat, p.lng])
     }
-    if (selected) return // đã canh theo ranh giới tỉnh
+    if (selected || fitted.current === fitKey) return // đã canh theo ranh giới tỉnh / đã canh với bộ lọc này
+    fitted.current = fitKey
     // Chưa lọc: xem cả nước; lọc theo CTV / ngày / trạng thái: canh vừa các công trình
     const filtered = fitKey.replaceAll('|', '') !== ''
     if (filtered && latlngs.length) m.fitBounds(latlngs, { padding: [30, 30], maxZoom: 14 })
