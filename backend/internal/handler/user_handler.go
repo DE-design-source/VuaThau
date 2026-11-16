@@ -134,6 +134,20 @@ func (h *UserHandler) AddStaff(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusCreated, map[string]any{"message": m, "user": u})
 }
 
+// AddCTV handles POST /api/v1/ctvs {name, phone, password, bank_name?, bank_no?, bank_owner?}
+func (h *UserHandler) AddCTV(w http.ResponseWriter, r *http.Request) {
+	var in service.AddCTVInput
+	if !bodyOr400(w, r, &in) {
+		return
+	}
+	u, m, err := h.svc.AddCTV(r.Context(), middleware.UserFromContext(r.Context()), in)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	response.Success(w, http.StatusCreated, map[string]any{"message": m, "user": u})
+}
+
 // Lock handles POST /api/v1/users/{id}/lock {locked}
 func (h *UserHandler) Lock(w http.ResponseWriter, r *http.Request) {
 	id, valid := idOr400(w, r, "id")
