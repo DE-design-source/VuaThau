@@ -29,7 +29,51 @@ type GeoPoint struct {
 	Lat, Lng float64
 }
 
+// SiteCandidate: hồ sơ đã gửi duyệt, đem so để chặn chụp trùng công trình.
+type SiteCandidate struct {
+	ID              int64
+	CTVID           int64
+	CTVName         string
+	Lat, Lng        *float64
+	ContractorPhone string
+	SubmittedAt     time.Time
+}
+
+// MapPoint: 1 công trình trên bản đồ.
+type MapPoint struct {
+	ID         int64     `json:"id"`
+	Lat        float64   `json:"lat"`
+	Lng        float64   `json:"lng"`
+	Status     string    `json:"status"`
+	CTVID      int64     `json:"ctv_id"`
+	CTVName    string    `json:"ctv_name"`
+	Address    string    `json:"address"`
+	Contractor string    `json:"contractor"`
+	Source     string    `json:"source"`
+	At         time.Time `json:"at"`
+}
+
+// CTVSites: số công trình 1 CTV đã chụp.
+type CTVSites struct {
+	ID     int64      `json:"id"`
+	Name   string     `json:"name"`
+	Phone  string     `json:"phone"`
+	Total  int        `json:"total"`  // đã gửi duyệt, không tính bị từ chối
+	Recent int        `json:"recent"` // trong số ngày chặn trùng gần đây
+	Dups   int        `json:"dups"`   // bị tự từ chối vì chụp trùng
+	Inbox  int        `json:"inbox"`  // gửi qua Messenger
+	Last   *time.Time `json:"last"`
+}
+
 type HouseRepository interface {
+	SiteCandidates(ctx context.Context, exclude int64, since time.Time) ([]SiteCandidate, error)
+	MarkDuplicate(ctx context.Context, id, of int64, note string) error
+	SetDupInfo(ctx context.Context, id int64, of *int64, dup string) error
+	CreateInbox(ctx context.Context, ctvID int64, extID string, created time.Time) (int64, bool, error)
+	MapPoints(ctx context.Context, f HouseFilter) ([]MapPoint, error)
+	CountSource(ctx context.Context, source string) (int, error)
+	SiteCounts(ctx context.Context, since time.Time) ([]CTVSites, error)
+
 	Create(ctx context.Context, ctvID int64) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	Get(ctx context.Context, id int64) (*model.House, error)
@@ -68,7 +112,8 @@ func NewHouseRepository(db *pgxpool.Pool) HouseRepository {
 }
 
 const houseCols = `h.id, h.ctv_id, u.name, u.username, u.bank, h.status, h.address, h.lat, h.lng, h.contractor_name,
-	h.contractor_phone, h.floors, h.stage, h.note, h.dup, h.amount, h.ai_state, h.ai_json, h.batch_id, h.drive, h.created_at`
+	h.contractor_phone, h.floors, h.stage, h.note, h.dup, h.amount, h.ai_state, h.ai_json, h.batch_id, h.drive, h.created_at,
+	h.source, h.dup_of, h.submitted_at`
 
 const houseFrom = ` FROM houses h JOIN users u ON u.id = h.ctv_id `
 
@@ -76,7 +121,7 @@ func scanHouse(row pgx.Row) (*model.House, error) {
 	var h model.House
 	err := row.Scan(&h.ID, &h.CTVID, &h.CTVName, &h.CTVPhone, &h.CTVBank, &h.Status, &h.Address, &h.Lat, &h.Lng,
 		&h.ContractorName, &h.ContractorPhone, &h.Floors, &h.Stage, &h.Note, &h.Dup, &h.Amount, &h.AIState, &h.AIJSON,
-		&h.BatchID, &h.Drive, &h.CreatedAt)
+		&h.BatchID, &h.Drive, &h.CreatedAt, &h.Source, &h.DupOf, &h.SubmittedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -225,8 +270,103 @@ func (r *houseRepository) Submit(ctx context.Context, id int64, amount int64, la
 	if queueDrive {
 		drive = "'cho'"
 	}
-	return r.exec(ctx, `UPDATE houses SET status = 'cho_duyet', note = '', amount = $2, lat = $3, lng = $4, dup = $5, drive = `+drive+`
-		WHERE id = $1 AND status IN ('nhap', 'tra_lai')`, id, amount, lat, lng, dup)
+	return r.exec(ctx, `UPDATE houses SET status = 'cho_duyet', note = '', amount = $2, lat = $3, lng = $4, dup = $5, drive = `+drive+`,
+		submitted_at = COALESCE(submitted_at, NOW()) WHERE id = $1 AND status IN ('nhap', 'tra_lai')`, id, amount, lat, lng, dup)
+}
+
+// SiteCandidates: hồ sơ đã gửi duyệt từ since (trừ nháp, từ chối và chính nó): dùng để chặn chụp trùng công trình.
+func (r *houseRepository) SiteCandidates(ctx context.Context, exclude int64, since time.Time) ([]SiteCandidate, error) {
+	rows, err := r.db.Query(ctx, `SELECT h.id, h.ctv_id, u.name, h.lat, h.lng, h.contractor_phone, h.submitted_at
+		FROM houses h JOIN users u ON u.id = h.ctv_id
+		WHERE h.id <> $1 AND h.submitted_at >= $2 AND h.status NOT IN ('nhap', 'tu_choi') ORDER BY h.submitted_at`, exclude, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SiteCandidate{}
+	for rows.Next() {
+		var c SiteCandidate
+		if err := rows.Scan(&c.ID, &c.CTVID, &c.CTVName, &c.Lat, &c.Lng, &c.ContractorPhone, &c.SubmittedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (r *houseRepository) CountSource(ctx context.Context, source string) (int, error) {
+	var n int
+	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM houses WHERE source = $1`, source).Scan(&n)
+	return n, err
+}
+
+// MarkDuplicate: tự từ chối hồ sơ trùng công trình (đang chờ duyệt), ghi hồ sơ gốc + lý do.
+func (r *houseRepository) MarkDuplicate(ctx context.Context, id, of int64, note string) error {
+	return r.exec(ctx, `UPDATE houses SET status = 'tu_choi', dup_of = $2, note = $3, dup = $3
+		WHERE id = $1 AND status = 'cho_duyet'`, id, of, note)
+}
+
+func (r *houseRepository) SetDupInfo(ctx context.Context, id int64, of *int64, dup string) error {
+	_, err := r.db.Exec(ctx, `UPDATE houses SET dup_of = $2, dup = $3 WHERE id = $1`, id, of, dup)
+	return err
+}
+
+// CreateInbox: hồ sơ nháp từ Messenger (ext_id = id project_logs). Đã có: trả id cũ, created = false.
+func (r *houseRepository) CreateInbox(ctx context.Context, ctvID int64, extID string, created time.Time) (int64, bool, error) {
+	var id int64
+	err := r.db.QueryRow(ctx, `INSERT INTO houses (ctv_id, source, ext_id, created_at) VALUES ($1, 'inbox', $2, $3)
+		ON CONFLICT (ext_id) WHERE ext_id IS NOT NULL DO NOTHING RETURNING id`, ctvID, extID, created).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = r.db.QueryRow(ctx, `SELECT id FROM houses WHERE ext_id = $1`, extID).Scan(&id)
+		return id, false, err
+	}
+	return id, err == nil, err
+}
+
+// MapPoints: hồ sơ có toạ độ (đã gửi duyệt) cho bản đồ.
+func (r *houseRepository) MapPoints(ctx context.Context, f HouseFilter) ([]MapPoint, error) {
+	where, args := f.where(false)
+	rows, err := r.db.Query(ctx, `SELECT h.id, h.lat, h.lng, h.status, h.ctv_id, u.name, h.address, h.contractor_name, h.source,
+		COALESCE(h.submitted_at, h.created_at) `+houseFrom+`WHERE `+where+` AND h.lat IS NOT NULL AND h.lng IS NOT NULL
+		AND h.status <> 'nhap' ORDER BY h.id DESC LIMIT 20000`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MapPoint{}
+	for rows.Next() {
+		var p MapPoint
+		if err := rows.Scan(&p.ID, &p.Lat, &p.Lng, &p.Status, &p.CTVID, &p.CTVName, &p.Address, &p.Contractor, &p.Source, &p.At); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// SiteCounts: mỗi CTV đã chụp bao nhiêu công trình (hồ sơ đã gửi duyệt, không tính bị từ chối).
+func (r *houseRepository) SiteCounts(ctx context.Context, since time.Time) ([]CTVSites, error) {
+	rows, err := r.db.Query(ctx, `SELECT u.id, u.name, u.username,
+			COUNT(*) FILTER (WHERE h.status NOT IN ('nhap', 'tu_choi')),
+			COUNT(*) FILTER (WHERE h.status NOT IN ('nhap', 'tu_choi') AND h.submitted_at >= $1),
+			COUNT(*) FILTER (WHERE h.status = 'tu_choi' AND h.dup_of IS NOT NULL),
+			COUNT(*) FILTER (WHERE h.source = 'inbox'),
+			MAX(h.submitted_at)
+		FROM houses h JOIN users u ON u.id = h.ctv_id
+		WHERE h.status <> 'nhap' GROUP BY u.id ORDER BY 4 DESC, u.name`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []CTVSites{}
+	for rows.Next() {
+		var c CTVSites
+		if err := rows.Scan(&c.ID, &c.Name, &c.Phone, &c.Total, &c.Recent, &c.Dups, &c.Inbox, &c.Last); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 // SetStatus đổi trạng thái nếu đang ở 1 trong from. Trả false nếu không ở trạng thái đó.

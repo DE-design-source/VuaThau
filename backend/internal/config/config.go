@@ -55,12 +55,22 @@ type Config struct {
 	GDriveClientSecret string
 	GDriveRefreshToken string
 	GDriveFolder       string
+
+	// Hồ sơ CTV gửi qua Messenger (hệ thống dezon-inbox). Trống INBOX_DATABASE_URL: tắt.
+	InboxDatabaseURL string
+	InboxS3Endpoint  string
+	InboxS3Bucket    string
+	InboxS3Access    string
+	InboxS3Secret    string
+	InboxS3Region    string
+	InboxSyncEvery   time.Duration
 }
 
 // Load reads configuration from the environment. A .env file in the working
 // directory is loaded first if present; real environment variables win.
 func Load() (*Config, error) {
 	_ = godotenv.Load()
+	var err error
 
 	cfg := &Config{
 		AppEnv:             getEnv("APP_ENV", "development"),
@@ -83,9 +93,17 @@ func Load() (*Config, error) {
 		GDriveClientSecret: getEnv("GDRIVE_CLIENT_SECRET", ""),
 		GDriveRefreshToken: getEnv("GDRIVE_REFRESH_TOKEN", ""),
 		GDriveFolder:       getEnv("GDRIVE_FOLDER", ""),
+		InboxDatabaseURL:   getEnv("INBOX_DATABASE_URL", ""),
+		InboxS3Endpoint:    getEnv("INBOX_S3_ENDPOINT", ""),
+		InboxS3Bucket:      getEnv("INBOX_S3_BUCKET", ""),
+		InboxS3Access:      getEnv("INBOX_S3_ACCESS_KEY", ""),
+		InboxS3Secret:      getEnv("INBOX_S3_SECRET_KEY", ""),
+		InboxS3Region:      getEnv("INBOX_S3_REGION", "us-east-1"),
+	}
+	if cfg.InboxSyncEvery, err = time.ParseDuration(getEnv("INBOX_SYNC_EVERY", "5m")); err != nil {
+		return nil, fmt.Errorf("INBOX_SYNC_EVERY: %w", err)
 	}
 
-	var err error
 	if cfg.RedisDB, err = strconv.Atoi(getEnv("REDIS_DB", "0")); err != nil {
 		return nil, fmt.Errorf("REDIS_DB: %w", err)
 	}

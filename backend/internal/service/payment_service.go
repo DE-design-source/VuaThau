@@ -167,7 +167,17 @@ func (s *paymentService) SaveSettings(ctx context.Context, by *model.User, n mod
 	if err != nil {
 		return "", old, err
 	}
+	if n.DupDays == 0 { // trang cấu hình bản cũ không gửi 2 ô này: giữ nguyên
+		n.DupDays = old.DupDays
+	}
+	if n.DupRadiusM == 0 {
+		n.DupRadiusM = old.DupRadiusM
+	}
 	switch {
+	case n.DupDays < 1 || n.DupDays > 365:
+		return "", old, fail(ErrInvalidInput, "Chưa lưu: số ngày chặn chụp trùng phải từ 1 đến 365.")
+	case n.DupRadiusM < 10 || n.DupRadiusM > 1000:
+		return "", old, fail(ErrInvalidInput, "Chưa lưu: bán kính coi là cùng công trình phải từ 10 đến 1000 m.")
 	case n.MinPhotos < 1 || n.MinPhotos > model.MaxPhotos:
 		return "", old, fail(ErrInvalidInput, "Chưa lưu: số ảnh đạt tối thiểu phải từ 1 đến %d.", model.MaxPhotos)
 	case n.PriceMin < 0 || n.PriceMin > 10_000_000 || n.PriceMore < 0 || n.PriceMore > 10_000_000:
@@ -191,6 +201,8 @@ func (s *paymentService) SaveSettings(ctx context.Context, by *model.User, n mod
 	add(fmt.Sprintf("Tiền 1 hồ sơ từ %d ảnh đạt", old.MinPhotos+1), old.PriceMore, n.PriceMore)
 	add("Số ảnh đạt tối thiểu", int64(old.MinPhotos), int64(n.MinPhotos))
 	add("Số hồ sơ để được thanh toán", int64(old.PayMin), int64(n.PayMin))
+	add("Số ngày chặn chụp trùng", int64(old.DupDays), int64(n.DupDays))
+	add("Bán kính cùng công trình (m)", int64(old.DupRadiusM), int64(n.DupRadiusM))
 	_ = s.logs.Add(ctx, by.ID, ActSettings, nil, nil, strings.Join(diff, "; "))
 	return "Đã lưu cấu hình. Giá mới áp dụng cho hồ sơ gửi duyệt từ bây giờ, hồ sơ đã gửi giữ giá cũ.", n, nil
 }

@@ -71,10 +71,13 @@ type Settings struct {
 	PriceMore int64 `json:"price_more"` // tiền 1 hồ sơ từ MinPhotos+1 ảnh đạt
 	MinPhotos int   `json:"min_photos"`
 	PayMin    int   `json:"pay_min"` // số hồ sơ đã duyệt để được thanh toán
+	// Chặn chụp trùng: công trình trong bán kính DupRadiusM đã có hồ sơ trong DupDays ngày (AI so ảnh xác nhận)
+	DupDays    int `json:"dup_days"`
+	DupRadiusM int `json:"dup_radius_m"`
 }
 
 // DefaultSettings: giá trị khi bảng settings trống.
-var DefaultSettings = Settings{PriceMin: 35000, PriceMore: 50000, MinPhotos: 5, PayMin: 5}
+var DefaultSettings = Settings{PriceMin: 35000, PriceMore: 50000, MinPhotos: 5, PayMin: 5, DupDays: 30, DupRadiusM: 50}
 
 // MaxPhotos: số ảnh tối đa của 1 hồ sơ.
 const MaxPhotos = 20

@@ -246,7 +246,8 @@ export function HouseTable({ rows, showCtv = true, selectable, selected, onToggl
                   <Link to={`/houses/${r.id}`} className="row-link">
                     <Cover id={r.cover_id} />
                     <span>
-                      <strong>#{r.id}</strong> {r.address || <span className="muted">(chưa có địa chỉ)</span>}
+                      <strong>#{r.id}</strong> {r.source === 'inbox' && <Pill tone="wait">Messenger</Pill>}{' '}
+                      {r.address || <span className="muted">(chưa có địa chỉ)</span>}
                       {r.dup && <small className="text-warn d-block">⚠ {r.dup}</small>}
                     </span>
                   </Link>

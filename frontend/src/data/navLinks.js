@@ -4,6 +4,7 @@ const navLinks = [
   { to: '/accounting', label: 'Thanh toán', roles: ['ketoan'], badge: true },
   { to: '/houses', label: 'Hồ sơ', roles: ['admin', 'ketoan'] },
   { to: '/ctvs', label: 'Cộng tác viên', roles: ['admin', 'ketoan'] },
+  { to: '/map', label: 'Bản đồ', roles: ['admin', 'ketoan'] },
   { to: '/batches', label: 'Phiếu chi', roles: ['admin', 'ketoan'] },
   { to: '/reports', label: 'Báo cáo', roles: ['admin', 'ketoan'] },
   { to: '/staff', label: 'Nhân viên', roles: ['admin'] },

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import MainLayout from '@/components/layout/MainLayout'
 import { PageState } from '@/components/ui'
@@ -19,6 +19,8 @@ import PaymentsPage from '@/pages/PaymentsPage'
 import BatchPage from '@/pages/BatchPage'
 import ReportPage from '@/pages/ReportPage'
 import AccountPage from '@/pages/AccountPage'
+// Bản đồ (Leaflet) tải riêng khi mở trang, không làm nặng các trang khác
+const MapPage = lazy(() => import('@/pages/MapPage'))
 
 /** Chỉ cho vào khi đã đăng nhập, và đúng vai trò nếu có roles. */
 function Guard({ roles, children }) {
@@ -57,6 +59,7 @@ export default function App() {
         <Route path="houses" element={g(<OverviewPage />)} />
         <Route path="ctvs" element={g(<CtvListPage />)} />
         <Route path="ctvs/:id" element={g(<CtvPage />)} />
+        <Route path="map" element={g(<Suspense fallback={<PageState err="" />}><MapPage /></Suspense>)} />
         <Route path="staff" element={g(<StaffPage />, ['admin'])} />
         <Route path="settings" element={g(<SettingsPage />, ['admin'])} />
         <Route path="accounting" element={g(<AccountingPage />, ['ketoan'])} />

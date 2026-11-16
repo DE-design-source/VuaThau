@@ -330,3 +330,35 @@ func (h *HouseHandler) Overview(w http.ResponseWriter, r *http.Request) {
 	}
 	ok(w, res)
 }
+
+// Map handles GET /api/v1/map?ctv=&status=&from=&to=
+func (h *HouseHandler) Map(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	ctv, _ := strconv.ParseInt(q.Get("ctv"), 10, 64)
+	res, err := h.svc.Map(r.Context(), service.OverviewQuery{Status: q.Get("status"), CTV: ctv, From: q.Get("from"), To: q.Get("to")})
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, res)
+}
+
+// InboxStatus handles GET /api/v1/admin/inbox
+func (h *HouseHandler) InboxStatus(w http.ResponseWriter, r *http.Request) {
+	res, err := h.svc.InboxStatus(r.Context())
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, res)
+}
+
+// InboxSync handles POST /api/v1/admin/inbox/sync: đồng bộ hồ sơ Messenger ngay.
+func (h *HouseHandler) InboxSync(w http.ResponseWriter, r *http.Request) {
+	res, err := h.svc.SyncInbox(r.Context())
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, res)
+}

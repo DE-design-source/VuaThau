@@ -93,12 +93,15 @@ func New(d Deps) http.Handler {
 	mux.Handle("POST /api/v1/users/{id}/lock", role(u.Lock, admin))
 	mux.Handle("POST /api/v1/users/{id}/password", role(u.ResetPassword, admin))
 	mux.Handle("GET /api/v1/settings", role(p.Settings, admin))
+	mux.Handle("GET /api/v1/admin/inbox", role(h.InboxStatus, admin))
+	mux.Handle("POST /api/v1/admin/inbox/sync", role(h.InboxSync, admin))
 	mux.Handle("PUT /api/v1/settings", role(p.SaveSettings, admin))
 
 	// Admin + kế toán
 	mux.Handle("PUT /api/v1/houses/{id}/amount", role(h.SetAmount, admin, ketoan))
 	mux.Handle("GET /api/v1/houses", role(h.Overview, admin, ketoan))
 	mux.Handle("GET /api/v1/ctvs", role(u.CTVs, admin, ketoan))
+	mux.Handle("GET /api/v1/map", role(h.Map, admin, ketoan))
 	mux.Handle("GET /api/v1/ctvs/{id}", role(u.CTV, admin, ketoan))
 	mux.Handle("POST /api/v1/ctvs/{id}/adjustments", role(p.AddAdjustment, admin, ketoan))
 	mux.Handle("DELETE /api/v1/adjustments/{id}", role(p.DeleteAdjustment, admin, ketoan))
