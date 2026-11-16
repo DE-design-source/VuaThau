@@ -132,6 +132,7 @@ func scanHouse(row pgx.Row) (*model.House, error) {
 		if p := province.ByCode(h.Province); p != nil {
 			h.ProvinceName = p.Name
 		}
+		h.FillAIDiff()
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound

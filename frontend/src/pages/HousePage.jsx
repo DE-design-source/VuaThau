@@ -8,7 +8,14 @@ import useCfg from '@/hooks/useCfg'
 import useAuth from '@/hooks/useAuth'
 import houseApi from '@/api/houseApi'
 import { Button, Icon, PageHead, PageState, PhotoGrid, Pill, StatusBadge, hsId } from '@/components/ui'
-import { REASONS, bankParts, money, parseMoney, vnTime } from '@/utils/format'
+import { REASONS, aiDiffText, bankParts, money, parseMoney, vnTime } from '@/utils/format'
+
+// Gộp lỗi từng ảnh theo loại lỗi: "Không thấy công trình đang xây: ảnh 3, 5"
+function groupIssues(issues) {
+  const m = new Map()
+  for (const it of issues) for (const p of it.problems || []) m.set(p, [...(m.get(p) || []), it.index])
+  return [...m]
+}
 
 export default function HousePage() {
   const { id } = useParams()
@@ -40,6 +47,11 @@ function House({ id, d, reload }) {
       </PageHead>
 
       {h.dup && !(h.status === 'tu_choi' && h.dup === h.note) && <div className="note tone-warn inline"><Icon name="alert" size={16} /> {h.dup}</div>}
+      {h.ai_diff && (
+        <div className="note tone-warn inline">
+          <Icon name="alert" size={16} /> AI đọc trên ảnh khác {aiDiffText(h.ai_diff)} đang lưu. Xem giá trị AI đọc ở phần Thông tin công trình.
+        </div>
+      )}
       {h.status === 'tra_lai' && h.note && <div className="note tone-warn">Đã trả lại cho CTV: {h.note}</div>}
       {h.status === 'tu_choi' && (
         <div className="note tone-bad">
@@ -66,9 +78,9 @@ function House({ id, d, reload }) {
             {ps.length ? <PhotoGrid ps={ps} /> : <p className="muted">Chưa có ảnh.</p>}
             {(issues.length > 0 || fieldsTodo.length > 0) && (
               <ul className="issues">
-                {issues.map((it) => (
-                  <li key={it.index}>
-                    Ảnh {it.index}: {(it.problems || []).join('; ')}
+                {groupIssues(issues).map(([problem, idx]) => (
+                  <li key={problem}>
+                    {problem}: ảnh {idx.join(', ')}
                   </li>
                 ))}
                 {fieldsTodo.map((c) => (
@@ -122,9 +134,15 @@ function House({ id, d, reload }) {
                   </a>
                 )}
               </Fact>
-              <Fact label="Số tầng" value={h.floors} />
-              <Fact label="Giai đoạn" value={h.stage} />
-              <Fact label="Nhà thầu" value={[h.contractor_name, h.contractor_phone].filter(Boolean).join(' · ')} />
+              <Fact label="Số tầng" value={h.floors}>
+                <AIRead v={h.ai_diff?.floors} />
+              </Fact>
+              <Fact label="Giai đoạn" value={h.stage}>
+                <AIRead v={h.ai_diff?.stage} />
+              </Fact>
+              <Fact label="Nhà thầu" value={[h.contractor_name, h.contractor_phone].filter(Boolean).join(' · ')}>
+                <AIRead v={[h.ai_diff?.contractor_name, h.ai_diff?.contractor_phone].filter(Boolean).join(' · ')} />
+              </Fact>
             </div>
           )}
 
@@ -174,6 +192,21 @@ function Fact({ label, value, children }) {
       <span>{value || '—'}</span>
       {children}
     </div>
+  )
+}
+
+// Giá trị AI đọc trên ảnh khi khác giá trị đang lưu; use: bấm để điền vào ô.
+function AIRead({ v, use }) {
+  if (v == null || v === '') return null
+  return (
+    <small className="text-warn inline ai-read">
+      <Icon name="alert" size={13} /> AI đọc trên ảnh: <b>{v}</b>
+      {use && (
+        <button type="button" className="link-btn" onClick={() => use(String(v))}>
+          Dùng giá trị này
+        </button>
+      )}
+    </small>
   )
 }
 
@@ -229,6 +262,11 @@ function InfoForm({ id, h, act, busy, stages, aiTag }) {
   })
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const ai = (k) => aiTag.includes(k) && <Pill tone="warn">AI đọc</Pill>
+  // AI đọc khác giá trị đang lưu; ẩn khi ô đã được sửa thành đúng giá trị AI
+  const diff = (k) => {
+    const v = h.ai_diff?.[k]
+    return v != null && String(f[k]) !== String(v) ? <AIRead v={v} use={(x) => setF((o) => ({ ...o, [k]: x }))} /> : null
+  }
   return (
     <form
       className="card stack"
@@ -257,6 +295,7 @@ function InfoForm({ id, h, act, busy, stages, aiTag }) {
         <label className="field">
           <span>Số tầng {ai('floors')}</span>
           <input className="input" inputMode="numeric" value={f.floors} onChange={set('floors')} />
+          {diff('floors')}
         </label>
         <label className="field">
           <span>Giai đoạn {ai('stage')}</span>
@@ -266,14 +305,17 @@ function InfoForm({ id, h, act, busy, stages, aiTag }) {
               <option key={s}>{s}</option>
             ))}
           </select>
+          {diff('stage')}
         </label>
         <label className="field">
           <span>Tên nhà thầu {ai('contractor_name')}</span>
           <input className="input" value={f.contractor_name} onChange={set('contractor_name')} />
+          {diff('contractor_name')}
         </label>
         <label className="field">
           <span>SĐT nhà thầu {ai('contractor_phone')}</span>
           <input className="input" inputMode="tel" value={f.contractor_phone} onChange={set('contractor_phone')} />
+          {diff('contractor_phone')}
         </label>
       </div>
       <Button type="submit" variant="secondary" loading={busy === 'info'}>

@@ -1151,6 +1151,22 @@ input[type='checkbox'] {
   gap: 2px;
 }
 
+/* Giá trị AI đọc trên ảnh khác giá trị đang lưu */
+.ai-read {
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.link-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--navy);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .list li {
   padding: 8px 0;
   border-bottom: 1px solid var(--color-border);

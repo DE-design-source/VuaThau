@@ -72,6 +72,7 @@ type House struct {
 	Amount          int64     `json:"amount"`
 	AIState         string    `json:"ai_state"`
 	AIJSON          []byte    `json:"-"`
+	AIDiff          map[string]string `json:"ai_diff,omitempty"` // ô đang lưu khác giá trị AI đọc trên ảnh: khoá → giá trị AI
 	BatchID         *int64    `json:"batch_id"`
 	Drive           string    `json:"-"`
 	CreatedAt       time.Time `json:"created_at"`
