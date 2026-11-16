@@ -3,7 +3,7 @@ import axiosClient, { cleanParams } from './axiosClient'
 // Trang sale: chỉ thông tin công trình + nhà thầu + ảnh. Không có CTV, không có tiền.
 const saleApi = {
   /** { points: [{id, lat, lng, address, contractor, stage, province, at}], provinces: [{code, name, merged, total}], province } */
-  map: ({ province } = {}) => axiosClient.get('/sale/map', { params: cleanParams({ province }) }),
+  map: ({ province, ctv } = {}) => axiosClient.get('/sale/map', { params: cleanParams({ province, ctv }) }),
 
   /** { rows: [{id, address, lat, lng, province, province_name, floors, stage, contractor_name, contractor_phone, at, cover_id, photos}], found, page, pages } */
   projects: ({ q, province, contractor, page } = {}) =>

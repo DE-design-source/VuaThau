@@ -17,6 +17,8 @@ type SaleMapData struct {
 	Points    []repository.SalePoint `json:"points"`
 	Provinces []ProvinceSites        `json:"provinces"`
 	Province  string                 `json:"province"`
+	CTV       int64                  `json:"ctv"`
+	CTVs      []repository.SaleCTV   `json:"ctvs"`       // ô lọc CTV: chỉ tên + số công trình
 	StaleDays int                    `json:"stale_days"` // lần chụp gần nhất quá bấy nhiêu ngày: cần cập nhật công trình
 }
 
@@ -47,7 +49,7 @@ func provinceName(code string) string {
 	return ""
 }
 
-func (s *houseService) SaleMap(ctx context.Context, prov string) (*SaleMapData, error) {
+func (s *houseService) SaleMap(ctx context.Context, prov string, ctv int64) (*SaleMapData, error) {
 	counts, err := s.houses.SaleProvinceCounts(ctx)
 	if err != nil {
 		return nil, err
@@ -59,8 +61,11 @@ func (s *houseService) SaleMap(ctx context.Context, prov string) (*SaleMapData, 
 	if province.ByCode(prov) == nil {
 		prov = ""
 	}
-	res.Province = prov
-	if res.Points, err = s.houses.SalePoints(ctx, repository.SaleFilter{Province: prov}); err != nil {
+	res.Province, res.CTV = prov, max(ctv, 0)
+	if res.CTVs, err = s.houses.SaleCTVs(ctx); err != nil {
+		return nil, err
+	}
+	if res.Points, err = s.houses.SalePoints(ctx, repository.SaleFilter{Province: prov, CTVID: res.CTV}); err != nil {
 		return nil, err
 	}
 	idx, days, err := s.sites(ctx)
