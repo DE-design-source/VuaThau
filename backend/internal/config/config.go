@@ -93,7 +93,7 @@ func Load() (*Config, error) {
 		GDriveClientSecret: getEnv("GDRIVE_CLIENT_SECRET", ""),
 		GDriveRefreshToken: getEnv("GDRIVE_REFRESH_TOKEN", ""),
 		GDriveFolder:       getEnv("GDRIVE_FOLDER", ""),
-		InboxDatabaseURL:   getEnv("INBOX_DATABASE_URL", ""),
+		InboxDatabaseURL:   strings.TrimPrefix(strings.TrimSpace(getEnv("INBOX_DATABASE_URL", "")), "﻿"),
 		InboxS3Endpoint:    getEnv("INBOX_S3_ENDPOINT", ""),
 		InboxS3Bucket:      getEnv("INBOX_S3_BUCKET", ""),
 		InboxS3Access:      getEnv("INBOX_S3_ACCESS_KEY", ""),
