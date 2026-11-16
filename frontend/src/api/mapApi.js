@@ -2,7 +2,7 @@ import axiosClient, { cleanParams } from './axiosClient'
 
 const mapApi = {
   /** { points: [{id, lat, lng, status, ctv_id, ctv_name, address, contractor, source, at}], ctvs: [{id, name, phone, total, recent, dups, inbox, last}], dup_days, filter } */
-  get: ({ ctv, status, from, to } = {}) => axiosClient.get('/map', { params: cleanParams({ ctv, status, from, to }) }),
+  get: ({ ctv, status, from, to, province } = {}) => axiosClient.get('/map', { params: cleanParams({ ctv, status, from, to, province }) }),
 
   /** Tìm địa điểm theo địa chỉ (ô tìm trên bản đồ): { places: [{name, lat, lng}] } */
   searchPlace: (q) => axiosClient.get('/geo/search', { params: { q } }),
