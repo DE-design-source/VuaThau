@@ -1,12 +1,12 @@
-// Đăng nhập web quản lý: chỉ admin và kế toán. CTV dùng app điện thoại.
+// Đăng nhập web quản lý: admin, kế toán, sale. CTV dùng app điện thoại.
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import authApi from '@/api/authApi'
 import userApi from '@/api/userApi'
 import storageService from '@/services/storageService'
 
-export const STAFF_HOME = { admin: '/queue', ketoan: '/accounting' }
+export const STAFF_HOME = { admin: '/queue', ketoan: '/accounting', sale: '/sale/map' }
 
-export const CTV_REFUSED = 'Tài khoản cộng tác viên dùng app điện thoại. Web này dành cho admin và kế toán.'
+export const CTV_REFUSED = 'Tài khoản cộng tác viên dùng app điện thoại. Web này dành cho admin, kế toán và sale.'
 
 export const login = createAsyncThunk('auth/login', async ({ login, password }, { rejectWithValue }) => {
   try {

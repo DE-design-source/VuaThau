@@ -19,8 +19,12 @@ import PaymentsPage from '@/pages/PaymentsPage'
 import BatchPage from '@/pages/BatchPage'
 import ReportPage from '@/pages/ReportPage'
 import AccountPage from '@/pages/AccountPage'
+import SaleProjectsPage from '@/pages/sale/SaleProjectsPage'
+import SaleProjectPage from '@/pages/sale/SaleProjectPage'
+import ContractorsPage from '@/pages/sale/ContractorsPage'
 // Bản đồ (Leaflet) tải riêng khi mở trang, không làm nặng các trang khác
 const MapPage = lazy(() => import('@/pages/MapPage'))
+const SaleMapPage = lazy(() => import('@/pages/sale/SaleMapPage'))
 
 /** Chỉ cho vào khi đã đăng nhập, và đúng vai trò nếu có roles. */
 function Guard({ roles, children }) {
@@ -38,6 +42,8 @@ function Home() {
 }
 
 const STAFF = ['admin', 'ketoan']
+// Trang sale: không có CTV, không có tiền. Admin vào được để xem sale thấy gì.
+const SALE = ['sale', 'admin']
 
 export default function App() {
   const { token, user, fetchMe } = useAuth()
@@ -60,6 +66,10 @@ export default function App() {
         <Route path="ctvs" element={g(<CtvListPage />)} />
         <Route path="ctvs/:id" element={g(<CtvPage />)} />
         <Route path="map" element={g(<Suspense fallback={<PageState err="" />}><MapPage /></Suspense>)} />
+        <Route path="sale/map" element={g(<Suspense fallback={<PageState err="" />}><SaleMapPage /></Suspense>, SALE)} />
+        <Route path="sale/projects" element={g(<SaleProjectsPage />, SALE)} />
+        <Route path="sale/projects/:id" element={g(<SaleProjectPage />, SALE)} />
+        <Route path="sale/contractors" element={g(<ContractorsPage />, SALE)} />
         <Route path="staff" element={g(<StaffPage />, ['admin'])} />
         <Route path="settings" element={g(<SettingsPage />, ['admin'])} />
         <Route path="accounting" element={g(<AccountingPage />, ['ketoan'])} />
@@ -67,7 +77,7 @@ export default function App() {
         <Route path="batches" element={g(<PaymentsPage />)} />
         <Route path="batches/:id" element={g(<BatchPage />)} />
         <Route path="reports" element={g(<ReportPage />)} />
-        <Route path="me" element={g(<AccountPage />)} />
+        <Route path="me" element={g(<AccountPage />, [...STAFF, 'sale'])} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

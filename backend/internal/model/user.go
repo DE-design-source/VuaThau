@@ -7,6 +7,7 @@ const (
 	RoleCTV    = "ctv"    // cộng tác viên: dùng app điện thoại
 	RoleAdmin  = "admin"  // duyệt hồ sơ, quản lý
 	RoleKetoan = "ketoan" // kế toán: thanh toán
+	RoleSale   = "sale"   // sale: chỉ xem bản đồ, dự án, nhà thầu (không thấy CTV, không thấy tiền)
 )
 
 // Trạng thái khoá tài khoản.

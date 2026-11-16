@@ -142,7 +142,7 @@ func (r *userRepository) Anonymize(ctx context.Context, id int64, hash string) e
 }
 
 func (r *userRepository) ListStaff(ctx context.Context) ([]model.User, error) {
-	return r.many(ctx, `SELECT `+userCols+` FROM users WHERE role IN ('admin', 'ketoan') ORDER BY role, name`)
+	return r.many(ctx, `SELECT `+userCols+` FROM users WHERE role IN ('admin', 'ketoan', 'sale') ORDER BY role, name`)
 }
 
 // Tiền thưởng/trừ: đã trả (nằm trong phiếu chi chưa huỷ) và chờ trả (chưa vào phiếu nào).

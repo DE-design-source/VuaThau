@@ -60,7 +60,7 @@ export const bankParts = (s = '') => {
   return p.length === 3 ? { name: p[0], no: p[1], owner: p[2] } : { name: s || '', no: '', owner: '' }
 }
 
-export const ROLE_LABEL = { ctv: 'Cộng tác viên', admin: 'Admin', ketoan: 'Kế toán' }
+export const ROLE_LABEL = { ctv: 'Cộng tác viên', admin: 'Admin', ketoan: 'Kế toán', sale: 'Sale' }
 
 // Lý do mẫu khi trả lại / từ chối: dùng khi chưa tải được GET /config (config.reasons)
 export const REASONS = {
@@ -70,8 +70,32 @@ export const REASONS = {
 
 export const today = () => new Date().toISOString().slice(0, 10)
 
+/** Link Google Maps của 1 toạ độ: mở được trên máy tính, iPhone, Android (mở app Google Maps nếu có). Không cần key. */
+export const gmapUrl = (lat, lng) => `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+
+/** Chép link Google Maps để dán vào Zalo, Messenger... */
+export const copyGmap = (lat, lng, toast) =>
+  navigator.clipboard?.writeText(gmapUrl(lat, lng)).then(
+    () => toast?.('Đã chép link Google Maps, dán vào Zalo / Messenger để gửi'),
+    () => {},
+  )
+
+/** Màu công trình theo lần chụp gần nhất: chưa quá staleDays ngày vàng nhạt, quá thì xanh lá (cần cập nhật). */
+export const AGE_FRESH = '#FCE38A'
+export const AGE_FRESH_LINE = '#B7791F'
+export const AGE_STALE = '#16A34A'
+export const isStale = (lastAt, staleDays = 30) => !!lastAt && Date.now() - new Date(lastAt).getTime() > staleDays * 864e5
+/** Chữ hiện khi rê chuột vào 1 công trình. */
+export const ageTip = (lastAt, staleDays = 30) =>
+  isStale(lastAt, staleDays)
+    ? `<b>Cần cập nhật công trình</b><br>Chụp lần cuối ${vnDate(lastAt)} (quá ${staleDays} ngày)`
+    : `Chụp lần cuối ${vnDate(lastAt)}`
+
+/** Thoát ký tự HTML (chữ chèn vào popup bản đồ). */
+export const esc = (s = '') => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+
 /** Mã hồ sơ dạng HS-00081 (giống app). */
-export const hsId = (id) => `HS-${String(id).padStart(5, '0')}`
+export const hsId =(id) => `HS-${String(id).padStart(5, '0')}`
 
 /** Ô thông tin AI đọc trên ảnh (khoá ai_diff của hồ sơ) → nhãn. */
 export const AI_LABEL = {

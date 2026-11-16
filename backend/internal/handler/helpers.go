@@ -34,6 +34,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		response.Error(w, http.StatusConflict, msg)
 	case errors.Is(err, service.ErrNotFound):
 		response.Error(w, http.StatusNotFound, msg)
+	case errors.Is(err, service.ErrUnavailable):
+		response.Error(w, http.StatusServiceUnavailable, msg)
 	case errors.Is(err, service.ErrTooManyAttempts):
 		response.Error(w, http.StatusTooManyRequests, msg)
 	default:

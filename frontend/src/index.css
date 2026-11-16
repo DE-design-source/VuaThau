@@ -417,7 +417,9 @@ a:hover {
 .main {
   flex: 1;
   width: 100%;
-  max-width: 1320px;
+  min-width: 0;
+  /* giãn hết màn hình (trước đây giới hạn 1320px, màn rộng dư khoảng trống bên phải) */
+  max-width: none;
   padding: 28px 28px 40px;
 }
 
@@ -1204,13 +1206,13 @@ input[type='checkbox'] {
 /* Lưới ảnh hồ sơ */
 .photo-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 6px;
 }
 
 .photo {
   position: relative;
-  aspect-ratio: 1;
+  aspect-ratio: 3 / 4;
   padding: 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -1227,7 +1229,8 @@ input[type='checkbox'] {
 .photo .img-ph {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain; /* trọn ảnh, không cắt chân ảnh */
+  background: #0b1220;
   transition: transform 0.25s;
 }
 
@@ -1270,6 +1273,7 @@ input[type='checkbox'] {
 .lightbox {
   position: fixed;
   inset: 0;
+  height: 100dvh;
   z-index: 50;
   background: rgb(6 10 18 / 0.94);
   color: #fff;
@@ -1294,15 +1298,16 @@ input[type='checkbox'] {
 }
 
 .lightbox-img {
-  display: grid;
-  place-items: center;
+  position: relative;
   min-height: 0;
-  padding: 12px;
+  overflow: hidden;
 }
 
 .lightbox-img img {
-  max-width: 100%;
-  max-height: 100%;
+  position: absolute;
+  inset: 12px;
+  width: calc(100% - 24px);
+  height: calc(100% - 24px);
   object-fit: contain;
 }
 
@@ -1563,7 +1568,7 @@ details summary {
 }
 
 .site-map {
-  height: min(70vh, 640px);
+  height: max(460px, calc(100vh - 330px));
   width: 100%;
   background: var(--color-sunken);
 }
@@ -1729,3 +1734,108 @@ details summary {
 .kpi:not(.kpi-warn):not(.kpi-wait):not(.kpi-bad):not(.kpi-ok):not(.kpi-done)::before { display: none; }
 .kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .kpi { border-bottom: 1px solid var(--color-border); margin-bottom: -1px; }
+
+/* Tên CTV: to, đậm cho dễ nhìn ở mọi trang */
+.ctv-name {
+  font-size: 15.5px;
+  font-weight: 650;
+  letter-spacing: -0.1px;
+}
+
+/* VIP: CTV chụp công trình này đầu tiên */
+.vip-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #fcd34d, #f59e0b);
+  color: #422006;
+  font: 700 10.5px/16px var(--font-mono, monospace);
+  letter-spacing: 0.6px;
+  vertical-align: 1px;
+}
+
+/* Nút chọn nhỏ (tô màu bản đồ) */
+.seg-sm {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.seg-sm button {
+  border: 0;
+  background: transparent;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: inherit;
+  cursor: pointer;
+}
+.seg-sm button.on {
+  background: var(--navy, #0b1f3a);
+  color: #fff;
+}
+
+/* Ô tìm địa điểm trên bản đồ */
+.site-map-wrap {
+  position: relative;
+}
+.map-search {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 500;
+  width: min(380px, calc(100% - 70px));
+  display: grid;
+  gap: 6px;
+}
+.map-search-row {
+  display: flex;
+  gap: 6px;
+}
+.map-search-row .input {
+  flex: 1;
+  min-width: 0;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.15);
+}
+.map-search-box {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.15);
+  font-size: 13.5px;
+  max-height: 46vh;
+  overflow: auto;
+}
+.map-search-hit {
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 6px 4px;
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.map-search-hit:hover {
+  background: var(--color-sunken);
+}
+.map-search-name {
+  font-weight: 600;
+}
+.map-search-count {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.input-sm {
+  width: auto;
+  padding: 2px 6px;
+  height: auto;
+  font-size: 13px;
+}

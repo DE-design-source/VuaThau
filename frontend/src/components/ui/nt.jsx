@@ -5,7 +5,7 @@ import { getBlob } from '@/api/axiosClient'
 import houseApi from '@/api/houseApi'
 import { clearToast, currentToast, subscribeToast, toast } from '@/services/toast'
 import { saveBlob } from '@/utils/download'
-import { aiDiffText, hsId, vnDate } from '@/utils/format'
+import { aiDiffText, gmapUrl, hsId, vnDate } from '@/utils/format'
 import useCfg from '@/hooks/useCfg'
 import Loader from './Loader'
 import Button from './Button'
@@ -145,7 +145,7 @@ function downloadOriginal(id) {
 }
 
 /** Lưới ảnh hồ sơ + xem lớn (vuốt bằng phím ← →). */
-export function PhotoGrid({ ps }) {
+export function PhotoGrid({ ps, checks = true }) {
   const [at, setAt] = useState(null)
   useEffect(() => {
     if (at === null) return
@@ -165,7 +165,7 @@ export function PhotoGrid({ ps }) {
         {ps.map((x, k) => (
           <button key={x.id} type="button" className={`photo ${x.problems?.length ? 'photo-bad' : ''}`} onClick={() => setAt(k)}>
             <AuthImage path={`/photos/${x.id}`} alt={`Ảnh ${k + 1}`} />
-            <span className={`photo-mark ${x.problems?.length ? 'bad' : 'ok'}`}><Icon name={x.problems?.length ? 'x' : 'check'} size={13} /></span>
+            {checks && <span className={`photo-mark ${x.problems?.length ? 'bad' : 'ok'}`}><Icon name={x.problems?.length ? 'x' : 'check'} size={13} /></span>}
             <span className="photo-n">{k + 1}</span>
           </button>
         ))}
@@ -207,8 +207,8 @@ export function PhotoGrid({ ps }) {
               {lat != null && (
                 <>
                   {' '}
-                  <a href={`https://maps.google.com/?q=${lat},${p.lng}`} target="_blank" rel="noreferrer">
-                    Bản đồ
+                  <a href={gmapUrl(lat, p.lng)} target="_blank" rel="noreferrer">
+                    Google Maps
                   </a>
                 </>
               )}
@@ -220,7 +220,7 @@ export function PhotoGrid({ ps }) {
                 </span>
               ))
             ) : (
-              <span className="text-ok inline"><Icon name="check" size={14} /> Ảnh đạt</span>
+              checks && <span className="text-ok inline"><Icon name="check" size={14} /> Ảnh đạt</span>
             )}
           </div>
         </div>
@@ -260,6 +260,7 @@ export function HouseTable({ rows, showCtv = true, selectable, selected, onToggl
                     <Cover id={r.cover_id} />
                     <span>
                       <span className="id">{hsId(r.id)}</span>
+                      {r.vip && <span className="vip-tag" title="CTV chụp công trình này đầu tiên">VIP</span>}
                       {r.source === 'inbox' && <span className="src">Messenger</span>}
                       <span className="d-block row-title">{r.address || <span className="muted">(chưa có địa chỉ)</span>}</span>
                       {r.dup && (
@@ -277,7 +278,9 @@ export function HouseTable({ rows, showCtv = true, selectable, selected, onToggl
                 </td>
                 {showCtv && (
                   <td>
-                    <Link to={`/ctvs/${r.ctv_id}`}>{r.ctv_name}</Link>
+                    <Link to={`/ctvs/${r.ctv_id}`} className="ctv-name">
+                      {r.ctv_name}
+                    </Link>
                   </td>
                 )}
                 <td className="mono">{r.photos_total != null ? `${r.photos_valid ?? 0}/${r.photos_total}` : '—'}</td>

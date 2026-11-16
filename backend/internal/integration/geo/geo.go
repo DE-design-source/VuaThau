@@ -20,9 +20,10 @@ type Geocoder struct {
 	googleKey string
 	http      *http.Client
 
-	mu    sync.Mutex
-	cache map[string]string // toạ độ làm tròn ~11m -> địa chỉ
-	order []string
+	mu     sync.Mutex
+	cache  map[string]string  // toạ độ làm tròn ~11m -> địa chỉ
+	search map[string][]Place // tìm địa điểm: câu tìm -> kết quả
+	order  []string
 
 	nomiMu   sync.Mutex
 	nomiLast time.Time
@@ -148,4 +149,71 @@ func (g *Geocoder) osm(ctx context.Context, ll string) (string, error) {
 		add(a[k])
 	}
 	return strings.Join(out, ", "), nil
+}
+
+// Place: 1 kết quả tìm địa điểm.
+type Place struct {
+	Name string  `json:"name"`
+	Lat  float64 `json:"lat"`
+	Lng  float64 `json:"lng"`
+}
+
+// Search: tìm địa điểm theo địa chỉ (trong Việt Nam), tối đa 5 kết quả. Dùng Nominatim (xếp hàng 1 lượt/giây), lưu đệm.
+func (g *Geocoder) Search(ctx context.Context, q string) ([]Place, error) {
+	q = strings.Join(strings.Fields(q), " ")
+	if len([]rune(q)) < 3 {
+		return []Place{}, nil
+	}
+	key := "q:" + strings.ToLower(q)
+	g.mu.Lock()
+	if v, ok := g.search[key]; ok {
+		g.mu.Unlock()
+		return v, nil
+	}
+	g.mu.Unlock()
+
+	g.nomiMu.Lock()
+	if wait := time.Until(g.nomiLast.Add(time.Second)); wait > 0 {
+		select {
+		case <-time.After(wait):
+		case <-ctx.Done():
+			g.nomiMu.Unlock()
+			return nil, ctx.Err()
+		}
+	}
+	var r []struct {
+		DisplayName string `json:"display_name"`
+		Lat         string `json:"lat"`
+		Lon         string `json:"lon"`
+	}
+	u := "https://nominatim.openstreetmap.org/search?" + url.Values{
+		"format": {"jsonv2"}, "accept-language": {"vi"}, "countrycodes": {"vn"}, "limit": {"5"}, "q": {q}}.Encode()
+	err := g.getJSON(ctx, u, &r)
+	g.nomiLast = time.Now()
+	g.nomiMu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	out := []Place{}
+	for _, x := range r {
+		var p Place
+		if _, err := fmt.Sscan(x.Lat, &p.Lat); err != nil {
+			continue
+		}
+		if _, err := fmt.Sscan(x.Lon, &p.Lng); err != nil {
+			continue
+		}
+		p.Name = vnSuffix.ReplaceAllString(x.DisplayName, "")
+		out = append(out, p)
+	}
+	g.mu.Lock()
+	if g.search == nil {
+		g.search = map[string][]Place{}
+	}
+	if len(g.search) > cacheMax {
+		g.search = map[string][]Place{}
+	}
+	g.search[key] = out
+	g.mu.Unlock()
+	return out, nil
 }

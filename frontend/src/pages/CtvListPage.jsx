@@ -183,7 +183,7 @@ export default function CtvListPage() {
                   <tr key={r.id}>
                     <td>
                       <Link to={`/ctvs/${r.id}`}>
-                        <strong>{r.name}</strong>
+                        <strong className="ctv-name">{r.name}</strong>
                       </Link>{' '}
                       {r.locked === 1 && <Pill tone="bad">Đã khoá</Pill>}
                       {r.locked === 2 && <Pill>Đã xoá</Pill>}

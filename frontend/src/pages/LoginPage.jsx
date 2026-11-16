@@ -64,7 +64,7 @@ export default function LoginPage() {
         <div className="login-box">
           <div className="login-head">
             <h1>Đăng nhập</h1>
-            <p className="muted">Dành cho admin và kế toán.</p>
+            <p className="muted">Dành cho admin, kế toán và sale.</p>
           </div>
           <form className="stack" onSubmit={submit} noValidate>
             <Input label="Tên đăng nhập hoặc số điện thoại" name="login" autoComplete="username" value={form.login} onChange={change} autoFocus />

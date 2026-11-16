@@ -118,7 +118,7 @@ function Table({ rows, selectable, sel, toggle, all, setAll }) {
                 )}
                 <td>
                   <Link to={`/payouts/${r.ctv_id}`}>
-                    <strong>{r.name}</strong>
+                    <strong className="ctv-name">{r.name}</strong>
                   </Link>
                   <small className="muted d-block">{r.username}</small>
                 </td>

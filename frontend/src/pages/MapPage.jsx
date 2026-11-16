@@ -1,15 +1,16 @@
 // Bản đồ công trình (/map, admin + kế toán): mọi công trình CTV đã chụp (app + Messenger) trên nền ranh giới
 // 34 tỉnh, thành từ 1/7/2025, màu theo trạng thái. Bảng bên: theo CTV (mỗi CTV đã chụp bao nhiêu công trình)
 // hoặc theo tỉnh. Bấm 1 CTV / 1 tỉnh để lọc.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import usePage from '@/hooks/usePage'
 import useCfg from '@/hooks/useCfg'
 import mapApi from '@/api/mapApi'
+import MapSearch from '@/components/MapSearch'
 import { Button, Empty, Kpi, PageHead, PageState, Pill } from '@/components/ui'
-import { hsId, vnDate } from '@/utils/format'
+import { AGE_FRESH, AGE_FRESH_LINE, AGE_STALE, ageTip, esc, gmapUrl, hsId, isStale, vnDate } from '@/utils/format'
 
 // Màu điểm theo trạng thái (giống tông nhãn trạng thái)
 const TONE = { cho_duyet: 'wait', tra_lai: 'warn', da_duyet: 'ok', da_chi: 'done', tu_choi: 'bad' }
@@ -19,7 +20,6 @@ const VN_BOUNDS = [
   [23.4, 109.6],
 ]
 
-const esc = (s = '') => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
 function cssVar(name, fallback) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
@@ -45,6 +45,8 @@ export default function MapPage() {
   const cfg = useCfg()
   const [f, setF] = useState(cur)
   const [tab, setTab] = useState(cur.province ? 'tinh' : 'ctv')
+  // Tô màu chấm: theo lần chụp gần nhất của công trình (mặc định) hoặc theo trạng thái hồ sơ
+  const [mode, setMode] = useState('age')
   const set = (patch) => {
     const next = { ...cur, ...patch }
     setSp(Object.fromEntries(Object.entries(next).filter(([, v]) => v)))
@@ -145,13 +147,32 @@ export default function MapPage() {
               set({ province: code === cur.province ? '' : code })
             }}
             fitKey={`${cur.ctv}|${cur.status}|${cur.from}|${cur.to}|${cur.province}`}
+            color={mode === 'age' ? (p) => (isStale(p.last_at, d.dup_days) ? AGE_STALE : AGE_FRESH) : undefined}
+            stroke={mode === 'age' ? (p) => (isStale(p.last_at, d.dup_days) ? '#fff' : AGE_FRESH_LINE) : undefined}
+            tip={(p) => ageTip(p.last_at, d.dup_days)}
+            staleDays={d.dup_days}
           />
           <div className="map-legend">
-            {Object.entries(TONE).map(([k, tone]) => (
+            <span className="seg seg-sm" role="tablist" aria-label="Tô màu">
+              <button type="button" className={mode === 'age' ? 'on' : ''} onClick={() => setMode('age')}>Theo lần chụp</button>
+              <button type="button" className={mode === 'status' ? 'on' : ''} onClick={() => setMode('status')}>Theo trạng thái</button>
+            </span>
+            {mode === 'age' ? (
+              <>
+                <span>
+                  <i style={{ background: AGE_FRESH, boxShadow: `0 0 0 1px ${AGE_FRESH_LINE}` }} /> Chụp chưa quá {d.dup_days} ngày
+                </span>
+                <span>
+                  <i style={{ background: AGE_STALE }} /> Quá {d.dup_days} ngày: cần cập nhật
+                </span>
+              </>
+            ) : (
+              Object.entries(TONE).map(([k, tone]) => (
               <span key={k}>
                 <i style={{ background: `var(--tone-${tone})` }} /> {statuses[k]?.label || k}
               </span>
-            ))}
+            ))
+            )}
             <span className="spacer" />
             <span>Nền: ranh giới 34 tỉnh, thành (OCHA, 2025) · đậm = nhiều công trình</span>
           </div>
@@ -186,7 +207,7 @@ export default function MapPage() {
                         style={{ cursor: 'pointer' }}
                       >
                         <td>
-                          <strong>{c.name}</strong> {c.inbox > 0 && <Pill tone="wait">Messenger {c.inbox}</Pill>}
+                          <strong className="ctv-name">{c.name}</strong> {c.inbox > 0 && <Pill tone="wait">Messenger {c.inbox}</Pill>}
                           <small className="muted d-block mono">
                             {c.phone}
                             {c.last ? ` · ${vnDate(c.last)}` : ''}
@@ -243,11 +264,14 @@ export default function MapPage() {
   )
 }
 
-/** Bản đồ Leaflet: nền OpenStreetMap + ranh giới 34 tỉnh (tô theo số công trình) + mỗi công trình 1 chấm. */
-function SiteMap({ points, provinces, selected, onProvince, fitKey }) {
+/** Bản đồ Leaflet: nền OpenStreetMap + ranh giới 34 tỉnh (tô theo số công trình) + mỗi công trình 1 chấm.
+ *  pop(p): HTML popup của 1 điểm (link nội bộ: <a data-to="/đường/dẫn">); color(p) / stroke(p): màu chấm / viền;
+ *  tip(p): HTML hiện khi rê chuột. Bỏ trống: kiểu trang admin (màu theo trạng thái). */
+export function SiteMap({ points, provinces, selected, onProvince, fitKey, pop, color, stroke, tip, staleDays = 30 }) {
   const el = useRef(null)
   const map = useRef(null)
   const dots = useRef(null)
+  const getMap = useCallback(() => map.current, [])
   const areas = useRef(null)
   const onProv = useRef(onProvince)
   const [geo, setGeo] = useState(null)
@@ -268,8 +292,11 @@ function SiteMap({ points, provinces, selected, onProvince, fitKey }) {
 
   useEffect(() => {
     const m = L.map(el.current, { preferCanvas: true, zoomControl: true, minZoom: 5 }).setView(VN_CENTER, 6)
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    // Nền OSM đi qua máy chủ mình (/tiles: lưu sẵn, không bị chặn như gọi thẳng OSM).
+    // detectRetina: màn hình nét (laptop đời mới, điện thoại) lấy ô cấp chi tiết hơn để không bị mờ.
+    L.tileLayer('/tiles/{z}/{x}/{y}.png', {
       maxZoom: 19,
+      detectRetina: true,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Ranh giới: OCHA/HDX',
     }).addTo(m)
     const pane = m.createPane('areas')
@@ -284,10 +311,10 @@ function SiteMap({ points, provinces, selected, onProvince, fitKey }) {
     map.current = m
     // Link trong popup: chuyển trang trong app (không tải lại cả trang)
     const onClick = (e) => {
-      const a = e.target.closest('[data-house]')
+      const a = e.target.closest('[data-to]')
       if (a) {
         e.preventDefault()
-        navigate(`/houses/${a.dataset.house}`)
+        navigate(a.dataset.to)
       }
     }
     const node = el.current
@@ -349,16 +376,17 @@ function SiteMap({ points, provinces, selected, onProvince, fitKey }) {
     g.clearLayers()
     const latlngs = []
     for (const p of points) {
-      const tone = TONE[p.status] || 'wait'
-      const c = cssVar(`--tone-${tone}`, '#2563eb')
-      const mk = L.circleMarker([p.lat, p.lng], { radius: 6.5, color: '#fff', weight: 1.5, fillColor: c, fillOpacity: 0.95 })
+      const c = color ? color(p) : cssVar(`--tone-${TONE[p.status] || 'wait'}`, '#2563eb')
+      const mk = L.circleMarker([p.lat, p.lng], { radius: 7, color: stroke ? stroke(p) : '#fff', weight: 1.5, fillColor: c, fillOpacity: 0.95 })
+      if (tip) mk.bindTooltip(tip(p), { direction: 'top', offset: [0, -6], className: 'prov-tip' })
       mk.bindPopup(
-        `<div class="map-pop"><span class="mono">${hsId(p.id)}</span> · ${esc(labels[p.status]?.label || p.status)}` +
+        pop ? pop(p) : `<div class="map-pop"><span class="mono">${hsId(p.id)}</span> · ${esc(labels[p.status]?.label || p.status)}` +
           `${p.source === 'inbox' ? ' · Messenger' : ''}<br><b>${esc(p.address || '(chưa có địa chỉ)')}</b>` +
           `${p.province ? `<br>${esc(provName(p.province))}` : ''}` +
           `${p.contractor ? `<br><span class="muted">Nhà thầu: ${esc(p.contractor)}</span>` : ''}` +
-          `<br>CTV ${esc(p.ctv_name)} · <span class="mono">${esc(vnDate(p.at))}</span>` +
-          `<br><a href="/houses/${p.id}" data-house="${p.id}">Mở hồ sơ</a></div>`,
+          `<br>CTV <b class="ctv-name">${esc(p.ctv_name)}</b>${p.vip ? ' <span class="vip-tag">VIP</span>' : ''} · <span class="mono">${esc(vnDate(p.at))}</span>` +
+          `<br><a href="/houses/${p.id}" data-to="/houses/${p.id}">Mở hồ sơ</a>` +
+          ` · <a href="${gmapUrl(p.lat, p.lng)}" target="_blank" rel="noreferrer">Google Maps</a></div>`,
       )
       mk.addTo(g)
       latlngs.push([p.lat, p.lng])
@@ -371,5 +399,10 @@ function SiteMap({ points, provinces, selected, onProvince, fitKey }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey, points, labels])
 
-  return <div ref={el} className="site-map" role="region" aria-label="Bản đồ công trình" />
+  return (
+    <div className="site-map-wrap">
+      <div ref={el} className="site-map" role="region" aria-label="Bản đồ công trình" />
+      <MapSearch getMap={getMap} points={points} staleDays={staleDays} />
+    </div>
+  )
 }

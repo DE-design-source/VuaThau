@@ -54,6 +54,8 @@ type MapPoint struct {
 	Source     string    `json:"source"`
 	Province   string    `json:"province"`
 	At         time.Time `json:"at"`
+	LastAt     time.Time `json:"last_at"` // lần chụp gần nhất ở công trình này (service điền)
+	VIP        bool      `json:"vip"`     // chụp công trình này đầu tiên (service điền)
 }
 
 // CTVSites: số công trình 1 CTV đã chụp.
@@ -74,6 +76,16 @@ type HouseRepository interface {
 	SetDupInfo(ctx context.Context, id int64, of *int64, dup string) error
 	CreateInbox(ctx context.Context, ctvID int64, extID string, created time.Time) (int64, bool, error)
 	MapPoints(ctx context.Context, f HouseFilter) ([]MapPoint, error)
+
+	// Trang sale (sale_repository.go): không CTV, không tiền.
+	SalePoints(ctx context.Context, f SaleFilter) ([]SalePoint, error)
+	SaleProvinceCounts(ctx context.Context) (map[string]int, error)
+	SaleProjects(ctx context.Context, f SaleFilter, limit, offset int) ([]SaleProject, int, error)
+	SaleProject(ctx context.Context, id int64) (*SaleProject, error)
+	SaleCanSeeHouse(ctx context.Context, id int64) (bool, error)
+	Contractors(ctx context.Context, q string) ([]Contractor, error)
+	OtherSites(ctx context.Context, ctvID int64, since time.Time) ([]OtherSite, error)
+	SiteDates(ctx context.Context) ([]SiteDate, error)
 	CountSource(ctx context.Context, source string) (int, error)
 	SetProvince(ctx context.Context, id int64, code string) error
 	NoProvince(ctx context.Context, afterID int64, limit int) ([]GeoRow, error)

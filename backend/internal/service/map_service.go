@@ -58,6 +58,18 @@ func (s *houseService) Map(ctx context.Context, q OverviewQuery) (*MapData, erro
 	if res.Points, err = s.houses.MapPoints(ctx, f); err != nil {
 		return nil, err
 	}
+	// Màu theo lần chụp gần nhất của công trình; VIP: chụp công trình đầu tiên
+	idx, _, err := s.sites(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range res.Points {
+		in, ok := idx[res.Points[i].ID]
+		res.Points[i].LastAt, res.Points[i].VIP = res.Points[i].At, ok && in.VIP
+		if ok {
+			res.Points[i].LastAt = in.LastAt
+		}
+	}
 	if res.CTVs, err = s.houses.SiteCounts(ctx, since); err != nil {
 		return nil, err
 	}

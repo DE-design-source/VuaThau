@@ -69,6 +69,26 @@ func (h *HouseHandler) Income(w http.ResponseWriter, r *http.Request) {
 	ok(w, res)
 }
 
+// CTVMap handles GET /api/v1/ctv/map
+func (h *HouseHandler) CTVMap(w http.ResponseWriter, r *http.Request) {
+	res, err := h.svc.CTVMap(r.Context(), me(r))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, res)
+}
+
+// SearchPlace handles GET /api/v1/geo/search?q=: tìm địa điểm cho ô tìm trên bản đồ.
+func (h *HouseHandler) SearchPlace(w http.ResponseWriter, r *http.Request) {
+	res, err := h.svc.SearchPlace(r.Context(), r.URL.Query().Get("q"))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"places": res})
+}
+
 // Geocode handles GET /api/v1/geocode?lat=&lng=
 func (h *HouseHandler) Geocode(w http.ResponseWriter, r *http.Request) {
 	lat, err1 := strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
