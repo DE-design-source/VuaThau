@@ -22,7 +22,7 @@ func TestCTVMap(t *testing.T) {
 	expectStatus(t, r, http.StatusOK)
 	var m service.CTVMap
 	decodeData(t, r, &m)
-	if len(m.Mine) != 1 || m.Mine[0].ID != ha || m.Mine[0].Status != model.StatusPending || m.Mine[0].Address == "" {
+	if len(m.Mine) != 1 || m.Mine[0].ID != ha || m.Mine[0].Status != model.StatusPending || m.Mine[0].Address == "" || !m.Mine[0].Recent || !m.Mine[0].VIP {
 		t.Fatalf("mine: %s", r.Raw)
 	}
 	if len(m.Others) != 1 || m.Others[0].Lat != 12.30 || !m.Others[0].Recent || m.DupDays != 30 {
