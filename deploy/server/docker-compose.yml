@@ -34,13 +34,44 @@ services:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
 
+  # API Go: /api/v1 cho app CTV + web quản lý (STATIC_DIR). Caddy của QS Pro gọi vtnt-api:8080 qua mạng qspro_default.
+  api:
+    build: ./api
+    image: vtnt-api:latest
+    container_name: vtnt-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      APP_ENV: production
+      PORT: "8080"
+      DATA_DIR: /data
+      STATIC_DIR: /app/web
+      PUBLIC_URL: https://nghiemthu.vuathau.com.vn
+      REDIS_ADDR: none      # không dùng Redis (chỉ cho /health)
+    volumes:
+      - data:/data
+    ports:
+      - "127.0.0.1:8095:8080"   # kiểm tra từ máy chủ / SSH tunnel trước khi trỏ tên miền
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [vtnt, edge]
+    mem_limit: 384m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
 volumes:
   pgdata:
     name: vtnt_pgdata
   # Ảnh hồ sơ (anh/) + biên lai (bienlai/): DATA_DIR của backend. SAO LƯU cùng CSDL.
   data:
     name: vtnt_data
+    external: true   # tạo 1 lần: docker volume create vtnt_data
 
 networks:
   vtnt:
     name: vtnt
+  edge:
+    name: qspro_default
+    external: true

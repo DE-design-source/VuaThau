@@ -48,13 +48,17 @@ func run() error {
 	}
 	defer db.Close()
 
-	// Redis chỉ dùng cho /health: không kết nối được thì vẫn chạy, /health báo redis "down".
-	redisCheck := func(context.Context) error { return errors.New("redis not connected") }
-	if rdb, err := database.NewRedis(ctx, cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB); err != nil {
-		log.Printf("Redis: %v (bỏ qua, API vẫn chạy)", err)
-	} else {
-		defer rdb.Close()
-		redisCheck = func(ctx context.Context) error { return rdb.Ping(ctx).Err() }
+	// Redis chỉ dùng cho /health. REDIS_ADDR=none: không dùng, /health chỉ kiểm Postgres.
+	// Có cấu hình mà không kết nối được: vẫn chạy, /health báo redis "down".
+	checks := map[string]router.HealthCheck{"postgres": db.Ping}
+	if cfg.RedisAddr != "none" {
+		if rdb, err := database.NewRedis(ctx, cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB); err != nil {
+			log.Printf("Redis: %v (bỏ qua, API vẫn chạy)", err)
+			checks["redis"] = func(context.Context) error { return errors.New("redis not connected") }
+		} else {
+			defer rdb.Close()
+			checks["redis"] = func(ctx context.Context) error { return rdb.Ping(ctx).Err() }
+		}
 	}
 
 	files, err := storage.New(cfg.DataDir)
@@ -104,10 +108,7 @@ func run() error {
 			PaymentHandler: handler.NewPaymentHandler(paySvc, gVerifier.ClientID()),
 			UserLookup:     userRepo.GetByID,
 			Hub:            hub,
-			HealthChecks: map[string]router.HealthCheck{
-				"postgres": db.Ping,
-				"redis":    redisCheck,
-			},
+			HealthChecks:   checks,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		// Tải tới 20 ảnh x 20MB qua 4G, và AI kiểm ảnh: cần thời gian dài

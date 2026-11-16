@@ -16,3 +16,8 @@ Thumbs.db
 # Postgres nhúng của cmd/devdb, ảnh dev
 backend/.devdb/
 backend/data/
+
+# Binary + web build để đóng image API (tạo khi triển khai)
+deploy/server/api/bin/
+deploy/server/api/web/
+deploy/server/api/migrations/
