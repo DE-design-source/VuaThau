@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const userAgent = "VuaThau-NghiemThu/2.0 (+https://nghiemthu.vuathau.com.vn)"
+const userAgent = "VuaThau-NghiemThu/2.0 (+https://map.vuathau.com.vn)"
 
 type Geocoder struct {
 	googleKey string

@@ -46,7 +46,7 @@ services:
       PORT: "8080"
       DATA_DIR: /data
       STATIC_DIR: /app/web
-      PUBLIC_URL: https://nghiemthu.vuathau.com.vn
+      PUBLIC_URL: https://map.vuathau.com.vn
       REDIS_ADDR: none      # không dùng Redis (chỉ cho /health)
     volumes:
       - data:/data

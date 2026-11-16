@@ -1,10 +1,12 @@
 # Vua Thầu nghiệm thu: backend Go phục vụ cả API (/api/v1) và web quản lý (STATIC_DIR = frontend/dist).
-# App CTV gọi https://nghiemthu.vuathau.com.vn/api/v1, nên khi chuyển hẳn sang backend Go thì trỏ tên miền này vào container API.
+# Tên miền chính: map.vuathau.com.vn (từ 17/11/2026). Tên cũ nghiemthu.vuathau.com.vn vẫn giữ cho app CTV
+# đã cài (gọi /api/v1, hỏi /tai-app/phien-ban; app Expo cũ đọc /app.json); mở web bằng tên cũ thì chuyển sang map.
 #
 # Máy chủ dùng chung: Caddy của QS Pro (qspro-web-1) giữ cổng 80/443. Container API (vtnt-api, xem deploy/server)
-# phải nối thêm mạng qspro_default để Caddy gọi được. Chép khối dưới vào /opt/qspro/infra/deploy/Caddyfile
-# (thay khối nghiemthu cũ khi đã chuyển dữ liệu xong), rồi reload Caddy.
-nghiemthu.vuathau.com.vn {
+# phải nối thêm mạng qspro_default để Caddy gọi được. Chép 2 khối dưới vào /opt/qspro/infra/deploy/Caddyfile
+# (thay khối nghiemthu cũ), rồi: docker exec qspro-web-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+# DNS (Cloudflare): bản ghi A map → IP máy chủ, chế độ DNS only (mây xám) như nghiemthu, để Caddy tự lấy chứng chỉ.
+map.vuathau.com.vn {
 	encode zstd gzip
 
 	header {
@@ -17,4 +19,27 @@ nghiemthu.vuathau.com.vn {
 
 	# Ảnh tải lên tới 20 MB/ảnh, tối đa 20 ảnh/lần: không giới hạn body ở Caddy, API tự kiểm.
 	reverse_proxy vtnt-api:8080
+}
+
+nghiemthu.vuathau.com.vn {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	# App đã cài vẫn gọi tên cũ: giữ nguyên API, trang tải app, cấu hình app Expo cũ, health
+	@app path /api/* /tai-app /tai-app/* /app.json /health
+	handle @app {
+		reverse_proxy vtnt-api:8080
+	}
+
+	# Web quản lý: chuyển sang tên mới (302 để quay lại được nếu cần)
+	handle {
+		redir https://map.vuathau.com.vn{uri} 302
+	}
 }

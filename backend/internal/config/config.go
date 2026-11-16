@@ -82,7 +82,7 @@ func Load() (*Config, error) {
 		CORSAllowedOrigins: splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")),
 
 		DataDir:            getEnv("DATA_DIR", "./data"),
-		PublicURL:          strings.TrimRight(getEnv("PUBLIC_URL", "https://nghiemthu.vuathau.com.vn"), "/"),
+		PublicURL:          strings.TrimRight(getEnv("PUBLIC_URL", "https://map.vuathau.com.vn"), "/"),
 		StaticDir:          getEnv("STATIC_DIR", ""),
 		AIEnabled:          os.Getenv("ANTHROPIC_API_KEY") != "" || os.Getenv("ANTHROPIC_AUTH_TOKEN") != "",
 		AIModel:            getEnv("AI_MODEL", "claude-opus-5-5"),
