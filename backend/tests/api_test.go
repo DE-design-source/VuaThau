@@ -1173,6 +1173,63 @@ func TestStaticWeb(t *testing.T) {
 	}
 }
 
+func TestDownloadApp(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	get := func(p, ua string) apiResp {
+		req, _ := http.NewRequest(http.MethodGet, e.srv.URL+p, nil)
+		if ua != "" {
+			req.Header.Set("User-Agent", ua)
+		}
+		return e.sendRaw(t, req)
+	}
+	if r := get("/tai-app", ""); r.Status != 200 || !strings.Contains(string(r.Raw), "Chưa có bản tải") {
+		t.Fatalf("empty page: %d %s", r.Status, r.Raw)
+	}
+	if r := get("/tai-app/vuathau.apk", ""); r.Status != 404 {
+		t.Fatalf("empty apk: %d", r.Status)
+	}
+	if r := get("/tai-app/phien-ban", ""); strings.TrimSpace(string(r.Raw)) != `{"code":0,"version":""}` {
+		t.Fatalf("empty version: %s", r.Raw)
+	}
+	dir := filepath.Join(e.data, "app")
+	_ = os.MkdirAll(dir, 0o755)
+	for _, n := range []string{"vuathau-nghiemthu-1.0.9-9.apk", "vuathau-nghiemthu-2.0.10-10.apk", "khac.apk"} {
+		_ = os.WriteFile(filepath.Join(dir, n), []byte(n), 0o644)
+	}
+	// So theo số: 10 > 9
+	if r := get("/tai-app/phien-ban", ""); strings.TrimSpace(string(r.Raw)) != `{"code":10,"version":"2.0.10"}` {
+		t.Fatalf("version: %s", r.Raw)
+	}
+	r := get("/tai-app/vuathau.apk", "")
+	if string(r.Raw) != "vuathau-nghiemthu-2.0.10-10.apk" || r.Header.Get("Content-Type") != "application/vnd.android.package-archive" ||
+		!strings.Contains(r.Header.Get("Content-Disposition"), `filename="VuaThau-NghiemThu-2.0.10.apk"`) {
+		t.Fatalf("apk: %s %v", r.Raw, r.Header)
+	}
+	if r := get("/tai-app", "Mozilla/5.0 (Linux; Android 14)"); !strings.Contains(string(r.Raw), `href="/tai-app/vuathau.apk"`) {
+		t.Fatalf("android page: %s", r.Raw)
+	}
+	// Trong Zalo tải APK báo lỗi định dạng: chỉ đưa nút mở Chrome
+	r = get("/tai-app", "Mozilla/5.0 (Linux; Android 14) Zalo android/12")
+	if !strings.Contains(string(r.Raw), "package=com.android.chrome") || strings.Contains(string(r.Raw), "vuathau.apk") {
+		t.Fatalf("zalo page: %s", r.Raw)
+	}
+	if r := get("/tai-app", "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)"); strings.Contains(string(r.Raw), "vuathau.apk") {
+		t.Fatalf("iphone page: %s", r.Raw)
+	}
+	// App Expo cũ mở lên đọc /app.json (dạng cũ) rồi mới hỏi phiên bản
+	var legacy struct {
+		STATUS     map[string][3]string
+		MIN_PHOTOS int
+		PAY        []int64
+		BANKS      []string
+	}
+	r = get("/app.json", "")
+	if err := json.Unmarshal(r.Raw, &legacy); err != nil || legacy.STATUS["cho_duyet"][1] != "Đang chờ duyệt" || legacy.MIN_PHOTOS == 0 || len(legacy.BANKS) == 0 {
+		t.Fatalf("app.json: %v %s", err, r.Raw)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // 8. Rate limiting
 // ---------------------------------------------------------------------------
