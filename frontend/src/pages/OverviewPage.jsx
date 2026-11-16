@@ -9,7 +9,7 @@ import { cleanParams } from '@/api/axiosClient'
 import { Button, HouseTable, Kpi, PageHead, PageState, Pager } from '@/components/ui'
 import { money } from '@/utils/format'
 
-const FILTER_KEYS = ['status', 'q', 'ctv', 'from', 'to', 'page']
+const FILTER_KEYS = ['status', 'q', 'ctv', 'province', 'from', 'to', 'page']
 
 export default function OverviewPage() {
   const [sp, setSp] = useSearchParams()
@@ -47,6 +47,16 @@ export default function OverviewPage() {
         }}
       >
         <input className="input" placeholder="Tìm mã hồ sơ, địa chỉ, nhà thầu, tên / SĐT CTV" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className="input" style={{ flex: '0 1 230px' }} value={f.province || ''} onChange={(e) => go({ province: e.target.value, page: 1 })} aria-label="Tỉnh, thành">
+          <option value="">Cả nước (34 tỉnh, thành)</option>
+          {[...(cfg?.provinces || [])]
+            .sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+            .map((p) => (
+              <option key={p.code} value={p.code}>
+                {p.name}
+              </option>
+            ))}
+        </select>
         <label className="inline">
           Từ <input className="input" type="date" value={f.from || ''} onChange={(e) => go({ from: e.target.value, page: 1 })} />
         </label>
@@ -56,7 +66,7 @@ export default function OverviewPage() {
         <Button type="submit" loading={busy}>
           Tìm
         </Button>
-        {(f.q || f.from || f.to || f.ctv || f.status) && (
+        {(f.q || f.from || f.to || f.ctv || f.status || f.province) && (
           <Button
             variant="ghost"
             onClick={() => {

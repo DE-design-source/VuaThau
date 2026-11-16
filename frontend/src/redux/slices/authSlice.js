@@ -23,7 +23,8 @@ export const fetchMe = createAsyncThunk('auth/fetchMe', async (_, { rejectWithVa
   try {
     const { data } = await userApi.getMe()
     if (!STAFF_HOME[data?.user?.role]) return rejectWithValue(CTV_REFUSED)
-    return data.user
+    // todo: số việc chờ (hồ sơ chờ duyệt / CTV chờ thanh toán) cho số trên thanh bên
+    return { ...data.user, todo: data.todo || 0 }
   } catch (err) {
     return rejectWithValue(err.message)
   }

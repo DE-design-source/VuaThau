@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"vuathau/backend/internal/model"
+	"vuathau/backend/internal/province"
 )
 
 // HouseFilter: điều kiện lọc danh sách hồ sơ. Trường rỗng / 0 là không lọc.
@@ -20,6 +21,7 @@ type HouseFilter struct {
 	CTVID    int64
 	BatchID  int64
 	Q        string     // mã hồ sơ, địa chỉ, nhà thầu, tên / SĐT CTV
+	Province string     // mã tỉnh mới
 	From, To *time.Time // created_at trong [From, To)
 }
 
@@ -50,6 +52,7 @@ type MapPoint struct {
 	Address    string    `json:"address"`
 	Contractor string    `json:"contractor"`
 	Source     string    `json:"source"`
+	Province   string    `json:"province"`
 	At         time.Time `json:"at"`
 }
 
@@ -72,6 +75,9 @@ type HouseRepository interface {
 	CreateInbox(ctx context.Context, ctvID int64, extID string, created time.Time) (int64, bool, error)
 	MapPoints(ctx context.Context, f HouseFilter) ([]MapPoint, error)
 	CountSource(ctx context.Context, source string) (int, error)
+	SetProvince(ctx context.Context, id int64, code string) error
+	NoProvince(ctx context.Context, afterID int64, limit int) ([]GeoRow, error)
+	ProvinceSites(ctx context.Context, f HouseFilter, since time.Time) (map[string][2]int, error)
 	SiteCounts(ctx context.Context, since time.Time) ([]CTVSites, error)
 
 	Create(ctx context.Context, ctvID int64) (int64, error)
@@ -113,7 +119,7 @@ func NewHouseRepository(db *pgxpool.Pool) HouseRepository {
 
 const houseCols = `h.id, h.ctv_id, u.name, u.username, u.bank, h.status, h.address, h.lat, h.lng, h.contractor_name,
 	h.contractor_phone, h.floors, h.stage, h.note, h.dup, h.amount, h.ai_state, h.ai_json, h.batch_id, h.drive, h.created_at,
-	h.source, h.dup_of, h.submitted_at`
+	h.source, h.dup_of, h.submitted_at, COALESCE(h.province, '')`
 
 const houseFrom = ` FROM houses h JOIN users u ON u.id = h.ctv_id `
 
@@ -121,7 +127,12 @@ func scanHouse(row pgx.Row) (*model.House, error) {
 	var h model.House
 	err := row.Scan(&h.ID, &h.CTVID, &h.CTVName, &h.CTVPhone, &h.CTVBank, &h.Status, &h.Address, &h.Lat, &h.Lng,
 		&h.ContractorName, &h.ContractorPhone, &h.Floors, &h.Stage, &h.Note, &h.Dup, &h.Amount, &h.AIState, &h.AIJSON,
-		&h.BatchID, &h.Drive, &h.CreatedAt, &h.Source, &h.DupOf, &h.SubmittedAt)
+		&h.BatchID, &h.Drive, &h.CreatedAt, &h.Source, &h.DupOf, &h.SubmittedAt, &h.Province)
+	if err == nil {
+		if p := province.ByCode(h.Province); p != nil {
+			h.ProvinceName = p.Name
+		}
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -158,6 +169,9 @@ func (f HouseFilter) where(skipStatus bool) (string, []any) {
 	}
 	if f.BatchID > 0 {
 		add("h.batch_id = ?", f.BatchID)
+	}
+	if f.Province != "" {
+		add("h.province = ?", f.Province)
 	}
 	if f.From != nil {
 		add("h.created_at >= ?", *f.From)
@@ -294,6 +308,55 @@ func (r *houseRepository) SiteCandidates(ctx context.Context, exclude int64, sin
 	return out, rows.Err()
 }
 
+// SetProvince: gán mã tỉnh mới ('' = chưa xác định được).
+func (r *houseRepository) SetProvince(ctx context.Context, id int64, code string) error {
+	_, err := r.db.Exec(ctx, `UPDATE houses SET province = NULLIF($2, '') WHERE id = $1`, id, code)
+	return err
+}
+
+// GeoRow: toạ độ + địa chỉ 1 hồ sơ (để gán tỉnh).
+type GeoRow struct {
+	ID       int64
+	Lat, Lng *float64
+	Address  string
+}
+
+// NoProvince: hồ sơ đã gửi duyệt chưa gán tỉnh (gán bù lúc khởi động).
+func (r *houseRepository) NoProvince(ctx context.Context, afterID int64, limit int) ([]GeoRow, error) {
+	rows, err := r.db.Query(ctx, `SELECT id, lat, lng, address FROM houses WHERE province IS NULL AND status <> 'nhap'
+		AND (lat IS NOT NULL OR address <> '') AND id > $1 ORDER BY id LIMIT $2`, afterID, limit)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (GeoRow, error) {
+		var g GeoRow
+		err := row.Scan(&g.ID, &g.Lat, &g.Lng, &g.Address)
+		return g, err
+	})
+}
+
+// ProvinceSites: số công trình mỗi tỉnh (đã gửi duyệt, không tính bị từ chối) + trong hạn chặn trùng.
+func (r *houseRepository) ProvinceSites(ctx context.Context, f HouseFilter, since time.Time) (map[string][2]int, error) {
+	where, args := f.where(false)
+	args = append(args, since)
+	rows, err := r.db.Query(ctx, `SELECT h.province, COUNT(*), COUNT(*) FILTER (WHERE h.submitted_at >= $`+strconv.Itoa(len(args))+`)`+
+		houseFrom+`WHERE `+where+` AND h.province IS NOT NULL AND h.status NOT IN ('nhap', 'tu_choi') GROUP BY h.province`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][2]int{}
+	for rows.Next() {
+		var code string
+		var n, recent int
+		if err := rows.Scan(&code, &n, &recent); err != nil {
+			return nil, err
+		}
+		out[code] = [2]int{n, recent}
+	}
+	return out, rows.Err()
+}
+
 func (r *houseRepository) CountSource(ctx context.Context, source string) (int, error) {
 	var n int
 	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM houses WHERE source = $1`, source).Scan(&n)
@@ -327,7 +390,7 @@ func (r *houseRepository) CreateInbox(ctx context.Context, ctvID int64, extID st
 func (r *houseRepository) MapPoints(ctx context.Context, f HouseFilter) ([]MapPoint, error) {
 	where, args := f.where(false)
 	rows, err := r.db.Query(ctx, `SELECT h.id, h.lat, h.lng, h.status, h.ctv_id, u.name, h.address, h.contractor_name, h.source,
-		COALESCE(h.submitted_at, h.created_at) `+houseFrom+`WHERE `+where+` AND h.lat IS NOT NULL AND h.lng IS NOT NULL
+		COALESCE(h.submitted_at, h.created_at), COALESCE(h.province, '') `+houseFrom+`WHERE `+where+` AND h.lat IS NOT NULL AND h.lng IS NOT NULL
 		AND h.status <> 'nhap' ORDER BY h.id DESC LIMIT 20000`, args...)
 	if err != nil {
 		return nil, err
@@ -336,7 +399,7 @@ func (r *houseRepository) MapPoints(ctx context.Context, f HouseFilter) ([]MapPo
 	out := []MapPoint{}
 	for rows.Next() {
 		var p MapPoint
-		if err := rows.Scan(&p.ID, &p.Lat, &p.Lng, &p.Status, &p.CTVID, &p.CTVName, &p.Address, &p.Contractor, &p.Source, &p.At); err != nil {
+		if err := rows.Scan(&p.ID, &p.Lat, &p.Lng, &p.Status, &p.CTVID, &p.CTVName, &p.Address, &p.Contractor, &p.Source, &p.At, &p.Province); err != nil {
 			return nil, err
 		}
 		out = append(out, p)

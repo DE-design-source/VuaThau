@@ -111,6 +111,13 @@ func run() error {
 	log.Printf("Hồ sơ Messenger (dezon-inbox): %v, mỗi %s", inboxSrc != nil, cfg.InboxSyncEvery)
 	go houseSvc.RunDriveSync() // đẩy các hồ sơ còn chờ từ lần chạy trước
 	houseSvc.StartInboxSync(cfg.InboxSyncEvery)
+	go func() { // gán tỉnh mới (34 tỉnh) cho hồ sơ cũ
+		if n, err := houseSvc.BackfillProvinces(context.Background()); err != nil {
+			log.Printf("gán tỉnh: %v", err)
+		} else if n > 0 {
+			log.Printf("đã gán tỉnh cho %d hồ sơ", n)
+		}
+	}()
 
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,

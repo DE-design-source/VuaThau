@@ -1,19 +1,32 @@
+// Thanh bên điều hướng (desktop cố định bên trái, điện thoại mở bằng nút menu) + thanh trên mỏng.
 import { useState } from 'react'
-import { Link, NavLink, useNavigate } from 'react-router-dom'
-import logo from '@/assets/logo.svg'
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import navLinks from '@/data/navLinks'
 import useAuth from '@/hooks/useAuth'
 import useTheme from '@/hooks/useTheme'
-import { Button } from '@/components/ui'
-import { ROLE_LABEL } from '@/utils/format'
+import Icon from '@/components/ui/Icon'
+import { ROLE_LABEL, initials } from '@/utils/format'
+
+export function Mark({ size = 28 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="7" fill="#F5B301" />
+      <path d="M8.5 16.5l5 5 10-11" fill="none" stroke="#0B1F3A" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
 
 export default function Header() {
-  const { isAuthenticated, user, role, logout } = useAuth()
+  const { user, role, logout } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
 
   const links = navLinks.filter((l) => role && l.roles.includes(role))
+  const groups = [...new Set(links.map((l) => l.group))]
+  const current = links.find((l) => pathname.startsWith(l.to))
+  const todo = user?.todo || 0
 
   const handleLogout = () => {
     if (!window.confirm('Đăng xuất khỏi web quản lý?')) return
@@ -22,48 +35,65 @@ export default function Header() {
   }
 
   return (
-    <header className="header">
-      <div className="container header-inner">
-        <Link to="/" className="brand">
-          <img src={logo} alt="" width="30" height="30" />
+    <>
+      <aside className={`side ${open ? 'side-open' : ''}`} aria-label="Điều hướng">
+        <Link to="/" className="side-brand" onClick={() => setOpen(false)}>
+          <Mark />
           <span>
-            Vua Thầu <small>Nghiệm thu</small>
+            <b>Vua Thầu</b>
+            <small>Nghiệm thu</small>
           </span>
         </Link>
-
-        {isAuthenticated && (
-          <button type="button" className="btn btn-ghost menu-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-            ☰ Menu
-          </button>
-        )}
-
-        <nav className={`nav ${open ? 'nav-open' : ''}`} onClick={() => setOpen(false)}>
-          {links.map((l) => (
-            <NavLink key={l.to} to={l.to} className="nav-link">
-              {l.label}
-            </NavLink>
+        <nav className="side-nav" onClick={() => setOpen(false)}>
+          {groups.map((g) => (
+            <div key={g} className="side-group">
+              <span className="side-label">{g}</span>
+              {links
+                .filter((l) => l.group === g)
+                .map((l) => (
+                  <NavLink key={l.to} to={l.to} className="side-link">
+                    <Icon name={l.icon} />
+                    <span>{l.label}</span>
+                    {l.badge && todo > 0 && <em className="side-count">{todo}</em>}
+                  </NavLink>
+                ))}
+            </div>
           ))}
         </nav>
+        {user && (
+          <div className="side-user">
+            <Link to="/me" className="side-me" onClick={() => setOpen(false)} title="Tài khoản">
+              <span className="avatar">{initials(user.name)}</span>
+              <span>
+                <b>{user.name}</b>
+                <small>{ROLE_LABEL[user.role]}</small>
+              </span>
+            </Link>
+            <button type="button" className="side-icon" onClick={handleLogout} title="Đăng xuất" aria-label="Đăng xuất">
+              <Icon name="logout" />
+            </button>
+          </div>
+        )}
+      </aside>
+      {open && <div className="side-scrim" onClick={() => setOpen(false)} />}
 
-        <div className="header-actions">
-          <Button variant="ghost" onClick={toggleTheme} aria-label="Đổi giao diện sáng/tối" title="Đổi giao diện sáng/tối">
-            {theme === 'dark' ? '☀' : '☾'}
-          </Button>
-          {isAuthenticated && (
-            <>
-              {user && (
-                <Link to="/me" className="who" title="Tài khoản">
-                  <strong>{user.name}</strong>
-                  <small className="muted">{ROLE_LABEL[user.role]}</small>
-                </Link>
-              )}
-              <Button variant="secondary" onClick={handleLogout}>
-                Đăng xuất
-              </Button>
-            </>
-          )}
+      <header className="topbar">
+        <button type="button" className="side-icon topbar-menu" aria-expanded={open} aria-label="Mở menu" onClick={() => setOpen(!open)}>
+          <Icon name="menu" />
+        </button>
+        <div className="crumbs">
+          <span>Vua Thầu</span>
+          <Icon name="right" size={14} />
+          <b>{current?.label || (pathname.startsWith('/me') ? 'Tài khoản' : 'Tổng quan')}</b>
         </div>
-      </div>
-    </header>
+        <span className="spacer" />
+        <span className="live">
+          <i /> Đang hoạt động
+        </span>
+        <button type="button" className="side-icon" onClick={toggleTheme} aria-label="Đổi giao diện sáng/tối" title="Đổi giao diện sáng/tối">
+          <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
+        </button>
+      </header>
+    </>
   )
 }

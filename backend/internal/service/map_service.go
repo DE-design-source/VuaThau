@@ -4,15 +4,17 @@ import (
 	"context"
 
 	"vuathau/backend/internal/model"
+	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/repository"
 )
 
-// MapData: bản đồ công trình toàn quốc + bảng số công trình mỗi CTV đã chụp.
+// MapData: bản đồ công trình toàn quốc + bảng số công trình mỗi CTV đã chụp + theo 34 tỉnh, thành.
 type MapData struct {
-	Points  []repository.MapPoint `json:"points"`
-	CTVs    []repository.CTVSites `json:"ctvs"`
-	DupDays int                   `json:"dup_days"`
-	Filter  OverviewQuery         `json:"filter"`
+	Points    []repository.MapPoint `json:"points"`
+	CTVs      []repository.CTVSites `json:"ctvs"`
+	Provinces []ProvinceSites       `json:"provinces"` // đủ 34 tỉnh (kể cả chưa có công trình), theo bộ lọc CTV / ngày
+	DupDays   int                   `json:"dup_days"`
+	Filter    OverviewQuery         `json:"filter"`
 }
 
 func (s *houseService) Map(ctx context.Context, q OverviewQuery) (*MapData, error) {
@@ -36,11 +38,27 @@ func (s *houseService) Map(ctx context.Context, q OverviewQuery) (*MapData, erro
 	if err != nil {
 		return nil, err
 	}
+	since := s.now().AddDate(0, 0, -st.DupDays)
 	res := &MapData{DupDays: st.DupDays, Filter: q}
+	// Số theo tỉnh: theo CTV / ngày / trạng thái, chưa lọc tỉnh (để thấy cả nước)
+	counts, err := s.houses.ProvinceSites(ctx, f, since)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range province.All() {
+		c := counts[p.Code]
+		res.Provinces = append(res.Provinces, ProvinceSites{Code: p.Code, Name: p.Name, Merged: p.Merged, Total: c[0], Recent: c[1]})
+	}
+	if province.ByCode(q.Province) != nil {
+		f.Province = q.Province
+	} else {
+		q.Province = ""
+		res.Filter.Province = ""
+	}
 	if res.Points, err = s.houses.MapPoints(ctx, f); err != nil {
 		return nil, err
 	}
-	if res.CTVs, err = s.houses.SiteCounts(ctx, s.now().AddDate(0, 0, -st.DupDays)); err != nil {
+	if res.CTVs, err = s.houses.SiteCounts(ctx, since); err != nil {
 		return nil, err
 	}
 	return res, nil

@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import usePage from '@/hooks/usePage'
 import useAct from '@/hooks/useAct'
 import adminApi from '@/api/adminApi'
-import { Button, Empty, HouseTable, PageHead, PageState } from '@/components/ui'
+import { Button, Empty, HouseTable, PageHead, PageState, hsId } from '@/components/ui'
 
 export default function QueuePage() {
   const { data: d, err, reload } = usePage(() => adminApi.queue())
@@ -34,7 +34,7 @@ export default function QueuePage() {
         {rows.length > 0 && (
           <>
             <Link className="btn btn-secondary" to={`/houses/${rows[0].id}`}>
-              Duyệt lần lượt từ #{rows[0].id}
+              Duyệt lần lượt từ {hsId(rows[0].id)}
             </Link>
             <Button onClick={approve} disabled={!sel.size} loading={busy === 'many'}>
               Duyệt {sel.size || ''} hồ sơ đã chọn

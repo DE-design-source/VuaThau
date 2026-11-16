@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import useAuth from '@/hooks/useAuth'
 import { Button, Input } from '@/components/ui'
+import { Mark } from '@/components/layout/Header'
 import { STAFF_HOME } from '@/redux/slices/authSlice'
 
 export default function LoginPage() {
@@ -29,23 +30,53 @@ export default function LoginPage() {
   }
 
   return (
-    <section className="card auth-card">
-      <div className="auth-top">
-        <img src="/favicon.svg" alt="" width="48" height="48" />
-        <h1>Vua Thầu Nghiệm thu</h1>
-        <p className="muted">Web quản lý cho admin và kế toán</p>
-      </div>
+    <div className="login">
+      <aside className="login-art" aria-hidden="true">
+        <div className="login-brand">
+          <Mark size={34} />
+          <span>
+            <b>Vua Thầu</b>
+            <small>Nghiệm thu</small>
+          </span>
+        </div>
+        <div className="login-pitch">
+          <span className="eyebrow">Hệ thống nghiệm thu công trình</span>
+          <h2>Mỗi công trình một hồ sơ. AI đọc ảnh, admin duyệt, kế toán trả tiền.</h2>
+          <dl className="login-stats">
+            <div>
+              <dt>Đọc ảnh Timemark</dt>
+              <dd className="mono">AI</dd>
+            </div>
+            <div>
+              <dt>Chặn chụp trùng</dt>
+              <dd className="mono">AI + GPS</dd>
+            </div>
+            <div>
+              <dt>Bản đồ công trình</dt>
+              <dd className="mono">Toàn quốc</dd>
+            </div>
+          </dl>
+        </div>
+        <small className="login-foot">App CTV · Messenger · Web quản lý</small>
+      </aside>
 
-      <form className="stack" onSubmit={submit} noValidate>
-        <Input label="Tên đăng nhập hoặc số điện thoại" name="login" autoComplete="username" value={form.login} onChange={change} autoFocus />
-        <Input label="Mật khẩu" name="password" type="password" autoComplete="current-password" value={form.password} onChange={change} />
-        {error && <p className="field-error">{error}</p>}
-        <Button type="submit" loading={isLoading} disabled={!form.login.trim() || !form.password}>
-          Đăng nhập
-        </Button>
-      </form>
-
-      <p className="muted auth-switch">Cộng tác viên: đăng ký, nộp hồ sơ và xem thu nhập trên app Vua Thầu (Android).</p>
-    </section>
+      <section className="login-form">
+        <div className="login-box">
+          <div className="login-head">
+            <h1>Đăng nhập</h1>
+            <p className="muted">Dành cho admin và kế toán.</p>
+          </div>
+          <form className="stack" onSubmit={submit} noValidate>
+            <Input label="Tên đăng nhập hoặc số điện thoại" name="login" autoComplete="username" value={form.login} onChange={change} autoFocus />
+            <Input label="Mật khẩu" name="password" type="password" autoComplete="current-password" value={form.password} onChange={change} />
+            {error && <p className="field-error">{error}</p>}
+            <Button type="submit" loading={isLoading} disabled={!form.login.trim() || !form.password}>
+              Đăng nhập
+            </Button>
+          </form>
+          <p className="muted small">Cộng tác viên đăng ký, nộp hồ sơ và xem thu nhập trên app Vua Thầu (Android).</p>
+        </div>
+      </section>
+    </div>
   )
 }

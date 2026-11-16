@@ -47,6 +47,7 @@ func New(d Deps) http.Handler {
 
 	// Công khai
 	mux.HandleFunc("GET /api/v1/config", p.Config)
+	mux.HandleFunc("GET /api/v1/geo/provinces", h.Provinces)
 
 	// Tải app Android (link gửi qua Zalo) + cấu hình cho app Expo cũ (để nó mời tải app mới)
 	dl := handler.NewDownloadHandler(d.Config.DataDir, p)

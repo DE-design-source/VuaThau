@@ -69,3 +69,6 @@ export const REASONS = {
 }
 
 export const today = () => new Date().toISOString().slice(0, 10)
+
+/** Mã hồ sơ dạng HS-00081 (giống app). */
+export const hsId = (id) => `HS-${String(id).padStart(5, '0')}`
