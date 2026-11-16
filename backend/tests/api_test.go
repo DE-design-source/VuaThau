@@ -1224,6 +1224,19 @@ func TestStaticWeb(t *testing.T) {
 	if r.Status != 200 || !strings.Contains(string(r.Raw), "id=root") || r.Header.Get("Last-Modified") != "" || r.Header.Get("Cache-Control") != "no-store" {
 		t.Fatalf("spa route: %d %v", r.Status, r.Header)
 	}
+	// App CTV bản web ở thư mục con /app/: index.html riêng, /app chuyển sang /app/, file không lưu đệm lâu
+	_ = os.MkdirAll(filepath.Join(dir, "app"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "app", "index.html"), []byte("<!doctype html><title>flutter</title>"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "app", "main.dart.js"), []byte("main()"), 0o644)
+	if r := get("/app/"); r.Status != 200 || !strings.Contains(string(r.Raw), "flutter") || r.Header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("/app/: %d %v %s", r.Status, r.Header, r.Raw)
+	}
+	if r := get("/app/main.dart.js"); r.Status != 200 || r.Header.Get("Cache-Control") != "no-cache" {
+		t.Fatalf("/app js: %d %v", r.Status, r.Header)
+	}
+	if r := get("/assets"); r.Status != 200 || !strings.Contains(string(r.Raw), "id=root") {
+		t.Fatalf("dir without index: %d %s", r.Status, r.Raw)
+	}
 	if r := get("/api/v1/khong-co"); r.Status != 404 || !strings.Contains(string(r.Raw), "route not found") {
 		t.Fatalf("api 404: %s", r.Raw)
 	}
@@ -1270,7 +1283,7 @@ func TestDownloadApp(t *testing.T) {
 	if !strings.Contains(string(r.Raw), "package=com.android.chrome") || strings.Contains(string(r.Raw), "vuathau.apk") {
 		t.Fatalf("zalo page: %s", r.Raw)
 	}
-	if r := get("/tai-app", "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)"); strings.Contains(string(r.Raw), "vuathau.apk") {
+	if r := get("/tai-app", "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)"); strings.Contains(string(r.Raw), "vuathau.apk") || !strings.Contains(string(r.Raw), `href="/app/"`) {
 		t.Fatalf("iphone page: %s", r.Raw)
 	}
 	// App Expo cũ mở lên đọc /app.json (dạng cũ) rồi mới hỏi phiên bản
