@@ -8,6 +8,7 @@ import (
 	"vuathau/backend/internal/middleware"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/response"
+	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/service"
 )
 
@@ -323,7 +324,7 @@ func (h *HouseHandler) Overview(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	ctv, _ := strconv.ParseInt(q.Get("ctv"), 10, 64)
 	res, err := h.svc.Overview(r.Context(), service.OverviewQuery{Status: q.Get("status"), Q: q.Get("q"), CTV: ctv,
-		From: q.Get("from"), To: q.Get("to"), Page: queryInt(r, "page", 1)})
+		From: q.Get("from"), To: q.Get("to"), Province: q.Get("province"), Page: queryInt(r, "page", 1)})
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -335,7 +336,8 @@ func (h *HouseHandler) Overview(w http.ResponseWriter, r *http.Request) {
 func (h *HouseHandler) Map(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	ctv, _ := strconv.ParseInt(q.Get("ctv"), 10, 64)
-	res, err := h.svc.Map(r.Context(), service.OverviewQuery{Status: q.Get("status"), CTV: ctv, From: q.Get("from"), To: q.Get("to")})
+	res, err := h.svc.Map(r.Context(), service.OverviewQuery{Status: q.Get("status"), CTV: ctv, From: q.Get("from"), To: q.Get("to"),
+		Province: q.Get("province")})
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -361,4 +363,10 @@ func (h *HouseHandler) InboxSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ok(w, res)
+}
+// Provinces handles GET /api/v1/geo/provinces: ranh giới 34 tỉnh, thành (GeoJSON, công khai, lưu đệm lâu).
+func (h *HouseHandler) Provinces(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/geo+json")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(province.GeoJSON)
 }

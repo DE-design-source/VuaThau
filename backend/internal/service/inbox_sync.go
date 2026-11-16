@@ -297,6 +297,7 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 	if err := s.houses.Submit(ctx, hid, st.Amount(valid), lat, lng, warn, s.drive != nil); err != nil {
 		return false, false, err
 	}
+	s.assignProvince(ctx, hid)
 	if hit != nil && hit.Block {
 		if err := s.houses.MarkDuplicate(ctx, hid, hit.Of.ID, hit.Reason); err != nil {
 			return false, false, err

@@ -20,6 +20,7 @@ import (
 	"vuathau/backend/internal/integration/inbox"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/imaging"
+	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/repository"
 	"vuathau/backend/internal/storage"
 )
@@ -145,6 +146,7 @@ type OverviewQuery struct {
 	Status string `json:"status"`
 	Q      string `json:"q"`
 	CTV    int64  `json:"ctv"`
+	Province string `json:"province"`
 	From   string `json:"from"`
 	To     string `json:"to"`
 	Page   int    `json:"-"`
@@ -192,6 +194,9 @@ type HouseService interface {
 	SyncInbox(ctx context.Context) (*SyncStatus, error)
 	InboxStatus(ctx context.Context) (*SyncStatus, error)
 	StartInboxSync(every time.Duration)
+
+	// Gán tỉnh mới (34 tỉnh) cho hồ sơ cũ chưa có, trả số hồ sơ đã gán.
+	BackfillProvinces(ctx context.Context) (int, error)
 
 	// RunDriveSync đẩy các hồ sơ chờ lên Google Drive (chạy nền, gọi lúc khởi động và sau mỗi lần gửi duyệt).
 	RunDriveSync()
@@ -683,6 +688,7 @@ func (s *houseService) Save(ctx context.Context, u *model.User, id int64, f mode
 		return "", false, err
 	}
 	s.note(ctx, u, ActSubmit, id, fmt.Sprintf("%d ảnh hợp lệ, %s", valid, Money(amount)))
+	s.assignProvince(ctx, id)
 	if s.drive != nil {
 		go s.RunDriveSync()
 	}
@@ -1072,6 +1078,7 @@ func (s *houseService) EditInfo(ctx context.Context, by *model.User, id int64, f
 		return "", err
 	}
 	s.note(ctx, by, ActEdit, id, strings.Join(changed, ", "))
+	s.assignProvince(ctx, id)
 	return "Đã sửa: " + strings.Join(changed, ", ") + ".", nil
 }
 
@@ -1112,7 +1119,10 @@ func (s *houseService) Overview(ctx context.Context, q OverviewQuery) (*Overview
 	}
 	q.Q = strings.TrimSpace(q.Q)
 	q.Page = max(1, q.Page)
-	f := repository.HouseFilter{Q: q.Q, CTVID: q.CTV}
+	if province.ByCode(q.Province) == nil {
+		q.Province = ""
+	}
+	f := repository.HouseFilter{Q: q.Q, CTVID: q.CTV, Province: q.Province}
 	if t := dayStart(q.From); t != nil {
 		f.From = t
 	} else {

@@ -7,7 +7,7 @@ import useAct from '@/hooks/useAct'
 import useCfg from '@/hooks/useCfg'
 import useAuth from '@/hooks/useAuth'
 import houseApi from '@/api/houseApi'
-import { Button, PageHead, PageState, PhotoGrid, Pill, StatusBadge } from '@/components/ui'
+import { Button, Icon, PageHead, PageState, PhotoGrid, Pill, StatusBadge, hsId } from '@/components/ui'
 import { REASONS, bankParts, money, parseMoney, vnTime } from '@/utils/format'
 
 export default function HousePage() {
@@ -33,13 +33,13 @@ function House({ id, d, reload }) {
 
   return (
     <section className="stack">
-      <PageHead title={`Hồ sơ #${h.id}`} sub={h.address || 'Chưa có địa chỉ'}>
+      <PageHead title={hsId(h.id)} sub={h.address || 'Chưa có địa chỉ'}>
         <StatusBadge status={h.status} />
         {h.source === 'inbox' && <Pill tone="wait">Gửi qua Messenger</Pill>}
         {h.status === 'cho_duyet' && <span className="muted">Còn {d.queue_left} hồ sơ chờ duyệt</span>}
       </PageHead>
 
-      {h.dup && !(h.status === 'tu_choi' && h.dup === h.note) && <div className="note tone-warn">⚠ {h.dup}</div>}
+      {h.dup && !(h.status === 'tu_choi' && h.dup === h.note) && <div className="note tone-warn inline"><Icon name="alert" size={16} /> {h.dup}</div>}
       {h.status === 'tra_lai' && h.note && <div className="note tone-warn">Đã trả lại cho CTV: {h.note}</div>}
       {h.status === 'tu_choi' && (
         <div className="note tone-bad">
@@ -191,7 +191,7 @@ function Review({ id, act, busy, pay, reasons }) {
       <p className="muted">Duyệt xong tự sang hồ sơ chờ duyệt kế tiếp. Tiền hồ sơ: {money(pay)} (tính theo số ảnh đạt).</p>
       <div className="row-wrap">
         <Button onClick={() => send('duyet')} loading={busy === 'duyet'} disabled={!!busy}>
-          ✓ Duyệt
+          <Icon name="check" size={16} /> Duyệt
         </Button>
         <Button variant="secondary" onClick={() => setMode(mode === 'tra_lai' ? '' : 'tra_lai')}>
           Trả lại cho CTV sửa
@@ -246,6 +246,11 @@ function InfoForm({ id, h, act, busy, stages, aiTag }) {
           <a href={`https://maps.google.com/?q=${h.lat},${h.lng}`} target="_blank" rel="noreferrer">
             Xem vị trí trên bản đồ
           </a>
+        )}
+        {h.province_name && (
+          <small className="muted">
+            Tỉnh, thành (34 tỉnh từ 1/7/2025): <b>{h.province_name}</b>
+          </small>
         )}
       </label>
       <div className="grid-2 tight">

@@ -1,12 +1,10 @@
 export default function Footer() {
   return (
     <footer className="footer">
-      <div className="container">
-        <small className="muted">
-          © {new Date().getFullYear()} Vua Thầu · Web quản lý cho admin và kế toán. Cộng tác viên dùng app Vua Thầu trên điện thoại.
-          · bản 2.0
-        </small>
-      </div>
+      <small>
+        © {new Date().getFullYear()} Vua Thầu · Nghiệm thu <span className="mono">v2.1</span>
+      </small>
+      <small>Cộng tác viên dùng app Vua Thầu trên Android</small>
     </footer>
   )
 }

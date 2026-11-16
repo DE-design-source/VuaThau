@@ -5,10 +5,11 @@ import { getBlob } from '@/api/axiosClient'
 import houseApi from '@/api/houseApi'
 import { clearToast, currentToast, subscribeToast, toast } from '@/services/toast'
 import { saveBlob } from '@/utils/download'
-import { vnDate } from '@/utils/format'
+import { hsId, vnDate } from '@/utils/format'
 import useCfg from '@/hooks/useCfg'
 import Loader from './Loader'
 import Button from './Button'
+import Icon from './Icon'
 
 export function Toasts() {
   const msgs = useSyncExternalStore(subscribeToast, currentToast)
@@ -57,8 +58,8 @@ export function PageHead({ title, sub, children }) {
 export function Kpi({ label, value, sub, tone }) {
   return (
     <div className={`kpi ${tone ? `kpi-${tone}` : ''}`}>
-      <span className="muted">{label}</span>
-      <strong>{value}</strong>
+      <span className="kpi-label">{label}</span>
+      <strong className="mono">{value}</strong>
       {sub && <small className="muted">{sub}</small>}
     </div>
   )
@@ -70,7 +71,12 @@ export function StatusBadge({ status }) {
   const st = cfg?.statuses?.[status]
   const label = st?.label || status
   const tone = st?.tone || 'draft'
-  return <span className={`badge tone-${tone}`}>{label}</span>
+  return (
+    <span className={`badge tone-${tone}`}>
+      <i className="dot" />
+      {label}
+    </span>
+  )
 }
 
 export function Pill({ tone = 'draft', children }) {
@@ -91,13 +97,13 @@ export function Pager({ page, pages, onGo }) {
   return (
     <nav className="pager" aria-label="Phân trang">
       <Button variant="secondary" disabled={page <= 1} onClick={() => onGo(page - 1)}>
-        ‹ Trước
+        <Icon name="left" size={16} /> Trước
       </Button>
-      <span className="muted">
-        Trang {page} / {pages}
+      <span className="muted mono">
+        {page} / {pages}
       </span>
       <Button variant="secondary" disabled={page >= pages} onClick={() => onGo(page + 1)}>
-        Sau ›
+        Sau <Icon name="right" size={16} />
       </Button>
     </nav>
   )
@@ -159,7 +165,7 @@ export function PhotoGrid({ ps }) {
         {ps.map((x, k) => (
           <button key={x.id} type="button" className={`photo ${x.problems?.length ? 'photo-bad' : ''}`} onClick={() => setAt(k)}>
             <AuthImage path={`/photos/${x.id}`} alt={`Ảnh ${k + 1}`} />
-            <span className={`photo-mark ${x.problems?.length ? 'bad' : 'ok'}`}>{x.problems?.length ? '✕' : '✓'}</span>
+            <span className={`photo-mark ${x.problems?.length ? 'bad' : 'ok'}`}><Icon name={x.problems?.length ? 'x' : 'check'} size={13} /></span>
             <span className="photo-n">{k + 1}</span>
           </button>
         ))}
@@ -172,25 +178,25 @@ export function PhotoGrid({ ps }) {
             </strong>
             <span className="spacer" />
             <Button variant="ghost" disabled={at === 0} onClick={() => setAt(at - 1)}>
-              ‹
+              <Icon name="left" />
             </Button>
             <Button variant="ghost" disabled={at === ps.length - 1} onClick={() => setAt(at + 1)}>
-              ›
+              <Icon name="right" />
             </Button>
             <a className="btn btn-ghost" href="#goc" onClick={(e) => { e.preventDefault(); downloadOriginal(p.id) }}>
-              Tải ảnh gốc
+              <Icon name="download" size={16} /> Ảnh gốc
             </a>
             <Button variant="ghost" onClick={() => setAt(null)} aria-label="Đóng">
-              ✕
+              <Icon name="x" />
             </Button>
           </div>
           <div className="lightbox-img" onClick={(e) => e.stopPropagation()}>
             <AuthImage key={p.id} path={`/photos/${p.id}`} alt={`Ảnh ${at + 1}`} />
           </div>
           <div className="lightbox-info" onClick={(e) => e.stopPropagation()}>
-            <span>🕒 {p.exif_time || p.ai_time || 'Không đọc được giờ chụp'}</span>
-            <span>
-              📍 {p.address || (lat != null ? `${lat.toFixed(5)}, ${p.lng.toFixed(5)}` : 'Không có vị trí')}
+            <span className="inline"><Icon name="clock" size={15} /> <span className="mono">{p.exif_time || p.ai_time || 'Không đọc được giờ chụp'}</span></span>
+            <span className="inline">
+              <Icon name="pin" size={15} /> {p.address || (lat != null ? `${lat.toFixed(5)}, ${p.lng.toFixed(5)}` : 'Không có vị trí')}
               {lat != null && (
                 <>
                   {' '}
@@ -203,11 +209,11 @@ export function PhotoGrid({ ps }) {
             {p.problems?.length ? (
               p.problems.map((x) => (
                 <span key={x} className="text-bad">
-                  ✕ {x}
+                  <Icon name="x" size={14} /> {x}
                 </span>
               ))
             ) : (
-              <span className="text-ok">✓ Ảnh đạt</span>
+              <span className="text-ok inline"><Icon name="check" size={14} /> Ảnh đạt</span>
             )}
           </div>
         </div>
@@ -246,9 +252,14 @@ export function HouseTable({ rows, showCtv = true, selectable, selected, onToggl
                   <Link to={`/houses/${r.id}`} className="row-link">
                     <Cover id={r.cover_id} />
                     <span>
-                      <strong>#{r.id}</strong> {r.source === 'inbox' && <Pill tone="wait">Messenger</Pill>}{' '}
-                      {r.address || <span className="muted">(chưa có địa chỉ)</span>}
-                      {r.dup && <small className="text-warn d-block">⚠ {r.dup}</small>}
+                      <span className="id">{hsId(r.id)}</span>
+                      {r.source === 'inbox' && <span className="src">Messenger</span>}
+                      <span className="d-block row-title">{r.address || <span className="muted">(chưa có địa chỉ)</span>}</span>
+                      {r.dup && (
+                        <small className="text-warn d-block inline">
+                          <Icon name="alert" size={13} /> {r.dup}
+                        </small>
+                      )}
                     </span>
                   </Link>
                 </td>
@@ -257,12 +268,12 @@ export function HouseTable({ rows, showCtv = true, selectable, selected, onToggl
                     <Link to={`/ctvs/${r.ctv_id}`}>{r.ctv_name}</Link>
                   </td>
                 )}
-                <td>{r.photos_total != null ? `${r.photos_valid ?? 0}/${r.photos_total}` : '—'}</td>
+                <td className="mono">{r.photos_total != null ? `${r.photos_valid ?? 0}/${r.photos_total}` : '—'}</td>
                 <td>
                   <StatusBadge status={r.status} />
                 </td>
-                <td className="num">{r.amount ? `${r.amount.toLocaleString('vi-VN')}đ` : '—'}</td>
-                <td className="muted">{vnDate(r.created_at)}</td>
+                <td className="num mono">{r.amount ? `${r.amount.toLocaleString('vi-VN')}đ` : '—'}</td>
+                <td className="muted mono">{vnDate(r.created_at)}</td>
               </tr>
             )
           })}

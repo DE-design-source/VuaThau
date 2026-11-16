@@ -186,6 +186,42 @@ func TestInboxSync(t *testing.T) {
 	if len(m.Points) != 2 {
 		t.Fatalf("map ctv filter: %d", len(m.Points))
 	}
+	// 34 tỉnh mới: toạ độ Bình Dương cũ -> TP. Hồ Chí Minh (VN79), Vinh -> Nghệ An, Huế -> Huế
+	prov := func(id int64) string {
+		var p string
+		_ = e.db.QueryRow(ctx, `SELECT COALESCE(province, '') FROM houses WHERE id = $1`, id).Scan(&p)
+		return p
+	}
+	if prov(h1.id) != "VN79" || prov(h2.id) != "VN79" || prov(h3.id) != "VN40" || prov(h4.id) != "VN46" {
+		t.Fatalf("tỉnh: %s %s %s %s", prov(h1.id), prov(h2.id), prov(h3.id), prov(h4.id))
+	}
+	var pm struct {
+		Points    []repository.MapPoint   `json:"points"`
+		Provinces []service.ProvinceSites `json:"provinces"`
+	}
+	r = e.do(t, http.MethodGet, "/api/v1/map?province=VN79", admin.AccessToken, nil)
+	decodeData(t, r, &pm)
+	if len(pm.Provinces) != 34 || len(pm.Points) != 2 { // h1 + h2 (bị từ chối vẫn hiện trên bản đồ)
+		t.Fatalf("map tỉnh: %d tỉnh, %d điểm", len(pm.Provinces), len(pm.Points))
+	}
+	for _, p := range pm.Provinces {
+		if p.Code == "VN79" && (p.Total != 1 || p.Name != "TP. Hồ Chí Minh" || len(p.Merged) != 3) {
+			t.Fatalf("VN79: %+v", p)
+		}
+	}
+	r = e.do(t, http.MethodGet, "/api/v1/houses?province=VN40", admin.AccessToken, nil)
+	var ov struct {
+		Found int           `json:"found"`
+		Rows  []model.House `json:"rows"`
+	}
+	decodeData(t, r, &ov)
+	if ov.Found != 1 || ov.Rows[0].ProvinceName != "Nghệ An" {
+		t.Fatalf("lọc hồ sơ theo tỉnh: %s", r.Raw)
+	}
+	if g := e.getRaw(t, "/api/v1/geo/provinces", ""); g.Status != 200 || !strings.Contains(string(g.Raw), "VN79") {
+		t.Fatalf("geojson: %d", g.Status)
+	}
+
 	// CTV không xem được bản đồ
 	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/map", appCTV.AccessToken, nil), http.StatusForbidden)
 }

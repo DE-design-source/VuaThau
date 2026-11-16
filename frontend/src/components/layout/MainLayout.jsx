@@ -1,16 +1,29 @@
 import { Outlet } from 'react-router-dom'
 import { Toasts } from '@/components/ui'
+import useAuth from '@/hooks/useAuth'
 import Header from './Header'
 import Footer from './Footer'
 
 export default function MainLayout() {
-  return (
-    <div className="layout">
-      <Header />
-      <main className="container main">
+  const { isAuthenticated } = useAuth()
+  // Chưa đăng nhập: trang đăng nhập toàn màn hình, không thanh bên
+  if (!isAuthenticated) {
+    return (
+      <div className="auth-layout">
         <Outlet />
-      </main>
-      <Footer />
+        <Toasts />
+      </div>
+    )
+  }
+  return (
+    <div className="shell">
+      <Header />
+      <div className="shell-main">
+        <main className="main">
+          <Outlet />
+        </main>
+        <Footer />
+      </div>
       <Toasts />
     </div>
   )

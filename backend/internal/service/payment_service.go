@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"vuathau/backend/internal/model"
+	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/pkg/imaging"
 	"vuathau/backend/internal/pkg/xlsx"
 	"vuathau/backend/internal/repository"
@@ -95,6 +96,8 @@ type Config struct {
 	Banks          []string                    `json:"banks"`
 	Reasons        map[string][]string         `json:"reasons"`
 	GoogleClientID string                      `json:"google_client_id"`
+	// 34 tỉnh, thành từ 1/7/2025 (mã, tên, tỉnh cũ nhập vào)
+	Provinces []province.Province `json:"provinces"`
 }
 
 type PaymentService interface {
@@ -155,7 +158,7 @@ func (s *paymentService) Config(ctx context.Context, googleClientID string) (*Co
 		pay[n] = st.Amount(n)
 	}
 	return &Config{Statuses: model.Statuses, StatusOrder: model.StatusOrder, MinPhotos: st.MinPhotos, MaxPhotos: model.MaxPhotos,
-		PayMin: st.PayMin, Pay: pay, Stages: model.Stages, Banks: Banks, Reasons: Reasons, GoogleClientID: googleClientID}, nil
+		PayMin: st.PayMin, Pay: pay, Stages: model.Stages, Banks: Banks, Reasons: Reasons, GoogleClientID: googleClientID, Provinces: province.All()}, nil
 }
 
 func (s *paymentService) Settings(ctx context.Context) (model.Settings, error) {

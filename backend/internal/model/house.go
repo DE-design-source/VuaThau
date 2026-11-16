@@ -78,6 +78,8 @@ type House struct {
 	Source          string    `json:"source"` // app | inbox (Messenger)
 	DupOf           *int64    `json:"dup_of"` // hồ sơ trùng công trình (đã chụp trước)
 	SubmittedAt     *time.Time `json:"submitted_at"`
+	Province        string     `json:"province"`      // mã tỉnh mới (34 tỉnh, từ 1/7/2025), vd VN79
+	ProvinceName    string     `json:"province_name"`
 	CoverID         *int64    `json:"cover_id"`
 	PhotosTotal     int       `json:"photos_total"`
 	PhotosValid     int       `json:"photos_valid"`
