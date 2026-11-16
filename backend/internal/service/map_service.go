@@ -63,7 +63,18 @@ func (s *houseService) Map(ctx context.Context, q OverviewQuery) (*MapData, erro
 	if err != nil {
 		return nil, err
 	}
+	ids := make([]int64, len(res.Points))
+	for i, p := range res.Points {
+		ids[i] = p.ID
+	}
+	covers, err := s.siteCovers(ctx, idx, ids)
+	if err != nil {
+		return nil, err
+	}
 	for i := range res.Points {
+		if c, ok := covers[res.Points[i].ID]; ok {
+			res.Points[i].CoverID = ptr(c)
+		}
 		in, ok := idx[res.Points[i].ID]
 		res.Points[i].LastAt, res.Points[i].VIP = res.Points[i].At, ok && in.VIP
 		if ok {

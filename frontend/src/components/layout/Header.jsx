@@ -37,7 +37,6 @@ export default function Header() {
           <Mark size={36} />
           <span>
             <b>Vua Thầu Map</b>
-            <small>Quản lý nghiệm thu</small>
           </span>
         </Link>
         <nav className="side-nav" onClick={() => setOpen(false)}>

@@ -56,6 +56,7 @@ type MapPoint struct {
 	At         time.Time `json:"at"`
 	LastAt     time.Time `json:"last_at"` // lần chụp gần nhất ở công trình này (service điền)
 	VIP        bool      `json:"vip"`     // chụp công trình này đầu tiên (service điền)
+	CoverID    *int64    `json:"cover_id"` // hình đại diện: ảnh đầu của lần chụp gần nhất ở công trình (service điền)
 }
 
 // CTVSites: số công trình 1 CTV đã chụp.
@@ -87,6 +88,7 @@ type HouseRepository interface {
 	Contractors(ctx context.Context, q string) ([]Contractor, error)
 	OtherSites(ctx context.Context, ctvID int64, since time.Time) ([]OtherSite, error)
 	SiteDates(ctx context.Context) ([]SiteDate, error)
+	Covers(ctx context.Context, ids []int64) (map[int64]int64, error)
 	CountSource(ctx context.Context, source string) (int, error)
 	SetProvince(ctx context.Context, id int64, code string) error
 	NoProvince(ctx context.Context, afterID int64, limit int) ([]GeoRow, error)

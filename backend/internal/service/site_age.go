@@ -17,6 +17,7 @@ import (
 
 type SiteInfo struct {
 	LastAt time.Time
+	LastID int64 // hồ sơ chụp gần nhất của công trình (lấy hình đại diện)
 	VIP    bool
 }
 
@@ -37,7 +38,7 @@ func siteInfos(ds []repository.SiteDate, radiusM float64) map[int64]SiteInfo {
 	earlier := func(a, b repository.SiteDate) bool { return a.At.Before(b.At) || (a.At.Equal(b.At) && a.ID < b.ID) }
 	out := make(map[int64]SiteInfo, len(ds))
 	for _, d := range ds {
-		info := SiteInfo{LastAt: d.At, VIP: true}
+		info := SiteInfo{LastAt: d.At, LastID: d.ID, VIP: true}
 		c := k(d)
 		for da := int64(-1); da <= 1; da++ {
 			for db := int64(-1); db <= 1; db++ {
@@ -46,8 +47,8 @@ func siteInfos(ds []repository.SiteDate, radiusM float64) map[int64]SiteInfo {
 					if o.ID == d.ID || imaging.Meters(d.Lat, d.Lng, o.Lat, o.Lng) > radiusM {
 						continue
 					}
-					if o.At.After(info.LastAt) {
-						info.LastAt = o.At
+					if o.At.After(info.LastAt) || (o.At.Equal(info.LastAt) && o.ID > info.LastID) {
+						info.LastAt, info.LastID = o.At, o.ID
 					}
 					if earlier(o, d) {
 						info.VIP = false
@@ -86,4 +87,27 @@ func (s *houseService) markVIP(ctx context.Context, rows []model.House) error {
 		rows[i].VIP = idx[rows[i].ID].VIP
 	}
 	return nil
+}
+
+// siteCovers: hình đại diện (ảnh đầu của hồ sơ chụp gần nhất) cho công trình chứa mỗi hồ sơ trong ids.
+func (s *houseService) siteCovers(ctx context.Context, idx map[int64]SiteInfo, ids []int64) (map[int64]int64, error) {
+	last := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if in, ok := idx[id]; ok {
+			last = append(last, in.LastID)
+		} else {
+			last = append(last, id)
+		}
+	}
+	covers, err := s.houses.Covers(ctx, last)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64]int64, len(ids))
+	for i, id := range ids {
+		if c, ok := covers[last[i]]; ok {
+			out[id] = c
+		}
+	}
+	return out, nil
 }

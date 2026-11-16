@@ -30,3 +30,24 @@ func (r *houseRepository) SiteDates(ctx context.Context) ([]SiteDate, error) {
 	}
 	return out, rows.Err()
 }
+
+// Covers: ảnh đầu tiên của mỗi hồ sơ (hồ sơ id -> ảnh id).
+func (r *houseRepository) Covers(ctx context.Context, ids []int64) (map[int64]int64, error) {
+	out := map[int64]int64{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := r.db.Query(ctx, `SELECT house_id, MIN(id) FROM photos WHERE house_id = ANY($1) GROUP BY house_id`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var h, p int64
+		if err := rows.Scan(&h, &p); err != nil {
+			return nil, err
+		}
+		out[h] = p
+	}
+	return out, rows.Err()
+}

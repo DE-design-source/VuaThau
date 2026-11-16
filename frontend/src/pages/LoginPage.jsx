@@ -36,7 +36,6 @@ export default function LoginPage() {
           <Mark size={56} />
           <span>
             <b>Vua Thầu Map</b>
-            <small>Quản lý nghiệm thu</small>
           </span>
         </div>
         <div className="login-pitch">

@@ -6,7 +6,8 @@ import usePage from '@/hooks/usePage'
 import saleApi from '@/api/saleApi'
 import { Button, Kpi, PageHead, PageState } from '@/components/ui'
 import SiteList from '@/components/SiteList'
-import { AGE_FRESH, AGE_FRESH_LINE, AGE_STALE, ageTip, esc, gmapUrl, hsId, isStale, vnDate } from '@/utils/format'
+import { siteTip } from '@/utils/siteTip'
+import { AGE_FRESH, AGE_FRESH_LINE, AGE_STALE, esc, gmapUrl, hsId, isStale, vnDate } from '@/utils/format'
 import { SiteMap } from '@/pages/MapPage'
 
 export default function SaleMapPage() {
@@ -60,7 +61,7 @@ export default function SaleMapPage() {
             pop={pop}
             color={(p) => (isStale(p.last_at, stale) ? AGE_STALE : AGE_FRESH)}
             stroke={(p) => (isStale(p.last_at, stale) ? '#fff' : AGE_FRESH_LINE)}
-            tip={(p) => ageTip(p.last_at, stale)}
+            tip={(p) => siteTip(p, { staleDays: stale, prov: name[p.province] })}
             staleDays={stale}
             focus={focus}
           />

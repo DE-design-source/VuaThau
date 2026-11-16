@@ -24,6 +24,12 @@ func TestSiteInfos(t *testing.T) {
 		4: {LastAt: d0.AddDate(0, 0, 10), VIP: false},
 		5: {LastAt: d0.AddDate(0, 0, -3), VIP: true},
 	}
+	// hình đại diện lấy từ hồ sơ chụp gần nhất của công trình: #1 và #2 cùng công trình -> #2; #3, #4 cùng giờ -> id lớn hơn
+	for id, last := range map[int64]int64{1: 2, 2: 2, 3: 4, 4: 4, 5: 5} {
+		if got[id].LastID != last {
+			t.Errorf("#%d LastID = %d, muốn %d", id, got[id].LastID, last)
+		}
+	}
 	for id, w := range want {
 		if g := got[id]; !g.LastAt.Equal(w.LastAt) || g.VIP != w.VIP {
 			t.Errorf("#%d: %+v, muốn %+v", id, g, w)

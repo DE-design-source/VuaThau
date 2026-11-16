@@ -73,7 +73,18 @@ func (s *houseService) SaleMap(ctx context.Context, prov string, ctv int64) (*Sa
 		return nil, err
 	}
 	res.StaleDays = days
+	ids := make([]int64, len(res.Points))
+	for i, p := range res.Points {
+		ids[i] = p.ID
+	}
+	covers, err := s.siteCovers(ctx, idx, ids)
+	if err != nil {
+		return nil, err
+	}
 	for i := range res.Points {
+		if c, ok := covers[res.Points[i].ID]; ok {
+			res.Points[i].CoverID = ptr(c)
+		}
 		res.Points[i].LastAt = res.Points[i].At
 		if in, ok := idx[res.Points[i].ID]; ok {
 			res.Points[i].LastAt = in.LastAt
