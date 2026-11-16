@@ -3,11 +3,15 @@ package router
 import (
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"vuathau/backend/internal/config"
 	"vuathau/backend/internal/handler"
 	"vuathau/backend/internal/middleware"
+	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/response"
 	"vuathau/backend/internal/websocket"
 )
@@ -19,6 +23,9 @@ type Deps struct {
 	AuthHandler    *handler.AuthHandler
 	UserHandler    *handler.UserHandler
 	MessageHandler *handler.MessageHandler
+	HouseHandler   *handler.HouseHandler
+	PaymentHandler *handler.PaymentHandler
+	UserLookup     middleware.UserLookup
 	Hub            *websocket.Hub
 	HealthChecks   map[string]HealthCheck // e.g. "postgres", "redis"
 }
@@ -27,19 +34,83 @@ func New(d Deps) http.Handler {
 	mux := http.NewServeMux()
 	auth := middleware.Auth(d.Config.JWTSecret)
 	protected := func(fn http.HandlerFunc) http.Handler { return auth(fn) }
+	// role: đăng nhập + nạp người dùng (chặn token cũ, tài khoản khoá) + đúng vai trò (trống = mọi vai trò)
+	role := func(fn http.HandlerFunc, roles ...string) http.Handler {
+		return auth(middleware.Session(d.UserLookup, roles...)(fn))
+	}
+	const ctv, admin, ketoan = model.RoleCTV, model.RoleAdmin, model.RoleKetoan
 
 	mux.HandleFunc("GET /health", healthHandler(d.HealthChecks))
 
-	// Auth
-	mux.HandleFunc("POST /api/v1/auth/register", d.AuthHandler.Register)
-	mux.HandleFunc("POST /api/v1/auth/login", d.AuthHandler.Login)
+	a, u, h, p := d.AuthHandler, d.UserHandler, d.HouseHandler, d.PaymentHandler
 
-	// Users
-	mux.Handle("GET /api/v1/users/me", protected(d.UserHandler.Me))
-	mux.Handle("GET /api/v1/users", protected(d.UserHandler.List))
-	mux.Handle("GET /api/v1/users/{id}", protected(d.UserHandler.GetByID))
+	// Công khai
+	mux.HandleFunc("GET /api/v1/config", p.Config)
+	mux.HandleFunc("POST /api/v1/auth/register", a.Register)
+	mux.HandleFunc("POST /api/v1/auth/login", a.Login)
+	mux.HandleFunc("POST /api/v1/auth/google", a.Google)
 
-	// Messages
+	// Tài khoản (mọi vai trò)
+	mux.Handle("GET /api/v1/me", role(u.Me))
+	mux.Handle("GET /api/v1/users/me", role(u.Me))
+	mux.Handle("PUT /api/v1/me/bank", role(u.UpdateBank, ctv))
+	mux.Handle("PUT /api/v1/me/password", role(u.ChangePassword))
+	mux.Handle("DELETE /api/v1/me", role(u.DeleteSelf, ctv))
+
+	// CTV
+	mux.Handle("GET /api/v1/ctv/home", role(h.Home, ctv))
+	mux.Handle("GET /api/v1/ctv/income", role(h.Income, ctv))
+	mux.Handle("GET /api/v1/geocode", role(h.Geocode, ctv))
+	mux.Handle("POST /api/v1/photos/check", role(h.CheckPhoto, ctv))
+	mux.Handle("POST /api/v1/houses", role(h.Create, ctv))
+	mux.Handle("PUT /api/v1/houses/{id}", role(h.Save, ctv))
+	mux.Handle("POST /api/v1/houses/{id}/photos", role(h.AddPhotos, ctv))
+	mux.Handle("DELETE /api/v1/houses/{id}/photos/{pid}", role(h.DeletePhoto, ctv))
+
+	// Hồ sơ: CTV chủ hồ sơ, admin, kế toán (service kiểm quyền xem)
+	mux.Handle("GET /api/v1/houses/{id}", role(h.Detail))
+	mux.Handle("GET /api/v1/houses/{id}/state", role(h.State))
+	mux.Handle("GET /api/v1/photos/{pid}", role(h.Photo))
+	mux.Handle("GET /api/v1/batches/{id}", role(p.Batch))
+	mux.Handle("GET /api/v1/batches/{id}/receipt", role(p.Receipt))
+
+	// Admin
+	mux.Handle("GET /api/v1/admin/queue", role(h.Queue, admin))
+	mux.Handle("POST /api/v1/admin/approve", role(h.ApproveMany, admin))
+	mux.Handle("POST /api/v1/houses/{id}/review", role(h.Review, admin))
+	mux.Handle("POST /api/v1/houses/{id}/undo", role(h.Undo, admin))
+	mux.Handle("PUT /api/v1/houses/{id}/info", role(h.EditInfo, admin))
+	mux.Handle("GET /api/v1/staff", role(u.Staff, admin))
+	mux.Handle("POST /api/v1/staff", role(u.AddStaff, admin))
+	mux.Handle("POST /api/v1/users/{id}/lock", role(u.Lock, admin))
+	mux.Handle("POST /api/v1/users/{id}/password", role(u.ResetPassword, admin))
+	mux.Handle("GET /api/v1/settings", role(p.Settings, admin))
+	mux.Handle("PUT /api/v1/settings", role(p.SaveSettings, admin))
+
+	// Admin + kế toán
+	mux.Handle("PUT /api/v1/houses/{id}/amount", role(h.SetAmount, admin, ketoan))
+	mux.Handle("GET /api/v1/houses", role(h.Overview, admin, ketoan))
+	mux.Handle("GET /api/v1/ctvs", role(u.CTVs, admin, ketoan))
+	mux.Handle("GET /api/v1/ctvs/{id}", role(u.CTV, admin, ketoan))
+	mux.Handle("POST /api/v1/ctvs/{id}/adjustments", role(p.AddAdjustment, admin, ketoan))
+	mux.Handle("DELETE /api/v1/adjustments/{id}", role(p.DeleteAdjustment, admin, ketoan))
+	mux.Handle("GET /api/v1/batches", role(p.Batches, admin, ketoan))
+	mux.Handle("GET /api/v1/reports", role(p.Report, admin, ketoan))
+	mux.Handle("GET /api/v1/reports/export", role(p.ReportExport, admin, ketoan))
+
+	// Kế toán
+	mux.Handle("GET /api/v1/accounting", role(p.Accounting, ketoan))
+	mux.Handle("GET /api/v1/accounting/export", role(p.Export, ketoan))
+	mux.Handle("POST /api/v1/accounting/pay", role(p.PayMany, ketoan))
+	mux.Handle("GET /api/v1/payouts/{ctv_id}", role(p.Payout, ketoan))
+	mux.Handle("POST /api/v1/payouts/{ctv_id}", role(p.Pay, ketoan))
+	mux.Handle("PUT /api/v1/batches/{id}", role(p.SetRef, ketoan))
+	mux.Handle("POST /api/v1/batches/{id}/cancel", role(p.Cancel, ketoan))
+	mux.Handle("POST /api/v1/batches/{id}/receipt", role(p.UploadReceipt, ketoan))
+
+	// Scaffold: người dùng, tin nhắn, WebSocket
+	mux.Handle("GET /api/v1/users", role(u.List))
+	mux.Handle("GET /api/v1/users/{id}", role(u.GetByID))
 	mux.Handle("POST /api/v1/messages", protected(d.MessageHandler.Send))
 	mux.Handle("GET /api/v1/messages/{userID}", protected(d.MessageHandler.Conversation))
 
@@ -49,16 +120,39 @@ func New(d Deps) http.Handler {
 		d.Hub.ServeWS(w, r, uid)
 	}))
 
-	// Unknown routes get the standard JSON envelope instead of plain text.
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	// API lạ: envelope JSON. Còn lại: web React (nếu STATIC_DIR) hoặc 404.
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusNotFound, "route not found")
 	})
+	mux.Handle("/", spa(d.Config.StaticDir))
 
 	// Outermost first: CORS -> rate limit -> routes.
-	var h http.Handler = mux
-	h = middleware.RateLimit(d.Config.RateLimitRPS, d.Config.RateLimitBurst)(h)
-	h = middleware.CORS(d.Config.CORSAllowedOrigins)(h)
-	return h
+	var hd http.Handler = mux
+	hd = middleware.RateLimit(d.Config.RateLimitRPS, d.Config.RateLimitBurst)(hd)
+	hd = middleware.CORS(d.Config.CORSAllowedOrigins)(hd)
+	return hd
+}
+
+// spa phục vụ web React đã build: file có thật thì trả file, đường dẫn lạ trả index.html (React Router xử lý).
+func spa(dir string) http.Handler {
+	if dir == "" {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			response.Error(w, http.StatusNotFound, "route not found")
+		})
+	}
+	files := http.FileServer(http.Dir(dir))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := filepath.Join(dir, filepath.FromSlash(strings.TrimPrefix(r.URL.Path, "/")))
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			if strings.HasPrefix(r.URL.Path, "/assets/") {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			}
+			files.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-cache")
+		http.ServeFile(w, r, filepath.Join(dir, "index.html"))
+	})
 }
 
 func healthHandler(checks map[string]HealthCheck) http.HandlerFunc {

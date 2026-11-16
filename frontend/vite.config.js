@@ -1,12 +1,9 @@
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '')
-  // Máy chủ Nghiệm thu (chung với app CTV). Dev: /nt/* được chuyển tới đây, khỏi vướng CORS.
-  const nt = env.NT_PROXY_TARGET || 'https://nghiemthu.vuathau.com.vn'
+export default defineConfig(() => {
   return {
     plugins: [react()],
     resolve: {
@@ -17,13 +14,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       proxy: {
-        '/nt': {
-          target: nt,
-          changeOrigin: true,
-          secure: true,
-          rewrite: (p) => p.replace(/^\/nt/, ''),
-        },
-        // Backend Go của repo (chưa dùng cho nghiệm thu)
+        // Backend Go (API nghiệm thu /api/v1, chung với app CTV)
         '/api': {
           target: 'http://localhost:8080',
           changeOrigin: true,

@@ -1,35 +1,38 @@
-// Thanh toán 1 CTV (/thanh-toan/:id): mọi hồ sơ đã duyệt + thưởng/trừ chưa trả, nội dung chuyển khoản, xác nhận đã trả.
+// Thanh toán 1 CTV (/payouts/:ctvId): mọi hồ sơ đã duyệt + thưởng/trừ chưa trả, nội dung chuyển khoản, xác nhận đã trả.
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import usePage from '@/hooks/usePage'
 import useAct from '@/hooks/useAct'
 import useCfg from '@/hooks/useCfg'
 import { toast } from '@/services/toast'
+import accountingApi from '@/api/accountingApi'
 import { Button, HouseTable, PageHead, PageState } from '@/components/ui'
 import { money } from '@/utils/format'
 import AdjustBox from './parts/AdjustBox'
 
 export default function PayPage() {
-  const { id } = useParams()
-  const { data: d, err, reload } = usePage(`/thanh-toan/${id}`)
+  const { ctvId: id } = useParams()
+  const { data: d, err, reload } = usePage(() => accountingApi.payout(id), [id])
   const [act, busy] = useAct(reload)
   const cfg = useCfg()
   const [ref, setRef] = useState('')
   if (!d) return <PageState err={err} retry={reload} />
-  const { ctv, bank, rows = [], adjs = [] } = d
-  const enough = rows.length >= (cfg?.PAY_MIN ?? 5) && d.total > 0
+  const { user: ctv, bank = {}, rows = [], adjustments: adjs = [] } = d
+  const enough = rows.length >= (cfg?.pay_min ?? 5) && d.total > 0
   const copy = (t) => navigator.clipboard?.writeText(String(t)).then(() => toast(`Đã chép: ${t}`), () => {})
 
   const pay = () => {
     if (!window.confirm(`Xác nhận ĐÃ chuyển ${money(d.total)} cho ${ctv.name}?`)) return
     // gửi kèm đúng danh sách đang thấy: máy chủ từ chối nếu dữ liệu vừa đổi, tránh trả nhầm
-    act('pay', `/thanh-toan/${id}`, { ids: rows.map((r) => r.id), adj: adjs.map((a) => a.id), ref })
+    act('pay', () => accountingApi.pay(id, { house_ids: rows.map((r) => r.id), adjustment_ids: adjs.map((a) => a.id), ref }), {
+      go: (data) => (data.batch_id ? `/batches/${data.batch_id}` : '/accounting'),
+    })
   }
 
   return (
     <section className="stack">
-      <PageHead title={`Thanh toán cho ${ctv.name}`} sub={`${ctv.phone} · ${rows.length} hồ sơ đã duyệt`}>
-        <Link className="btn btn-secondary" to={`/ctv/${ctv.id}`}>
+      <PageHead title={`Thanh toán cho ${ctv.name}`} sub={`${ctv.username} · ${rows.length} hồ sơ đã duyệt`}>
+        <Link className="btn btn-secondary" to={`/ctvs/${ctv.id}`}>
           Hồ sơ CTV
         </Link>
       </PageHead>
@@ -70,14 +73,14 @@ export default function PayPage() {
           <Button onClick={pay} disabled={!enough} loading={busy === 'pay'}>
             Đã chuyển khoản {money(d.total)}
           </Button>
-          {!enough && <p className="muted">Cần ít nhất {cfg?.PAY_MIN ?? 5} hồ sơ đã duyệt và tổng tiền lớn hơn 0đ.</p>}
+          {!enough && <p className="muted">Cần ít nhất {cfg?.pay_min ?? 5} hồ sơ đã duyệt và tổng tiền lớn hơn 0đ.</p>}
         </div>
-        <AdjustBox ctvId={ctv.id} adjs={adjs} act={act} busy={busy} ve="tt" />
+        <AdjustBox ctvId={ctv.id} adjs={adjs} act={act} busy={busy} />
       </div>
 
       <div className="card stack">
         <h2>Hồ sơ được trả lần này</h2>
-        <HouseTable rows={rows} stats={d.stats} showCtv={false} />
+        <HouseTable rows={rows} showCtv={false} />
       </div>
     </section>
   )

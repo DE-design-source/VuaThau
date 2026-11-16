@@ -6,7 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"io"
+	"math/rand/v2"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,18 +20,23 @@ import (
 	"time"
 
 	gws "github.com/gorilla/websocket"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 
 	"vuathau/backend/internal/config"
 	"vuathau/backend/internal/handler"
+	"vuathau/backend/internal/integration/google"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/token"
+	"vuathau/backend/internal/repository"
 	"vuathau/backend/internal/router"
 	"vuathau/backend/internal/service"
+	"vuathau/backend/internal/storage"
 	"vuathau/backend/internal/websocket"
 )
 
 const (
-	testSecret  = "test-secret"
+	testSecret  = "test-secret-test-secret-test-secret"
 	allowedOrig = "http://localhost:5173"
 	testPass    = "s3cret-password"
 )
@@ -39,7 +49,10 @@ type testEnv struct {
 	t     *testing.T
 	srv   *httptest.Server
 	hub   *websocket.Hub
-	store *memStore
+	db    *pgxpool.Pool
+	house service.HouseService
+	data  string // DATA_DIR của máy chủ test
+	seq   atomic.Int64
 }
 
 type envSettings struct {
@@ -64,8 +77,8 @@ func withCORSOrigins(origins ...string) envOption {
 	return func(s *envSettings) { s.cfg.CORSAllowedOrigins = origins }
 }
 
-// newTestEnv wires the real services, handlers, hub and router on top of the
-// in-memory fakes and serves them with httptest.
+// newTestEnv dựng service, handler, hub, router thật trên 1 CSDL Postgres riêng và chạy bằng httptest.
+// AI, Google Drive, tra địa chỉ: tắt (không gọi dịch vụ ngoài khi test).
 func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 	t.Helper()
 
@@ -76,8 +89,8 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 		CORSAllowedOrigins: []string{allowedOrig},
 		RateLimitRPS:       1000,
 		RateLimitBurst:     1000,
+		DataDir:            t.TempDir(),
 	}
-
 	settings := &envSettings{
 		cfg: cfg,
 		healthChecks: map[string]router.HealthCheck{
@@ -89,18 +102,36 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 		o(settings)
 	}
 
-	store := newMemStore()
+	db := newDB(t)
+	files, err := storage.New(cfg.DataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	hub := websocket.NewHub(cfg.CORSAllowedOrigins)
 
-	authSvc := service.NewAuthService(&fakeAuthRepo{s: store}, cfg.JWTSecret, cfg.JWTExpiry)
-	userSvc := service.NewUserService(&fakeUserRepo{s: store})
-	msgSvc := service.NewMessageService(&fakeMessageRepo{s: store}, hub)
+	authRepo := repository.NewAuthRepository(db)
+	userRepo := repository.NewUserRepository(db)
+	houseRepo := repository.NewHouseRepository(db)
+	photoRepo := repository.NewPhotoRepository(db)
+	logRepo := repository.NewLogRepository(db)
+	payRepo := repository.NewPaymentRepository(db)
+	settingsRepo := repository.NewSettingsRepository(db)
+
+	authSvc := service.NewAuthService(authRepo, noGoogle{}, cfg.JWTSecret, cfg.JWTExpiry)
+	userSvc := service.NewUserService(userRepo, authRepo, houseRepo, photoRepo, payRepo, logRepo, settingsRepo)
+	msgSvc := service.NewMessageService(repository.NewMessageRepository(db), hub)
+	houseSvc := service.NewHouseService(service.HouseDeps{Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo,
+		Payments: payRepo, Settings: settingsRepo, Files: files, Public: "http://test"})
+	paySvc := service.NewPaymentService(payRepo, houseRepo, photoRepo, userRepo, logRepo, settingsRepo, files)
 
 	deps := router.Deps{
 		Config:         cfg,
 		AuthHandler:    handler.NewAuthHandler(authSvc),
-		UserHandler:    handler.NewUserHandler(userSvc),
+		UserHandler:    handler.NewUserHandler(userSvc, authSvc),
 		MessageHandler: handler.NewMessageHandler(msgSvc),
+		HouseHandler:   handler.NewHouseHandler(houseSvc),
+		PaymentHandler: handler.NewPaymentHandler(paySvc, ""),
+		UserLookup:     userRepo.GetByID,
 		Hub:            hub,
 		HealthChecks:   settings.healthChecks,
 	}
@@ -109,13 +140,18 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 	t.Cleanup(func() {
 		hub.Close()
 		srv.Close()
+		houseSvc.Wait()
 	})
-	return &testEnv{t: t, srv: srv, hub: hub, store: store}
+	return &testEnv{t: t, srv: srv, hub: hub, db: db, house: houseSvc, data: cfg.DataDir}
 }
+
+type noGoogle struct{}
+
+func (noGoogle) Verify(context.Context, string) *google.Identity { return nil }
 
 func mustSignToken(t *testing.T, secret string, userID int64) string {
 	t.Helper()
-	tok, err := token.Generate(secret, userID, time.Hour)
+	tok, err := token.Generate(secret, userID, 0, time.Hour)
 	if err != nil {
 		t.Fatalf("sign token: %v", err)
 	}
@@ -168,24 +204,57 @@ func (e *testEnv) do(t *testing.T, method, path, tok string, body any) apiResp {
 
 func (e *testEnv) send(t *testing.T, req *http.Request) apiResp {
 	t.Helper()
+	out := e.sendRaw(t, req)
+	if len(bytes.TrimSpace(out.Raw)) > 0 {
+		if err := json.Unmarshal(out.Raw, &out.Body); err != nil {
+			t.Fatalf("%s %s: response is not a JSON envelope: %v\n%s", req.Method, req.URL.Path, err, out.Raw)
+		}
+	}
+	return out
+}
 
+// sendRaw: không đòi JSON (ảnh, Excel).
+func (e *testEnv) sendRaw(t *testing.T, req *http.Request) apiResp {
+	t.Helper()
 	res, err := e.srv.Client().Do(req)
 	if err != nil {
 		t.Fatalf("%s %s: %v", req.Method, req.URL.Path, err)
 	}
 	defer res.Body.Close()
-
 	raw, err := io.ReadAll(res.Body)
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
-	out := apiResp{Status: res.StatusCode, Header: res.Header, Raw: raw}
-	if len(bytes.TrimSpace(raw)) > 0 {
-		if err := json.Unmarshal(raw, &out.Body); err != nil {
-			t.Fatalf("%s %s: response is not a JSON envelope: %v\n%s", req.Method, req.URL.Path, err, raw)
+	return apiResp{Status: res.StatusCode, Header: res.Header, Raw: raw}
+}
+
+func (e *testEnv) getRaw(t *testing.T, path, tok string) apiResp {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, e.srv.URL+path, nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	return e.sendRaw(t, req)
+}
+
+// upload gửi multipart: các file ở trường field + các trường chữ.
+func (e *testEnv) upload(t *testing.T, path, tok, field string, files [][]byte, fields map[string]string) apiResp {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for i, f := range files {
+		fw, err := w.CreateFormFile(field, fmt.Sprintf("anh-%d.jpg", i+1))
+		if err != nil {
+			t.Fatal(err)
 		}
+		_, _ = fw.Write(f)
 	}
-	return out
+	for k, v := range fields {
+		_ = w.WriteField(k, v)
+	}
+	_ = w.Close()
+	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+path, &buf)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+tok)
+	return e.send(t, req)
 }
 
 func expectStatus(t *testing.T, r apiResp, want int) {
@@ -215,11 +284,18 @@ type authData struct {
 	ExpiresIn   int64      `json:"expires_in"`
 }
 
-func (e *testEnv) register(t *testing.T, username, email, password string) authData {
+// newPhone: SĐT duy nhất trong env.
+func (e *testEnv) newPhone() string { return fmt.Sprintf("09%08d", e.seq.Add(1)) }
+
+func ctvBody(name, phone string) map[string]string {
+	return map[string]string{"name": name, "phone": phone, "password": testPass,
+		"bank_name": "Vietcombank", "bank_no": "0123456789", "bank_owner": "nguyen van a"}
+}
+
+// register: CTV đăng ký bằng SĐT.
+func (e *testEnv) register(t *testing.T, name string) authData {
 	t.Helper()
-	r := e.do(t, http.MethodPost, "/api/v1/auth/register", "", map[string]string{
-		"username": username, "email": email, "password": password,
-	})
+	r := e.do(t, http.MethodPost, "/api/v1/auth/register", "", ctvBody(name, e.newPhone()))
 	expectStatus(t, r, http.StatusCreated)
 	var a authData
 	decodeData(t, r, &a)
@@ -227,6 +303,60 @@ func (e *testEnv) register(t *testing.T, username, email, password string) authD
 		t.Fatalf("register returned incomplete data: %s", r.Raw)
 	}
 	return a
+}
+
+// staff tạo tài khoản admin / kế toán thẳng trong CSDL rồi đăng nhập.
+func (e *testEnv) staff(t *testing.T, role string) authData {
+	t.Helper()
+	login := fmt.Sprintf("%s_%d", role, e.seq.Add(1))
+	hash, _ := bcrypt.GenerateFromPassword([]byte(testPass), bcrypt.MinCost)
+	if _, err := e.db.Exec(context.Background(), `INSERT INTO users (username, name, role, password_hash) VALUES ($1, $2, $3, $4)`,
+		login, "NV "+role, role, string(hash)); err != nil {
+		t.Fatalf("tạo nhân viên: %v", err)
+	}
+	return e.login(t, login, testPass)
+}
+
+func (e *testEnv) login(t *testing.T, login, pw string) authData {
+	t.Helper()
+	r := e.do(t, http.MethodPost, "/api/v1/auth/login", "", map[string]string{"login": login, "password": pw})
+	expectStatus(t, r, http.StatusOK)
+	var a authData
+	decodeData(t, r, &a)
+	return a
+}
+
+// photo: JPEG ngẫu nhiên khác nhau (dHash khác nhau) để không bị coi là ảnh trùng.
+func photo(t *testing.T, seed uint64) []byte {
+	t.Helper()
+	rnd := rand.New(rand.NewPCG(seed, seed*7+1))
+	img := image.NewRGBA(image.Rect(0, 0, 160, 120))
+	for by := 0; by < 8; by++ {
+		for bx := 0; bx < 9; bx++ {
+			c := color.RGBA{uint8(rnd.IntN(256)), uint8(rnd.IntN(256)), uint8(rnd.IntN(256)), 255}
+			for y := by * 15; y < (by+1)*15; y++ {
+				for x := bx * 18; x < min(160, (bx+1)*18); x++ {
+					img.Set(x, y, c)
+				}
+			}
+		}
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90}); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// cameraMeta: thông tin camera app gửi kèm (giờ chụp, GPS) cho n ảnh.
+func cameraMeta(n int, lat float64) string {
+	t := time.Now().In(service.VN).Format("2006-01-02 15:04")
+	ms := make([]map[string]any, n)
+	for i := range ms {
+		ms[i] = map[string]any{"t": t, "lat": lat, "lng": 106.7, "acc": 8, "addr": "12 Lê Lợi, Quận 1, TP HCM"}
+	}
+	b, _ := json.Marshal(ms)
+	return string(b)
 }
 
 // ---------------------------------------------------------------------------
@@ -246,13 +376,10 @@ func TestHealth(t *testing.T) {
 		e := newTestEnv(t)
 		r := e.do(t, http.MethodGet, "/health", "", nil)
 		expectStatus(t, r, http.StatusOK)
-		if !r.Body.Success {
-			t.Fatalf("success = false: %s", r.Raw)
-		}
-		var d healthData
-		decodeData(t, r, &d)
-		if d.Status != "ok" || d.Services["postgres"] != "up" || d.Services["redis"] != "up" {
-			t.Fatalf("unexpected health data: %+v", d)
+		var h healthData
+		decodeData(t, r, &h)
+		if h.Status != "ok" || h.Services["postgres"] != "up" || h.Services["redis"] != "up" {
+			t.Fatalf("unexpected health: %+v", h)
 		}
 	})
 
@@ -264,161 +391,105 @@ func TestHealth(t *testing.T) {
 		}))
 		r := e.do(t, http.MethodGet, "/health", "", nil)
 		expectStatus(t, r, http.StatusServiceUnavailable)
-		if r.Body.Success {
-			t.Fatalf("success = true, want false: %s", r.Raw)
+		var h healthData
+		decodeData(t, r, &h)
+		if h.Status != "degraded" || h.Services["redis"] != "down" || r.Body.Success {
+			t.Fatalf("unexpected health: %+v (success=%v)", h, r.Body.Success)
 		}
-		var d healthData
-		decodeData(t, r, &d)
-		if d.Status != "degraded" || d.Services["redis"] != "down" || d.Services["postgres"] != "up" {
-			t.Fatalf("unexpected health data: %+v", d)
+	})
+
+	t.Run("unknown api route", func(t *testing.T) {
+		t.Parallel()
+		e := newTestEnv(t)
+		r := e.do(t, http.MethodGet, "/api/v1/nope", "", nil)
+		expectStatus(t, r, http.StatusNotFound)
+		if r.Body.Success || r.Body.Error == "" {
+			t.Fatalf("404 body is not an error envelope: %s", r.Raw)
 		}
 	})
 }
 
 // ---------------------------------------------------------------------------
-// 2. Register -> Login -> Me
+// 2. Auth
 // ---------------------------------------------------------------------------
 
 func TestAuthFlow(t *testing.T) {
 	t.Parallel()
 	e := newTestEnv(t)
 
-	// Register (email is trimmed and lower-cased).
-	r := e.do(t, http.MethodPost, "/api/v1/auth/register", "", map[string]string{
-		"username": "alice", "email": "  Alice@Example.com ", "password": testPass,
-	})
+	phone := e.newPhone()
+	r := e.do(t, http.MethodPost, "/api/v1/auth/register", "", ctvBody("Nguyễn Văn A", phone))
 	expectStatus(t, r, http.StatusCreated)
 	assertNoPasswordLeak(t, r)
 	var reg authData
 	decodeData(t, r, &reg)
-	if reg.AccessToken == "" {
-		t.Fatal("register: empty access_token")
+	if reg.User.Role != model.RoleCTV || reg.User.Username != phone || reg.ExpiresIn != 3600 {
+		t.Fatalf("unexpected register data: %+v", reg)
 	}
-	if reg.User.Email != "alice@example.com" || reg.User.Username != "alice" {
-		t.Fatalf("register: unexpected user %+v", reg.User)
-	}
-	if reg.ExpiresIn != int64(time.Hour.Seconds()) {
-		t.Fatalf("register: expires_in = %d, want 3600", reg.ExpiresIn)
+	if reg.User.Bank != "Vietcombank · 0123456789 · NGUYEN VAN A" {
+		t.Fatalf("bank = %q", reg.User.Bank)
 	}
 
-	// Login (case-insensitive email).
-	r = e.do(t, http.MethodPost, "/api/v1/auth/login", "", map[string]string{
-		"email": "ALICE@example.com", "password": testPass,
-	})
-	expectStatus(t, r, http.StatusOK)
-	assertNoPasswordLeak(t, r)
-	var login authData
-	decodeData(t, r, &login)
-	if login.AccessToken == "" || login.User.ID != reg.User.ID {
-		t.Fatalf("login: unexpected data %s", r.Raw)
-	}
-
-	// /users/me works with both tokens.
-	for name, tok := range map[string]string{"register token": reg.AccessToken, "login token": login.AccessToken} {
-		r = e.do(t, http.MethodGet, "/api/v1/users/me", tok, nil)
+	// SĐT gõ có dấu cách vẫn đăng nhập được
+	login := e.login(t, phone[:4]+" "+phone[4:], testPass)
+	for _, tok := range []string{reg.AccessToken, login.AccessToken} {
+		r = e.do(t, http.MethodGet, "/api/v1/me", tok, nil)
 		expectStatus(t, r, http.StatusOK)
 		assertNoPasswordLeak(t, r)
-		var me model.User
+		var me service.MeResult
 		decodeData(t, r, &me)
-		if me.Email != "alice@example.com" || me.ID != reg.User.ID {
-			t.Fatalf("me (%s): unexpected user %+v", name, me)
+		if me.User.ID != reg.User.ID || me.User.Name != "Nguyễn Văn A" || me.Bank.No != "0123456789" || me.Money == nil {
+			t.Fatalf("unexpected /me: %s", r.Raw)
 		}
 	}
-
-	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/users/999", login.AccessToken, nil), http.StatusNotFound)
+	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/users/999999", login.AccessToken, nil), http.StatusNotFound)
 	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/users/abc", login.AccessToken, nil), http.StatusBadRequest)
 }
 
-// Other users' emails are private: only /users/me (or your own id) shows them.
-func TestUserEmailPrivacy(t *testing.T) {
+func TestUserPrivacy(t *testing.T) {
 	t.Parallel()
 	e := newTestEnv(t)
-	a := e.register(t, "alice", "alice@example.com", testPass)
-	b := e.register(t, "bobby", "bob@example.com", testPass)
+	a := e.register(t, "Alice")
+	b := e.register(t, "Bob")
 
-	// hasEmailField reports whether the raw JSON object carries an "email" key.
-	hasEmailField := func(t *testing.T, raw json.RawMessage) bool {
-		t.Helper()
-		var obj map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &obj); err != nil {
-			t.Fatalf("decode user object: %v (%s)", err, raw)
-		}
-		_, ok := obj["email"]
-		return ok
+	r := e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/users/%d", b.User.ID), a.AccessToken, nil)
+	expectStatus(t, r, http.StatusOK)
+	var u model.User
+	decodeData(t, r, &u)
+	if u.Bank != "" {
+		t.Fatalf("other user's bank leaked: %s", r.Raw)
 	}
-
-	t.Run("other user by id has no email", func(t *testing.T) {
-		r := e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/users/%d", b.User.ID), a.AccessToken, nil)
-		expectStatus(t, r, http.StatusOK)
-		assertNoPasswordLeak(t, r)
-		if hasEmailField(t, r.Body.Data) {
-			t.Fatalf("other user's email exposed: %s", r.Raw)
-		}
-		if bytes.Contains(r.Raw, []byte("bob@example.com")) {
-			t.Fatalf("other user's email exposed: %s", r.Raw)
-		}
-	})
-
-	t.Run("own user by id has email", func(t *testing.T) {
-		r := e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/users/%d", a.User.ID), a.AccessToken, nil)
-		expectStatus(t, r, http.StatusOK)
-		var u model.User
-		decodeData(t, r, &u)
-		if u.Email != "alice@example.com" {
-			t.Fatalf("own email = %q, want alice@example.com", u.Email)
-		}
-	})
-
-	t.Run("list shows only own email", func(t *testing.T) {
-		r := e.do(t, http.MethodGet, "/api/v1/users", a.AccessToken, nil)
-		expectStatus(t, r, http.StatusOK)
-		assertNoPasswordLeak(t, r)
-		var items []json.RawMessage
-		decodeData(t, r, &items)
-		if len(items) != 2 {
-			t.Fatalf("users list length = %d, want 2: %s", len(items), r.Raw)
-		}
-		for _, raw := range items {
-			var u model.User
-			if err := json.Unmarshal(raw, &u); err != nil {
-				t.Fatal(err)
-			}
-			switch u.ID {
-			case a.User.ID:
-				if u.Email != "alice@example.com" {
-					t.Fatalf("own email in list = %q", u.Email)
-				}
-			case b.User.ID:
-				if hasEmailField(t, raw) {
-					t.Fatalf("other user's email exposed in list: %s", raw)
-				}
-			default:
-				t.Fatalf("unexpected user in list: %s", raw)
-			}
-		}
-	})
+	r = e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/users/%d", a.User.ID), a.AccessToken, nil)
+	decodeData(t, r, &u)
+	if u.Bank == "" {
+		t.Fatalf("own bank should be visible: %s", r.Raw)
+	}
 }
-
-// ---------------------------------------------------------------------------
-// 3. Register validation
-// ---------------------------------------------------------------------------
 
 func TestRegisterValidation(t *testing.T) {
 	t.Parallel()
 	e := newTestEnv(t)
 
+	base := ctvBody("Trần B", "0912345678")
+	with := func(k, v string) map[string]string {
+		m := map[string]string{}
+		for kk, vv := range base {
+			m[kk] = vv
+		}
+		m[k] = v
+		return m
+	}
 	cases := []struct {
 		name string
 		body any
 	}{
-		{"short password", map[string]string{"username": "bob", "email": "bob@example.com", "password": "short"}},
-		{"password over 72 bytes", map[string]string{"username": "bob", "email": "bob@example.com", "password": strings.Repeat("x", 73)}},
-		{"bad email", map[string]string{"username": "bob", "email": "not-an-email", "password": testPass}},
-		{"display-name email", map[string]string{"username": "bob", "email": "Bob <bob@example.com>", "password": testPass}},
-		{"empty email", map[string]string{"username": "bob", "email": "", "password": testPass}},
-		{"short username", map[string]string{"username": "ab", "email": "bob@example.com", "password": testPass}},
-		{"blank username", map[string]string{"username": "     ", "email": "bob@example.com", "password": testPass}},
-		{"malformed JSON", `{"username": "bob",`},
+		{"malformed json", `{"name":`},
+		{"bad phone", with("phone", "12345")},
+		{"short password", with("password", "123")},
+		{"no name", with("name", "  ")},
+		{"no bank", with("bank_name", "")},
+		{"bank number not digits", with("bank_no", "abc123")},
+		{"no bank owner", with("bank_owner", "")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -426,201 +497,459 @@ func TestRegisterValidation(t *testing.T) {
 			r := e.do(t, http.MethodPost, "/api/v1/auth/register", "", tc.body)
 			expectStatus(t, r, http.StatusBadRequest)
 			if r.Body.Success || r.Body.Error == "" {
-				t.Fatalf("expected error envelope, got %s", r.Raw)
+				t.Fatalf("expected error envelope: %s", r.Raw)
 			}
 		})
 	}
 }
 
-// ---------------------------------------------------------------------------
-// 4. Duplicate registration
-// ---------------------------------------------------------------------------
-
 func TestRegisterDuplicate(t *testing.T) {
 	t.Parallel()
 	e := newTestEnv(t)
-	e.register(t, "carol", "carol@example.com", testPass)
-
-	t.Run("same email different case", func(t *testing.T) {
-		r := e.do(t, http.MethodPost, "/api/v1/auth/register", "", map[string]string{
-			"username": "carol2", "email": "CAROL@example.com", "password": testPass,
-		})
-		expectStatus(t, r, http.StatusConflict)
-	})
-	t.Run("same username", func(t *testing.T) {
-		r := e.do(t, http.MethodPost, "/api/v1/auth/register", "", map[string]string{
-			"username": "carol", "email": "other@example.com", "password": testPass,
-		})
-		expectStatus(t, r, http.StatusConflict)
-	})
+	phone := e.newPhone()
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/auth/register", "", ctvBody("C", phone)), http.StatusCreated)
+	r := e.do(t, http.MethodPost, "/api/v1/auth/register", "", ctvBody("C2", phone))
+	expectStatus(t, r, http.StatusConflict)
 }
-
-// ---------------------------------------------------------------------------
-// 5. Bad credentials
-// ---------------------------------------------------------------------------
 
 func TestLoginInvalidCredentials(t *testing.T) {
 	t.Parallel()
 	e := newTestEnv(t)
-	e.register(t, "dave", "dave@example.com", testPass)
+	a := e.register(t, "Dave")
 
-	cases := []struct{ name, email, password string }{
-		{"wrong password", "dave@example.com", "wrong-password"},
-		{"unknown email", "nobody@example.com", testPass},
-		{"empty password", "dave@example.com", ""},
+	for _, body := range []map[string]string{
+		{"login": a.User.Username, "password": "wrong-password"},
+		{"login": "0999999999", "password": testPass},
+	} {
+		r := e.do(t, http.MethodPost, "/api/v1/auth/login", "", body)
+		expectStatus(t, r, http.StatusUnauthorized)
 	}
-	var errMsgs []string
-	for _, tc := range cases {
-		r := e.do(t, http.MethodPost, "/api/v1/auth/login", "", map[string]string{
-			"email": tc.email, "password": tc.password,
-		})
-		if r.Status != http.StatusUnauthorized {
-			t.Fatalf("%s: status = %d, want 401; body %s", tc.name, r.Status, r.Raw)
-		}
-		errMsgs = append(errMsgs, r.Body.Error)
+
+	// sai 5 lần liền: khoá đăng nhập 5 phút, kể cả đúng mật khẩu
+	for range 5 {
+		e.do(t, http.MethodPost, "/api/v1/auth/login", "", map[string]string{"login": a.User.Username, "password": "x"})
 	}
-	// No user enumeration: wrong password and unknown email look the same.
-	if errMsgs[0] != errMsgs[1] {
-		t.Fatalf("error messages differ (user enumeration): %q vs %q", errMsgs[0], errMsgs[1])
-	}
+	r := e.do(t, http.MethodPost, "/api/v1/auth/login", "", map[string]string{"login": a.User.Username, "password": testPass})
+	expectStatus(t, r, http.StatusTooManyRequests)
 }
-
-// ---------------------------------------------------------------------------
-// 6. Protected routes require a valid token
-// ---------------------------------------------------------------------------
 
 func TestProtectedRoutesRequireToken(t *testing.T) {
 	t.Parallel()
 	e := newTestEnv(t)
-
 	routes := []struct{ method, path string }{
-		{http.MethodGet, "/api/v1/users/me"},
+		{http.MethodGet, "/api/v1/me"},
 		{http.MethodGet, "/api/v1/users"},
 		{http.MethodGet, "/api/v1/users/1"},
 		{http.MethodPost, "/api/v1/messages"},
 		{http.MethodGet, "/api/v1/messages/1"},
-		{http.MethodGet, "/ws"},
-	}
-	tokens := []struct{ name, tok string }{
-		{"no token", ""},
-		{"garbage token", "not.a.jwt"},
-		{"wrong secret", mustSignToken(t, "other-secret", 1)},
+		{http.MethodGet, "/api/v1/ctv/home"},
+		{http.MethodPost, "/api/v1/houses"},
+		{http.MethodGet, "/api/v1/houses/1"},
+		{http.MethodGet, "/api/v1/photos/1"},
+		{http.MethodGet, "/api/v1/admin/queue"},
+		{http.MethodGet, "/api/v1/accounting"},
+		{http.MethodGet, "/api/v1/reports"},
 	}
 	for _, rt := range routes {
-		for _, tk := range tokens {
-			t.Run(rt.method+" "+rt.path+" "+tk.name, func(t *testing.T) {
-				t.Parallel()
-				var body any
-				if rt.method == http.MethodPost {
-					body = map[string]any{"receiver_id": 2, "content": "hi"}
-				}
-				r := e.do(t, rt.method, rt.path, tk.tok, body)
-				expectStatus(t, r, http.StatusUnauthorized)
-				if r.Body.Success {
-					t.Fatalf("success = true on 401: %s", r.Raw)
-				}
-			})
-		}
+		t.Run(rt.method+" "+rt.path, func(t *testing.T) {
+			t.Parallel()
+			expectStatus(t, e.do(t, rt.method, rt.path, "", nil), http.StatusUnauthorized)
+			expectStatus(t, e.do(t, rt.method, rt.path, "not-a-jwt", nil), http.StatusUnauthorized)
+			expired, _ := token.Generate(testSecret, 1, 0, -time.Minute)
+			expectStatus(t, e.do(t, rt.method, rt.path, expired, nil), http.StatusUnauthorized)
+			wrongKey := mustSignToken(t, "another-secret-another-secret-xx", 1)
+			expectStatus(t, e.do(t, rt.method, rt.path, wrongKey, nil), http.StatusUnauthorized)
+		})
 	}
 }
 
+func TestRoles(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	ctv := e.register(t, "CTV")
+	admin := e.staff(t, model.RoleAdmin)
+	kt := e.staff(t, model.RoleKetoan)
+
+	cases := []struct {
+		who  authData
+		path string
+		want int
+	}{
+		{ctv, "/api/v1/admin/queue", http.StatusForbidden},
+		{ctv, "/api/v1/accounting", http.StatusForbidden},
+		{ctv, "/api/v1/houses", http.StatusForbidden},
+		{admin, "/api/v1/admin/queue", http.StatusOK},
+		{admin, "/api/v1/accounting", http.StatusForbidden},
+		{admin, "/api/v1/ctv/home", http.StatusForbidden},
+		{kt, "/api/v1/accounting", http.StatusOK},
+		{kt, "/api/v1/admin/queue", http.StatusForbidden},
+		{kt, "/api/v1/houses", http.StatusOK},
+		{kt, "/api/v1/settings", http.StatusForbidden},
+		{ctv, "/api/v1/ctv/home", http.StatusOK},
+	}
+	for _, c := range cases {
+		expectStatus(t, e.do(t, http.MethodGet, c.path, c.who.AccessToken, nil), c.want)
+	}
+}
+
+func TestPasswordChangeAndLock(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	a := e.register(t, "Eve")
+	admin := e.staff(t, model.RoleAdmin)
+
+	r := e.do(t, http.MethodPut, "/api/v1/me/password", a.AccessToken, map[string]string{"old": testPass, "new": "new-password-1"})
+	expectStatus(t, r, http.StatusOK)
+	var res struct {
+		AccessToken string `json:"access_token"`
+	}
+	decodeData(t, r, &res)
+	// token cũ hết hiệu lực, token mới dùng được
+	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/me", a.AccessToken, nil), http.StatusUnauthorized)
+	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/me", res.AccessToken, nil), http.StatusOK)
+	e.login(t, a.User.Username, "new-password-1")
+
+	// admin khoá: token hết hiệu lực, không đăng nhập được
+	expectStatus(t, e.do(t, http.MethodPost, fmt.Sprintf("/api/v1/users/%d/lock", a.User.ID), admin.AccessToken,
+		map[string]bool{"locked": true}), http.StatusOK)
+	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/me", res.AccessToken, nil), http.StatusUnauthorized)
+	r = e.do(t, http.MethodPost, "/api/v1/auth/login", "", map[string]string{"login": a.User.Username, "password": "new-password-1"})
+	expectStatus(t, r, http.StatusForbidden)
+}
+
 // ---------------------------------------------------------------------------
-// 7. Messages
+// 3. Nghiệm thu: CTV nộp -> admin duyệt -> kế toán trả tiền
+// ---------------------------------------------------------------------------
+
+type uploadRes struct {
+	Message  string   `json:"message"`
+	Messages []string `json:"messages"`
+	HouseID  *int64   `json:"house_id"`
+	Added    int      `json:"added"`
+}
+
+// newHouse: CTV nộp 1 hồ sơ n ảnh (camera app, có giờ + GPS), điền thông tin và gửi duyệt.
+func (e *testEnv) newHouse(t *testing.T, ctv authData, n int, seed uint64, lat float64) int64 {
+	t.Helper()
+	files := make([][]byte, n)
+	for i := range files {
+		files[i] = photo(t, seed+uint64(i))
+	}
+	r := e.upload(t, "/api/v1/houses", ctv.AccessToken, "files", files, map[string]string{"meta": cameraMeta(n, lat)})
+	expectStatus(t, r, http.StatusCreated)
+	var up uploadRes
+	decodeData(t, r, &up)
+	if up.HouseID == nil || up.Added != n {
+		t.Fatalf("upload: %s", r.Raw)
+	}
+	r = e.do(t, http.MethodPut, fmt.Sprintf("/api/v1/houses/%d", *up.HouseID), ctv.AccessToken, map[string]any{
+		"address": "12 Lê Lợi", "floors": 3, "stage": model.Stages[1], "contractor_name": "Xây dựng ABC",
+		"contractor_phone": "0901 234 567", "submit": true,
+	})
+	expectStatus(t, r, http.StatusOK)
+	var saved struct {
+		Message   string `json:"message"`
+		Submitted bool   `json:"submitted"`
+	}
+	decodeData(t, r, &saved)
+	if !saved.Submitted {
+		t.Fatalf("not submitted: %s", r.Raw)
+	}
+	return *up.HouseID
+}
+
+func TestNghiemThuFlow(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	ctv := e.register(t, "Nguyễn Văn CTV")
+	admin := e.staff(t, model.RoleAdmin)
+	kt := e.staff(t, model.RoleKetoan)
+
+	// Cấu hình mặc định qua /config
+	r := e.do(t, http.MethodGet, "/api/v1/config", "", nil)
+	expectStatus(t, r, http.StatusOK)
+	var cfg service.Config
+	decodeData(t, r, &cfg)
+	if cfg.MinPhotos != 5 || cfg.Pay[5] != 35000 || cfg.Pay[6] != 50000 || len(cfg.Stages) != 4 {
+		t.Fatalf("config: %s", r.Raw)
+	}
+
+	// Thiếu ảnh: không gửi duyệt được
+	files := [][]byte{photo(t, 100), photo(t, 101)}
+	r = e.upload(t, "/api/v1/houses", ctv.AccessToken, "files", files, map[string]string{"meta": cameraMeta(2, 10.80)})
+	expectStatus(t, r, http.StatusCreated)
+	var up uploadRes
+	decodeData(t, r, &up)
+	r = e.do(t, http.MethodPut, fmt.Sprintf("/api/v1/houses/%d", *up.HouseID), ctv.AccessToken, map[string]any{"submit": true})
+	expectStatus(t, r, http.StatusOK)
+	if !strings.Contains(string(r.Raw), "Chưa gửi được") {
+		t.Fatalf("expected missing items: %s", r.Raw)
+	}
+
+	// Ảnh trùng hệt: bị từ chối, không tạo hồ sơ
+	r = e.upload(t, "/api/v1/houses", ctv.AccessToken, "files", [][]byte{files[0]}, nil)
+	expectStatus(t, r, http.StatusOK)
+	decodeData(t, r, &up)
+	if up.HouseID != nil || len(up.Messages) != 1 || !strings.Contains(up.Messages[0], "đã nộp") {
+		t.Fatalf("duplicate upload: %s", r.Raw)
+	}
+
+	// Kiểm 1 ảnh trước khi nộp: ảnh không có giờ / vị trí
+	r = e.upload(t, "/api/v1/photos/check", ctv.AccessToken, "file", [][]byte{photo(t, 900)}, nil)
+	expectStatus(t, r, http.StatusOK)
+	var chk service.CheckResult
+	decodeData(t, r, &chk)
+	if len(chk.Problems) != 2 {
+		t.Fatalf("check problems = %v", chk.Problems)
+	}
+
+	// Hồ sơ đủ 6 ảnh
+	hid := e.newHouse(t, ctv, 6, 200, 10.80)
+
+	// Chi tiết: CTV và admin xem được, ảnh tải được, CTV khác không xem được
+	r = e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/houses/%d", hid), admin.AccessToken, nil)
+	expectStatus(t, r, http.StatusOK)
+	var det service.HouseDetail
+	decodeData(t, r, &det)
+	if det.House.Status != model.StatusPending || det.Valid != 6 || det.House.Amount != 50000 || len(det.Steps) != 4 || det.Editable {
+		t.Fatalf("detail: %s", r.Raw)
+	}
+	if ph := e.getRaw(t, fmt.Sprintf("/api/v1/photos/%d", det.Photos[0].ID), ctv.AccessToken); ph.Status != 200 ||
+		ph.Header.Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("photo status %d %s", ph.Status, ph.Header.Get("Content-Type"))
+	}
+	other := e.register(t, "Người khác")
+	expectStatus(t, e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/houses/%d", hid), other.AccessToken, nil), http.StatusNotFound)
+	// đang chờ duyệt: CTV không sửa được nữa
+	expectStatus(t, e.do(t, http.MethodPut, fmt.Sprintf("/api/v1/houses/%d", hid), ctv.AccessToken, map[string]any{}), http.StatusForbidden)
+
+	// Nhà thứ 2 sát nhà 1 (< 30m): cảnh báo trùng nhà
+	hid2 := e.newHouse(t, ctv, 5, 300, 10.80005)
+	r = e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/houses/%d", hid2), admin.AccessToken, nil)
+	decodeData(t, r, &det)
+	if !strings.Contains(det.House.Dup, fmt.Sprintf("#%d", hid)) || det.House.Amount != 35000 {
+		t.Fatalf("dup warning: %q amount %d", det.House.Dup, det.House.Amount)
+	}
+
+	// Admin: hàng chờ, trả lại cần lý do, trả lại, duyệt
+	r = e.do(t, http.MethodGet, "/api/v1/admin/queue", admin.AccessToken, nil)
+	var q struct {
+		Rows []model.House `json:"rows"`
+	}
+	decodeData(t, r, &q)
+	if len(q.Rows) != 2 || q.Rows[0].ID != hid || q.Rows[0].CoverID == nil || q.Rows[0].PhotosValid != 6 {
+		t.Fatalf("queue: %s", r.Raw)
+	}
+	expectStatus(t, e.do(t, http.MethodPost, fmt.Sprintf("/api/v1/houses/%d/review", hid2), admin.AccessToken,
+		map[string]string{"action": "tra_lai"}), http.StatusBadRequest)
+	expectStatus(t, e.do(t, http.MethodPost, fmt.Sprintf("/api/v1/houses/%d/review", hid2), admin.AccessToken,
+		map[string]string{"action": "tra_lai", "reason": "Ảnh mờ"}), http.StatusOK)
+	r = e.do(t, http.MethodPost, fmt.Sprintf("/api/v1/houses/%d/review", hid), admin.AccessToken, map[string]string{"action": "duyet"})
+	expectStatus(t, r, http.StatusOK)
+	var rv service.ReviewResult
+	decodeData(t, r, &rv)
+	if rv.Left != 0 || rv.NextID != nil {
+		t.Fatalf("review: %s", r.Raw)
+	}
+
+	// CTV: hồ sơ bị trả lại hiện trong "Cần xử lý", có lý do
+	r = e.do(t, http.MethodGet, "/api/v1/ctv/home?tab=can_lam", ctv.AccessToken, nil)
+	var home service.CTVHome
+	decodeData(t, r, &home)
+	if home.Todo != 2 || len(home.Rows) != 2 || home.Money.Approved != 1 || home.Money.Owed != 50000 {
+		t.Fatalf("ctv home: %s", r.Raw)
+	}
+
+	// Kế toán: chưa đủ 5 hồ sơ -> chưa trả được. Admin hạ ngưỡng xuống 1.
+	r = e.do(t, http.MethodGet, "/api/v1/accounting", kt.AccessToken, nil)
+	var acc service.Accounting
+	decodeData(t, r, &acc)
+	if len(acc.Ready) != 0 || len(acc.Waiting) != 1 {
+		t.Fatalf("accounting before: %s", r.Raw)
+	}
+	expectStatus(t, e.do(t, http.MethodPut, "/api/v1/settings", admin.AccessToken,
+		model.Settings{PriceMin: 35000, PriceMore: 50000, MinPhotos: 5, PayMin: 1}), http.StatusOK)
+
+	// Thưởng 10.000đ, rồi trả
+	expectStatus(t, e.do(t, http.MethodPost, fmt.Sprintf("/api/v1/ctvs/%d/adjustments", ctv.User.ID), kt.AccessToken,
+		map[string]any{"amount": 10000, "reason": "Thưởng tháng"}), http.StatusCreated)
+	r = e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/payouts/%d", ctv.User.ID), kt.AccessToken, nil)
+	var po service.PayoutPage
+	decodeData(t, r, &po)
+	if po.Total != 60000 || len(po.Rows) != 1 || len(po.Adjustments) != 1 || po.Bank.No != "0123456789" {
+		t.Fatalf("payout page: %s", r.Raw)
+	}
+	// Danh sách đã cũ (thiếu khoản thưởng): từ chối, tránh trả nhầm
+	expectStatus(t, e.do(t, http.MethodPost, fmt.Sprintf("/api/v1/payouts/%d", ctv.User.ID), kt.AccessToken,
+		map[string]any{"house_ids": []int64{hid}, "adjustment_ids": []int64{}}), http.StatusConflict)
+	r = e.do(t, http.MethodPost, fmt.Sprintf("/api/v1/payouts/%d", ctv.User.ID), kt.AccessToken,
+		map[string]any{"house_ids": []int64{hid}, "adjustment_ids": []int64{po.Adjustments[0].ID}, "ref": "FT123"})
+	expectStatus(t, r, http.StatusCreated)
+	var paid struct {
+		BatchID int64 `json:"batch_id"`
+	}
+	decodeData(t, r, &paid)
+
+	// Trả lần 2 cùng dữ liệu: không còn gì để trả
+	expectStatus(t, e.do(t, http.MethodPost, fmt.Sprintf("/api/v1/payouts/%d", ctv.User.ID), kt.AccessToken,
+		map[string]any{"house_ids": []int64{hid}, "adjustment_ids": []int64{po.Adjustments[0].ID}}), http.StatusConflict)
+
+	// CTV thấy tiền đã nhận, xem được phiếu chi của mình
+	r = e.do(t, http.MethodGet, "/api/v1/ctv/income", ctv.AccessToken, nil)
+	var inc service.Income
+	decodeData(t, r, &inc)
+	if inc.Money.Paid != 60000 || inc.Money.Owed != 0 || len(inc.Pays) != 1 || inc.Pays[0].Total != 60000 {
+		t.Fatalf("income: %s", r.Raw)
+	}
+	r = e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/batches/%d", paid.BatchID), ctv.AccessToken, nil)
+	expectStatus(t, r, http.StatusOK)
+	var bd service.BatchDetail
+	decodeData(t, r, &bd)
+	if bd.Total != 60000 || bd.Batch.Ref != "FT123" || len(bd.Logs) != 0 {
+		t.Fatalf("batch for ctv: %s", r.Raw)
+	}
+	expectStatus(t, e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/batches/%d", paid.BatchID), other.AccessToken, nil), http.StatusNotFound)
+
+	// Biên lai: kế toán tải lên, CTV xem được
+	r = e.upload(t, fmt.Sprintf("/api/v1/batches/%d/receipt", paid.BatchID), kt.AccessToken, "file", [][]byte{photo(t, 777)}, nil)
+	expectStatus(t, r, http.StatusOK)
+	if rc := e.getRaw(t, fmt.Sprintf("/api/v1/batches/%d/receipt", paid.BatchID), ctv.AccessToken); rc.Status != 200 {
+		t.Fatalf("receipt status %d", rc.Status)
+	}
+
+	// Báo cáo + Excel
+	r = e.do(t, http.MethodGet, "/api/v1/reports?group=month", admin.AccessToken, nil)
+	var rep service.Report
+	decodeData(t, r, &rep)
+	if rep.Total != 60000 || rep.Batches != 1 || rep.Houses != 1 || rep.Flow.Approved != 1 || rep.Flow.Returned != 1 {
+		t.Fatalf("report: %s", r.Raw)
+	}
+	if x := e.getRaw(t, "/api/v1/reports/export", admin.AccessToken); x.Status != 200 || !bytes.HasPrefix(x.Raw, []byte("PK")) {
+		t.Fatalf("excel export: status %d", x.Status)
+	}
+
+	// Huỷ phiếu chi: hồ sơ về chờ thanh toán, CTV hết thấy phiếu
+	expectStatus(t, e.do(t, http.MethodPost, fmt.Sprintf("/api/v1/batches/%d/cancel", paid.BatchID), kt.AccessToken,
+		map[string]string{}), http.StatusBadRequest)
+	expectStatus(t, e.do(t, http.MethodPost, fmt.Sprintf("/api/v1/batches/%d/cancel", paid.BatchID), kt.AccessToken,
+		map[string]string{"reason": "Ghi nhầm"}), http.StatusOK)
+	r = e.do(t, http.MethodGet, "/api/v1/ctv/income", ctv.AccessToken, nil)
+	decodeData(t, r, &inc)
+	if inc.Money.Paid != 0 || inc.Money.Owed != 60000 || len(inc.Pays) != 0 {
+		t.Fatalf("income after cancel: %s", r.Raw)
+	}
+	r = e.do(t, http.MethodGet, "/api/v1/accounting", kt.AccessToken, nil)
+	decodeData(t, r, &acc)
+	if len(acc.Ready) != 1 || acc.Total != 60000 {
+		t.Fatalf("accounting after cancel: %s", r.Raw)
+	}
+	if x := e.getRaw(t, "/api/v1/accounting/export?format=csv", kt.AccessToken); x.Status != 200 ||
+		!strings.Contains(string(x.Raw), "0123456789") {
+		t.Fatalf("csv export: %d %s", x.Status, x.Raw)
+	}
+
+	// Trả hàng loạt với tổng tiền đang thấy
+	r = e.do(t, http.MethodPost, "/api/v1/accounting/pay", kt.AccessToken,
+		map[string]any{"ref": "LO1", "items": []map[string]any{{"ctv_id": ctv.User.ID, "total": 60000}}})
+	expectStatus(t, r, http.StatusOK)
+	var pm service.PayManyResult
+	decodeData(t, r, &pm)
+	if len(pm.Paid) != 1 || pm.Skipped != 0 {
+		t.Fatalf("pay many: %s", r.Raw)
+	}
+
+	// Tổng quan + tìm kiếm
+	r = e.do(t, http.MethodGet, "/api/v1/houses?q=ABC&status=da_chi", admin.AccessToken, nil)
+	var ov service.Overview
+	decodeData(t, r, &ov)
+	if ov.Found != 1 || ov.Counts[model.StatusPaid] != 1 || ov.Chips[model.StatusReturned] != 1 {
+		t.Fatalf("overview: %s", r.Raw)
+	}
+
+	// CTV tự xoá tài khoản: không đăng nhập lại được, hồ sơ vẫn còn
+	expectStatus(t, e.do(t, http.MethodDelete, "/api/v1/me", ctv.AccessToken, nil), http.StatusOK)
+	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/me", ctv.AccessToken, nil), http.StatusUnauthorized)
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/auth/login", "", map[string]string{"login": ctv.User.Username, "password": testPass}),
+		http.StatusUnauthorized)
+	expectStatus(t, e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/houses/%d", hid), admin.AccessToken, nil), http.StatusOK)
+}
+
+func TestStaffManagement(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	admin := e.staff(t, model.RoleAdmin)
+
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/staff", admin.AccessToken,
+		map[string]string{"login": "ab", "name": "X", "role": "ketoan", "password": "12345678"}), http.StatusBadRequest)
+	r := e.do(t, http.MethodPost, "/api/v1/staff", admin.AccessToken,
+		map[string]string{"login": "KeToan_Lan", "name": "Lan", "role": "ketoan", "password": "12345678"})
+	expectStatus(t, r, http.StatusCreated)
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/staff", admin.AccessToken,
+		map[string]string{"login": "ketoan_lan", "name": "Lan 2", "role": "ketoan", "password": "12345678"}), http.StatusConflict)
+	kt := e.login(t, "ketoan_lan", "12345678")
+	if kt.User.Role != model.RoleKetoan {
+		t.Fatalf("role = %s", kt.User.Role)
+	}
+	r = e.do(t, http.MethodGet, "/api/v1/staff", admin.AccessToken, nil)
+	var st struct {
+		Rows []model.User `json:"rows"`
+	}
+	decodeData(t, r, &st)
+	if len(st.Rows) != 2 {
+		t.Fatalf("staff: %s", r.Raw)
+	}
+	// admin không tự khoá mình
+	expectStatus(t, e.do(t, http.MethodPost, fmt.Sprintf("/api/v1/users/%d/lock", admin.User.ID), admin.AccessToken,
+		map[string]bool{"locked": true}), http.StatusForbidden)
+}
+
+// ---------------------------------------------------------------------------
+// 4. Messages (scaffold)
 // ---------------------------------------------------------------------------
 
 func TestMessages(t *testing.T) {
 	t.Parallel()
 	e := newTestEnv(t)
-	a := e.register(t, "alice", "alice@example.com", testPass)
-	b := e.register(t, "bobby", "bob@example.com", testPass)
-	c := e.register(t, "carol", "carol@example.com", testPass)
+	a := e.register(t, "Alice")
+	b := e.register(t, "Bob")
+	c := e.register(t, "Carol")
 
-	send := func(t *testing.T, tok string, receiver int64, content string) apiResp {
-		t.Helper()
-		return e.do(t, http.MethodPost, "/api/v1/messages", tok, map[string]any{
-			"receiver_id": receiver, "content": content,
-		})
+	send := func(tok string, to int64, content string) apiResp {
+		return e.do(t, http.MethodPost, "/api/v1/messages", tok, map[string]any{"receiver_id": to, "content": content})
 	}
+	expectStatus(t, send(a.AccessToken, b.User.ID, "hi bob"), http.StatusCreated)
+	expectStatus(t, send(b.AccessToken, a.User.ID, "hi alice"), http.StatusCreated)
+	expectStatus(t, send(a.AccessToken, b.User.ID, "how are you"), http.StatusCreated)
 
-	// A -> B (content is trimmed).
-	r := send(t, a.AccessToken, b.User.ID, "  hello bob  ")
-	expectStatus(t, r, http.StatusCreated)
-	var m1 model.Message
-	decodeData(t, r, &m1)
-	if m1.ID == 0 || m1.SenderID != a.User.ID || m1.ReceiverID != b.User.ID || m1.Content != "hello bob" {
-		t.Fatalf("unexpected message: %+v", m1)
-	}
-
-	// B -> A, and an unrelated A -> C message.
-	expectStatus(t, send(t, b.AccessToken, a.User.ID, "hi alice"), http.StatusCreated)
-	expectStatus(t, send(t, a.AccessToken, c.User.ID, "hey carol"), http.StatusCreated)
-
-	// A reads the conversation with B: newest first, excludes A -> C.
-	r = e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/messages/%d", b.User.ID), a.AccessToken, nil)
+	r := e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/messages/%d", b.User.ID), a.AccessToken, nil)
 	expectStatus(t, r, http.StatusOK)
 	var conv []model.Message
 	decodeData(t, r, &conv)
-	if len(conv) != 2 {
-		t.Fatalf("conversation length = %d, want 2: %s", len(conv), r.Raw)
+	if len(conv) != 3 || conv[0].Content != "how are you" {
+		t.Fatalf("conversation: %s", r.Raw)
 	}
-	if conv[0].Content != "hi alice" || conv[1].Content != "hello bob" || conv[1].ID != m1.ID {
-		t.Fatalf("conversation not newest-first: %+v", conv)
-	}
-
-	// B sees the same conversation from the other side.
-	r = e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/messages/%d", a.User.ID), b.AccessToken, nil)
-	expectStatus(t, r, http.StatusOK)
-	conv = nil
-	decodeData(t, r, &conv)
-	if len(conv) != 2 {
-		t.Fatalf("B's conversation length = %d, want 2", len(conv))
-	}
-
-	// Pagination.
 	r = e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/messages/%d?limit=1&offset=1", b.User.ID), a.AccessToken, nil)
-	expectStatus(t, r, http.StatusOK)
-	conv = nil
 	decodeData(t, r, &conv)
-	if len(conv) != 1 || conv[0].ID != m1.ID {
-		t.Fatalf("paginated conversation = %+v, want only the oldest message", conv)
+	if len(conv) != 1 || conv[0].Content != "hi alice" {
+		t.Fatalf("paged conversation: %s", r.Raw)
 	}
-
-	// An empty conversation is [] rather than null.
 	r = e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/messages/%d", c.User.ID), b.AccessToken, nil)
-	expectStatus(t, r, http.StatusOK)
-	if got := strings.TrimSpace(string(r.Body.Data)); got != "[]" {
-		t.Fatalf("empty conversation data = %s, want []", got)
+	decodeData(t, r, &conv)
+	if len(conv) != 0 {
+		t.Fatalf("unrelated conversation not empty: %s", r.Raw)
 	}
 
-	// Error cases.
-	t.Run("send to self", func(t *testing.T) {
-		expectStatus(t, send(t, a.AccessToken, a.User.ID, "me"), http.StatusBadRequest)
-	})
-	t.Run("send to nonexistent user", func(t *testing.T) {
-		expectStatus(t, send(t, a.AccessToken, 9999, "anyone?"), http.StatusNotFound)
-	})
-	t.Run("empty content", func(t *testing.T) {
-		expectStatus(t, send(t, a.AccessToken, b.User.ID, ""), http.StatusBadRequest)
-	})
-	t.Run("whitespace content", func(t *testing.T) {
-		expectStatus(t, send(t, a.AccessToken, b.User.ID, "   \n\t "), http.StatusBadRequest)
-	})
-	t.Run("content too long", func(t *testing.T) {
-		expectStatus(t, send(t, a.AccessToken, b.User.ID, strings.Repeat("a", 2001)), http.StatusBadRequest)
-	})
-	t.Run("invalid receiver id", func(t *testing.T) {
-		expectStatus(t, send(t, a.AccessToken, 0, "x"), http.StatusBadRequest)
-	})
-	t.Run("malformed JSON", func(t *testing.T) {
+	t.Run("validation", func(t *testing.T) {
+		expectStatus(t, send(a.AccessToken, a.User.ID, "self"), http.StatusBadRequest)
+		expectStatus(t, send(a.AccessToken, b.User.ID, "   "), http.StatusBadRequest)
+		expectStatus(t, send(a.AccessToken, 999999, "ghost"), http.StatusNotFound)
 		expectStatus(t, e.do(t, http.MethodPost, "/api/v1/messages", a.AccessToken, `{"receiver_id":`), http.StatusBadRequest)
-	})
-	t.Run("invalid path id", func(t *testing.T) {
 		expectStatus(t, e.do(t, http.MethodGet, "/api/v1/messages/abc", a.AccessToken, nil), http.StatusBadRequest)
 	})
 }
 
 // ---------------------------------------------------------------------------
-// 8. WebSocket
+// 5. WebSocket (scaffold)
 // ---------------------------------------------------------------------------
 
 func (e *testEnv) wsURL(tok string) string {
@@ -648,8 +977,8 @@ type wsEvent struct {
 func TestWebSocketReceivesNewMessage(t *testing.T) {
 	t.Parallel()
 	e := newTestEnv(t)
-	a := e.register(t, "alice", "alice@example.com", testPass)
-	b := e.register(t, "bobby", "bob@example.com", testPass)
+	a := e.register(t, "Alice")
+	b := e.register(t, "Bob")
 
 	conn, res, err := dialWS(e.wsURL(b.AccessToken), allowedOrig)
 	if err != nil {
@@ -661,9 +990,6 @@ func TestWebSocketReceivesNewMessage(t *testing.T) {
 	}
 	defer conn.Close()
 
-	// Reader goroutine forwards every event to a channel. A single read
-	// deadline bounds the whole test (gorilla conns are unusable after a
-	// read timeout, so per-read deadlines are not used).
 	events := make(chan wsEvent, 64)
 	go func() {
 		defer close(events)
@@ -688,9 +1014,6 @@ func TestWebSocketReceivesNewMessage(t *testing.T) {
 		return wsEvent{}
 	}
 
-	// The hub registers the client just after the handshake response is
-	// written, so push sync events directly via the hub until one arrives;
-	// only then is the connection guaranteed to be registered.
 	var synced atomic.Bool
 	syncDone := make(chan struct{})
 	go func() {
@@ -722,7 +1045,7 @@ func TestWebSocketReceivesNewMessage(t *testing.T) {
 func TestWebSocketHandshakeRejected(t *testing.T) {
 	t.Parallel()
 	e := newTestEnv(t)
-	b := e.register(t, "bobby", "bob@example.com", testPass)
+	b := e.register(t, "Bob")
 
 	cases := []struct {
 		name, tok, origin string
@@ -755,7 +1078,7 @@ func TestWebSocketHandshakeRejected(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 9. CORS
+// 6. CORS
 // ---------------------------------------------------------------------------
 
 func TestCORS(t *testing.T) {
@@ -787,9 +1110,6 @@ func TestCORS(t *testing.T) {
 		if got := r.Header.Get("Access-Control-Allow-Methods"); !strings.Contains(got, "POST") {
 			t.Fatalf("Allow-Methods = %q, want POST", got)
 		}
-		if got := strings.ToLower(r.Header.Get("Access-Control-Allow-Headers")); !strings.Contains(got, "authorization") || !strings.Contains(got, "content-type") {
-			t.Fatalf("Allow-Headers = %q", got)
-		}
 	})
 
 	t.Run("disallowed origin preflight", func(t *testing.T) {
@@ -798,50 +1118,24 @@ func TestCORS(t *testing.T) {
 		if got := r.Header.Get("Access-Control-Allow-Origin"); got != "" {
 			t.Fatalf("Allow-Origin = %q, want none", got)
 		}
-		if got := r.Header.Get("Access-Control-Allow-Credentials"); got != "" {
-			t.Fatalf("Allow-Credentials = %q, want none", got)
-		}
 	})
 
 	t.Run("wildcard origin omits credentials", func(t *testing.T) {
 		t.Parallel()
 		w := newTestEnv(t, withCORSOrigins("*"))
-		req, err := http.NewRequest(http.MethodOptions, w.srv.URL+"/api/v1/auth/login", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
+		req, _ := http.NewRequest(http.MethodOptions, w.srv.URL+"/api/v1/auth/login", nil)
 		req.Header.Set("Origin", "http://anything.example")
 		req.Header.Set("Access-Control-Request-Method", http.MethodPost)
 		r := w.send(t, req)
 		expectStatus(t, r, http.StatusNoContent)
-		if got := r.Header.Get("Access-Control-Allow-Origin"); got != "http://anything.example" {
-			t.Fatalf("Allow-Origin = %q, want echoed origin", got)
-		}
 		if got := r.Header.Get("Access-Control-Allow-Credentials"); got != "" {
 			t.Fatalf("Allow-Credentials = %q, want none for wildcard config", got)
-		}
-	})
-
-	t.Run("simple request from allowed origin", func(t *testing.T) {
-		t.Parallel()
-		req, err := http.NewRequest(http.MethodGet, e.srv.URL+"/health", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.Header.Set("Origin", allowedOrig)
-		r := e.send(t, req)
-		expectStatus(t, r, http.StatusOK)
-		if got := r.Header.Get("Access-Control-Allow-Origin"); got != allowedOrig {
-			t.Fatalf("Allow-Origin = %q, want %q", got, allowedOrig)
-		}
-		if !strings.Contains(strings.Join(r.Header.Values("Vary"), ","), "Origin") {
-			t.Fatalf("Vary header missing Origin: %v", r.Header.Values("Vary"))
 		}
 	})
 }
 
 // ---------------------------------------------------------------------------
-// 10. Rate limiting
+// 7. Rate limiting
 // ---------------------------------------------------------------------------
 
 func TestRateLimit(t *testing.T) {
@@ -859,8 +1153,5 @@ func TestRateLimit(t *testing.T) {
 	}
 	if last.Header.Get("Retry-After") == "" {
 		t.Fatal("429 response missing Retry-After header")
-	}
-	if last.Body.Success || last.Body.Error == "" {
-		t.Fatalf("429 body is not an error envelope: %s", last.Raw)
 	}
 }

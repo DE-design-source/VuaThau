@@ -1,23 +1,24 @@
-// Kế toán (/ke-toan): CTV đủ điều kiện thanh toán (đủ số hồ sơ đã duyệt), xuất file chuyển khoản, xác nhận đã trả hàng loạt.
+// Kế toán (/accounting): CTV đủ điều kiện thanh toán (đủ số hồ sơ đã duyệt), xuất file chuyển khoản, xác nhận đã trả hàng loạt.
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import usePage from '@/hooks/usePage'
 import useAct from '@/hooks/useAct'
 import useCfg from '@/hooks/useCfg'
-import ntClient, { qs } from '@/api/ntClient'
+import accountingApi from '@/api/accountingApi'
 import { toast } from '@/services/toast'
 import { Button, Empty, Kpi, PageHead, PageState } from '@/components/ui'
 import { bankParts, money, today } from '@/utils/format'
+import { saveBlob } from '@/utils/download'
 
 export default function AccountingPage() {
-  const { data: d, err, reload } = usePage('/ke-toan')
+  const { data: d, err, reload } = usePage(() => accountingApi.overview())
   const [act, busy] = useAct(reload)
   const cfg = useCfg()
   const [sel, setSel] = useState(() => new Set())
   const [ref, setRef] = useState('')
   if (!d) return <PageState err={err} retry={reload} />
   const ready = d.ready || []
-  const picked = ready.filter((r) => sel.has(r.id))
+  const picked = ready.filter((r) => sel.has(r.ctv_id))
   const sum = picked.reduce((s, r) => s + r.total, 0)
   const toggle = (id) =>
     setSel((s) => {
@@ -27,22 +28,23 @@ export default function AccountingPage() {
       return n
     })
   const all = ready.length > 0 && sel.size === ready.length
-  const file = (kind) =>
-    ntClient
-      .download(`/ke-toan/${kind}${qs({ ids: [...sel] })}`, kind === 'excel' ? `chuyen-khoan-${today()}.xlsx` : 'can-thanh-toan.csv')
+  const file = (format) =>
+    accountingApi
+      .exportFile({ format, ids: [...sel] })
+      .then((b) => saveBlob(b, format === 'xlsx' ? `chuyen-khoan-${today()}.xlsx` : `can-thanh-toan-${today()}.csv`))
       .catch((e) => toast(e.message))
 
   const payMany = async () => {
     if (!window.confirm(`Xác nhận ĐÃ chuyển khoản cho ${picked.length} CTV, tổng ${money(sum)}? Mỗi CTV sẽ có 1 phiếu chi.`)) return
-    const body = { ids: picked.map((r) => r.id), ref }
-    picked.forEach((r) => (body[`tong_${r.id}`] = r.total))
-    const j = await act('many', '/ke-toan/tra-nhieu', body)
+    // gửi kèm đúng tổng tiền đang thấy: dữ liệu vừa đổi thì máy chủ từ chối (409), tránh trả nhầm
+    const items = picked.map((r) => ({ ctv_id: r.ctv_id, total: r.total }))
+    const j = await act('many', () => accountingApi.payMany({ ref, items }), { go: '/batches' })
     if (j) setSel(new Set())
   }
 
   return (
     <section className="stack">
-      <PageHead title="Thanh toán cho cộng tác viên" sub={`CTV có từ ${cfg?.PAY_MIN ?? 5} hồ sơ đã duyệt thì được trả gộp mọi hồ sơ đang chờ, kèm thưởng/trừ.`} />
+      <PageHead title="Thanh toán cho cộng tác viên" sub={`CTV có từ ${cfg?.pay_min ?? 5} hồ sơ đã duyệt thì được trả gộp mọi hồ sơ đang chờ, kèm thưởng/trừ.`} />
       <div className="kpis">
         <Kpi label="CTV đủ điều kiện" value={ready.length} tone="ok" />
         <Kpi label="Tổng cần trả" value={money(d.total)} tone="ok" />
@@ -53,7 +55,7 @@ export default function AccountingPage() {
         <div className="row-between">
           <h2>Đủ điều kiện thanh toán</h2>
           <div className="row-wrap">
-            <Button variant="secondary" onClick={() => file('excel')} disabled={!ready.length}>
+            <Button variant="secondary" onClick={() => file('xlsx')} disabled={!ready.length}>
               Tải Excel chuyển khoản{sel.size ? ` (${sel.size})` : ''}
             </Button>
             <Button variant="ghost" onClick={() => file('csv')} disabled={!ready.length}>
@@ -63,7 +65,7 @@ export default function AccountingPage() {
         </div>
         {ready.length ? (
           <>
-            <Table rows={ready} selectable sel={sel} toggle={toggle} all={all} setAll={() => setSel(all ? new Set() : new Set(ready.map((r) => r.id)))} />
+            <Table rows={ready} selectable sel={sel} toggle={toggle} all={all} setAll={() => setSel(all ? new Set() : new Set(ready.map((r) => r.ctv_id)))} />
             <div className="pay-bar">
               <input className="input grow" placeholder="Mã giao dịch / ghi chú chung (tuỳ chọn)" value={ref} onChange={(e) => setRef(e.target.value)} />
               <Button onClick={payMany} disabled={!picked.length} loading={busy === 'many'}>
@@ -108,20 +110,20 @@ function Table({ rows, selectable, sel, toggle, all, setAll }) {
           {rows.map((r) => {
             const b = bankParts(r.bank)
             return (
-              <tr key={r.id}>
+              <tr key={r.ctv_id}>
                 {selectable && (
                   <td>
-                    <input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} aria-label={`Chọn ${r.name}`} />
+                    <input type="checkbox" checked={sel.has(r.ctv_id)} onChange={() => toggle(r.ctv_id)} aria-label={`Chọn ${r.name}`} />
                   </td>
                 )}
                 <td>
-                  <Link to={`/thanh-toan/${r.id}`}>
+                  <Link to={`/payouts/${r.ctv_id}`}>
                     <strong>{r.name}</strong>
                   </Link>
-                  <small className="muted d-block">{r.phone}</small>
+                  <small className="muted d-block">{r.username}</small>
                 </td>
                 <td>{b.owner ? `${b.name} · ${b.no} · ${b.owner}` : r.bank || <span className="text-bad">Chưa có tài khoản</span>}</td>
-                <td className="num">{r.n}</td>
+                <td className="num">{r.house_count}</td>
                 <td className="num">
                   <strong>{money(r.total)}</strong>
                 </td>

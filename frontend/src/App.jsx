@@ -26,13 +26,13 @@ function Guard({ roles, children }) {
   const location = useLocation()
   if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location }} />
   if (!user) return <PageState err={error || ''} retry={() => fetchMe().catch(() => {})} />
-  if (roles && !roles.includes(user.role)) return <Navigate to={STAFF_HOME[user.role] || '/toi'} replace />
+  if (roles && !roles.includes(user.role)) return <Navigate to={STAFF_HOME[user.role] || '/me'} replace />
   return children
 }
 
 function Home() {
   const { user } = useAuth()
-  return <Navigate to={STAFF_HOME[user?.role] || '/toi'} replace />
+  return <Navigate to={STAFF_HOME[user?.role] || '/me'} replace />
 }
 
 const STAFF = ['admin', 'ketoan']
@@ -52,19 +52,19 @@ export default function App() {
       <Route element={<MainLayout />}>
         <Route index element={g(<Home />)} />
         <Route path="login" element={<LoginPage />} />
-        <Route path="duyet" element={g(<QueuePage />, ['admin'])} />
-        <Route path="nha/:id" element={g(<HousePage />)} />
-        <Route path="tong-quan" element={g(<OverviewPage />)} />
-        <Route path="ctv" element={g(<CtvListPage />)} />
-        <Route path="ctv/:id" element={g(<CtvPage />)} />
-        <Route path="nhan-vien" element={g(<StaffPage />, ['admin'])} />
-        <Route path="cau-hinh" element={g(<SettingsPage />, ['admin'])} />
-        <Route path="ke-toan" element={g(<AccountingPage />, ['ketoan'])} />
-        <Route path="thanh-toan/:id" element={g(<PayPage />, ['ketoan'])} />
-        <Route path="da-tra" element={g(<PaymentsPage />)} />
-        <Route path="dot/:id" element={g(<BatchPage />)} />
-        <Route path="bao-cao" element={g(<ReportPage />)} />
-        <Route path="toi" element={g(<AccountPage />)} />
+        <Route path="queue" element={g(<QueuePage />, ['admin'])} />
+        <Route path="houses/:id" element={g(<HousePage />)} />
+        <Route path="houses" element={g(<OverviewPage />)} />
+        <Route path="ctvs" element={g(<CtvListPage />)} />
+        <Route path="ctvs/:id" element={g(<CtvPage />)} />
+        <Route path="staff" element={g(<StaffPage />, ['admin'])} />
+        <Route path="settings" element={g(<SettingsPage />, ['admin'])} />
+        <Route path="accounting" element={g(<AccountingPage />, ['ketoan'])} />
+        <Route path="payouts/:ctvId" element={g(<PayPage />, ['ketoan'])} />
+        <Route path="batches" element={g(<PaymentsPage />)} />
+        <Route path="batches/:id" element={g(<BatchPage />)} />
+        <Route path="reports" element={g(<ReportPage />)} />
+        <Route path="me" element={g(<AccountPage />)} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

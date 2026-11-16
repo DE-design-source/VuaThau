@@ -1,9 +1,10 @@
 // Thưởng (+) / trừ (-) tiền cho CTV, cộng vào lần thanh toán tới. Dùng ở trang CTV và trang Thanh toán.
 import { useState } from 'react'
+import ctvApi from '@/api/ctvApi'
 import { Button } from '@/components/ui'
-import { money, vnDate } from '@/utils/format'
+import { money, parseMoney, vnDate } from '@/utils/format'
 
-export default function AdjustBox({ ctvId, adjs, act, busy, ve = '' }) {
+export default function AdjustBox({ ctvId, adjs, act, busy }) {
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState('')
   return (
@@ -29,7 +30,7 @@ export default function AdjustBox({ ctvId, adjs, act, busy, ve = '' }) {
                 <Button
                   variant="ghost"
                   loading={busy === `del${a.id}`}
-                  onClick={() => window.confirm('Xoá khoản này?') && act(`del${a.id}`, `/dieu-chinh/${a.id}/xoa`, { ve })}
+                  onClick={() => window.confirm('Xoá khoản này?') && act(`del${a.id}`, () => ctvApi.deleteAdjustment(a.id))}
                 >
                   Xoá
                 </Button>
@@ -44,7 +45,7 @@ export default function AdjustBox({ ctvId, adjs, act, busy, ve = '' }) {
         className="stack"
         onSubmit={(e) => {
           e.preventDefault()
-          act('adj', `/ctv/${ctvId}/dieu-chinh`, { amount, reason, ve }).then((j) => {
+          act('adj', () => ctvApi.addAdjustment(ctvId, { amount: parseMoney(amount), reason })).then((j) => {
             if (j) {
               setAmount('')
               setReason('')
@@ -56,7 +57,7 @@ export default function AdjustBox({ ctvId, adjs, act, busy, ve = '' }) {
           <input className="input" inputMode="numeric" placeholder="Số tiền: 20000 hoặc -20000" value={amount} onChange={(e) => setAmount(e.target.value)} />
           <input className="input" placeholder="Lý do" value={reason} onChange={(e) => setReason(e.target.value)} />
         </div>
-        <Button type="submit" variant="secondary" disabled={!amount || !reason.trim()} loading={busy === 'adj'}>
+        <Button type="submit" variant="secondary" disabled={!parseMoney(amount) || !reason.trim()} loading={busy === 'adj'}>
           Thêm khoản thưởng / trừ
         </Button>
       </form>

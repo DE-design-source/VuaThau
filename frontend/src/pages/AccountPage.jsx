@@ -1,24 +1,35 @@
-// Tài khoản nhân viên (/toi): thông tin, đổi mật khẩu.
+// Tài khoản nhân viên (/me): thông tin, đổi mật khẩu.
 import { useState } from 'react'
 import usePage from '@/hooks/usePage'
 import useAct from '@/hooks/useAct'
+import useAuth from '@/hooks/useAuth'
+import userApi from '@/api/userApi'
 import { Button, PageHead, PageState } from '@/components/ui'
 import { ROLE_LABEL } from '@/utils/format'
 
 export default function AccountPage() {
-  const { data: d, err, reload } = usePage('/toi')
+  const { data: d, err, reload } = usePage(() => userApi.getMe())
   const [act, busy] = useAct(reload)
+  const { renewToken } = useAuth()
   const [pw, setPw] = useState({ old: '', new: '' })
   if (!d) return <PageState err={err} retry={reload} />
   const u = d.user || {}
+
+  // Đổi mật khẩu: token cũ hết hiệu lực, lưu ngay access_token mới máy chủ trả về.
+  const change = async () => {
+    const res = await userApi.changePassword(pw)
+    if (res?.data?.access_token) renewToken(res.data.access_token)
+    return res
+  }
+
   return (
     <section className="stack">
-      <PageHead title={u.name} sub={`${ROLE_LABEL[u.role] || u.role} · đăng nhập bằng ${u.phone}`} />
+      <PageHead title={u.name} sub={`${ROLE_LABEL[u.role] || u.role} · đăng nhập bằng ${u.username}`} />
       <form
         className="card stack narrow"
         onSubmit={(e) => {
           e.preventDefault()
-          act('pw', '/toi/mat-khau', pw, { stay: true }).then((j) => j && setPw({ old: '', new: '' }))
+          act('pw', change).then((j) => j && setPw({ old: '', new: '' }))
         }}
       >
         <h2>Đổi mật khẩu</h2>

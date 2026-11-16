@@ -52,7 +52,7 @@ export default function Header() {
           {isAuthenticated && (
             <>
               {user && (
-                <Link to="/toi" className="who" title="Tài khoản">
+                <Link to="/me" className="who" title="Tài khoản">
                   <strong>{user.name}</strong>
                   <small className="muted">{ROLE_LABEL[user.role]}</small>
                 </Link>

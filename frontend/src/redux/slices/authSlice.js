@@ -1,30 +1,29 @@
 // Đăng nhập web quản lý: chỉ admin và kế toán. CTV dùng app điện thoại.
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
-import ntClient, { setNtToken } from '@/api/ntClient'
+import authApi from '@/api/authApi'
+import userApi from '@/api/userApi'
 import storageService from '@/services/storageService'
 
-export const STAFF_HOME = { admin: '/duyet', ketoan: '/ke-toan' }
+export const STAFF_HOME = { admin: '/queue', ketoan: '/accounting' }
 
-export const login = createAsyncThunk('auth/login', async ({ phone, pw }, { rejectWithValue }) => {
+export const CTV_REFUSED = 'Tài khoản cộng tác viên dùng app điện thoại. Web này dành cho admin và kế toán.'
+
+export const login = createAsyncThunk('auth/login', async ({ login, password }, { rejectWithValue }) => {
   try {
-    const j = await ntClient.post('/login', { phone, pw })
-    if (!j.token) return rejectWithValue(j.msgs?.[0] || 'Chưa đăng nhập được, thử lại nhé.')
-    if (!Object.values(STAFF_HOME).includes(j.url)) {
-      return rejectWithValue('Tài khoản cộng tác viên dùng app điện thoại. Web này dành cho admin và kế toán.')
-    }
-    setNtToken(j.token)
-    const me = await ntClient.get('/toi')
-    return { token: j.token, user: me.user, msgs: j.msgs }
+    const { data } = await authApi.login({ login, password })
+    if (!data?.access_token) return rejectWithValue('Chưa đăng nhập được, thử lại nhé.')
+    if (!STAFF_HOME[data.user?.role]) return rejectWithValue(CTV_REFUSED)
+    return { token: data.access_token, user: data.user }
   } catch (err) {
-    setNtToken(null)
     return rejectWithValue(err.message)
   }
 })
 
 export const fetchMe = createAsyncThunk('auth/fetchMe', async (_, { rejectWithValue }) => {
   try {
-    const me = await ntClient.get('/toi')
-    return me.user
+    const { data } = await userApi.getMe()
+    if (!STAFF_HOME[data?.user?.role]) return rejectWithValue(CTV_REFUSED)
+    return data.user
   } catch (err) {
     return rejectWithValue(err.message)
   }
@@ -45,6 +44,7 @@ const authSlice = createSlice({
       state.status = 'idle'
       state.error = null
     },
+    /** Đổi mật khẩu: máy chủ trả access_token mới, token cũ hết hiệu lực. */
     renewToken(state, action) {
       state.token = action.payload
     },
@@ -73,6 +73,11 @@ const authSlice = createSlice({
       .addCase(fetchMe.rejected, (s, a) => {
         s.status = 'failed'
         s.error = a.payload ?? a.error.message
+        // Token của CTV (vd lưu từ trước): không cho dùng web
+        if (a.payload === CTV_REFUSED) {
+          s.token = null
+          s.user = null
+        }
       })
   },
 })
@@ -80,5 +85,6 @@ const authSlice = createSlice({
 export const { logout, renewToken, clearAuthError } = authSlice.actions
 export const selectAuth = (state) => state.auth
 export const selectUser = (state) => state.auth.user
+export const selectToken = (state) => state.auth.token
 export const selectRole = (state) => state.auth.user?.role
 export default authSlice.reducer

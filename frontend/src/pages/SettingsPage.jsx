@@ -1,19 +1,22 @@
-// Cấu hình (/cau-hinh, chỉ admin): giá hồ sơ, số ảnh tối thiểu, số hồ sơ để được thanh toán.
-// Lưu xong app CTV đọc giá mới qua /app.json ở lần mở tới.
+// Cấu hình (/settings, chỉ admin): giá hồ sơ, số ảnh tối thiểu, số hồ sơ để được thanh toán.
+// Lưu xong app CTV đọc giá mới qua GET /config ở lần mở tới.
 import { useState } from 'react'
 import usePage from '@/hooks/usePage'
 import useAct from '@/hooks/useAct'
+import { reloadCfg } from '@/hooks/useCfg'
+import configApi from '@/api/configApi'
 import { Button, PageHead, PageState } from '@/components/ui'
+import { parseMoney } from '@/utils/format'
 
 export default function SettingsPage() {
-  const { data: d, err, reload } = usePage('/cau-hinh')
+  const { data: d, err, reload } = usePage(() => configApi.getSettings())
   if (!d) return <PageState err={err} retry={reload} />
-  return <Form key={JSON.stringify(d.vals)} vals={d.vals} reload={reload} />
+  return <Form key={JSON.stringify(d)} vals={d} reload={reload} />
 }
 
 function Form({ vals, reload }) {
   const [act, busy] = useAct(reload)
-  const [f, setF] = useState(() => Object.fromEntries(Object.entries(vals).map(([k, v]) => [k, String(v)])))
+  const [f, setF] = useState(() => Object.fromEntries(Object.entries(vals).map(([k, v]) => [k, String(v ?? '')])))
   const n = Number(f.min_photos) || vals.min_photos
   const fields = [
     ['min_photos', 'Số ảnh đạt tối thiểu của 1 hồ sơ', '1 đến 20'],
@@ -28,7 +31,8 @@ function Form({ vals, reload }) {
         className="card stack narrow"
         onSubmit={(e) => {
           e.preventDefault()
-          act('save', '/cau-hinh', f)
+          const body = Object.fromEntries(fields.map(([k]) => [k, parseMoney(f[k])]))
+          act('save', () => configApi.saveSettings(body)).then((j) => j && reloadCfg())
         }}
       >
         {fields.map(([k, label, hint]) => (

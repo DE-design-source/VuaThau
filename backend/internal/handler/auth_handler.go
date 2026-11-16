@@ -15,14 +15,12 @@ func NewAuthHandler(svc service.AuthService) *AuthHandler {
 	return &AuthHandler{svc: svc}
 }
 
-// Register handles POST /api/v1/auth/register
+// Register handles POST /api/v1/auth/register (CTV đăng ký trên app)
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var in service.RegisterInput
-	if err := decodeJSON(w, r, &in); err != nil {
-		response.Error(w, http.StatusBadRequest, "invalid JSON body")
+	if !bodyOr400(w, r, &in) {
 		return
 	}
-
 	res, err := h.svc.Register(r.Context(), in)
 	if err != nil {
 		writeServiceError(w, err)
@@ -34,15 +32,29 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 // Login handles POST /api/v1/auth/login
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var in service.LoginInput
-	if err := decodeJSON(w, r, &in); err != nil {
-		response.Error(w, http.StatusBadRequest, "invalid JSON body")
+	if !bodyOr400(w, r, &in) {
 		return
 	}
-
 	res, err := h.svc.Login(r.Context(), in)
 	if err != nil {
 		writeServiceError(w, err)
 		return
 	}
-	response.Success(w, http.StatusOK, res)
+	ok(w, res)
+}
+
+// Google handles POST /api/v1/auth/google {id_token}
+func (h *AuthHandler) Google(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		IDToken string `json:"id_token"`
+	}
+	if !bodyOr400(w, r, &in) {
+		return
+	}
+	res, err := h.svc.Google(r.Context(), in.IDToken)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, res)
 }

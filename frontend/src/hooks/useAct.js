@@ -1,27 +1,28 @@
 import { useCallback, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import ntClient from '@/api/ntClient'
 import { toast } from '@/services/toast'
 
 /**
- * Gửi thao tác (POST) lên máy chủ như bấm nút trên web cũ: báo msgs, rồi đi tới url máy chủ trả về
- * (trùng trang đang xem thì tải lại). Route của web này trùng đường dẫn máy chủ nên url dùng thẳng được.
+ * Gửi thao tác ghi lên API: báo data.message, rồi đi tới trang `go` (nếu có) hoặc tải lại trang đang xem.
+ *   act(what, () => api.call(...), { go: (data) => '/batches/' + data.batch_id })
+ * what: tên nút đang bận (busy). go: chuỗi hoặc hàm (data) => chuỗi | falsy. Trả data, lỗi trả null.
  */
 export default function useAct(reload) {
   const [busy, setBusy] = useState('')
   const navigate = useNavigate()
-  const { pathname, search } = useLocation()
+  const { pathname } = useLocation()
 
   const act = useCallback(
-    async (what, path, body, { stay = false } = {}) => {
+    async (what, call, { go } = {}) => {
       setBusy(what)
       try {
-        const j = await ntClient.post(path, body)
-        toast(j.msgs)
-        const url = (j.url || '').split('#')[0]
-        if (!stay && url && url !== pathname && url !== pathname + search && url !== '/login') navigate(url)
+        const res = await call()
+        const data = res?.data ?? {}
+        toast(data.message)
+        const to = typeof go === 'function' ? go(data) : go
+        if (to && to !== pathname) navigate(to)
         else reload?.()
-        return j
+        return data
       } catch (e) {
         toast(e.message)
         return null
@@ -29,7 +30,7 @@ export default function useAct(reload) {
         setBusy('')
       }
     },
-    [navigate, pathname, search, reload],
+    [navigate, pathname, reload],
   )
   return [act, busy]
 }

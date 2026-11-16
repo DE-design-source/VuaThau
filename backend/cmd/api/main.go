@@ -13,9 +13,14 @@ import (
 	"vuathau/backend/internal/config"
 	"vuathau/backend/internal/database"
 	"vuathau/backend/internal/handler"
+	"vuathau/backend/internal/integration/ai"
+	"vuathau/backend/internal/integration/gdrive"
+	"vuathau/backend/internal/integration/geo"
+	"vuathau/backend/internal/integration/google"
 	"vuathau/backend/internal/repository"
 	"vuathau/backend/internal/router"
 	"vuathau/backend/internal/service"
+	"vuathau/backend/internal/storage"
 	"vuathau/backend/internal/websocket"
 )
 
@@ -30,6 +35,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// Mọi thời gian trả về theo giờ Việt Nam (RFC 3339 +07:00)
+	time.Local = service.VN
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -41,37 +48,72 @@ func run() error {
 	}
 	defer db.Close()
 
-	rdb, err := database.NewRedis(ctx, cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
+	// Redis chỉ dùng cho /health: không kết nối được thì vẫn chạy, /health báo redis "down".
+	redisCheck := func(context.Context) error { return errors.New("redis not connected") }
+	if rdb, err := database.NewRedis(ctx, cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB); err != nil {
+		log.Printf("Redis: %v (bỏ qua, API vẫn chạy)", err)
+	} else {
+		defer rdb.Close()
+		redisCheck = func(ctx context.Context) error { return rdb.Ping(ctx).Err() }
+	}
+
+	files, err := storage.New(cfg.DataDir)
 	if err != nil {
 		return err
 	}
-	defer rdb.Close()
 
 	hub := websocket.NewHub(cfg.CORSAllowedOrigins)
 	defer hub.Close()
 
 	// Repository -> Service -> Handler
-	authSvc := service.NewAuthService(repository.NewAuthRepository(db), cfg.JWTSecret, cfg.JWTExpiry)
-	userSvc := service.NewUserService(repository.NewUserRepository(db))
+	authRepo := repository.NewAuthRepository(db)
+	userRepo := repository.NewUserRepository(db)
+	houseRepo := repository.NewHouseRepository(db)
+	photoRepo := repository.NewPhotoRepository(db)
+	logRepo := repository.NewLogRepository(db)
+	payRepo := repository.NewPaymentRepository(db)
+	settingsRepo := repository.NewSettingsRepository(db)
+
+	gVerifier := google.NewVerifier(cfg.GoogleClientIDs)
+	var drive *gdrive.Client
+	if cfg.DriveEnabled() {
+		drive = gdrive.New(cfg.GDriveClientID, cfg.GDriveClientSecret, cfg.GDriveRefreshToken, cfg.GDriveFolder)
+	}
+
+	authSvc := service.NewAuthService(authRepo, gVerifier, cfg.JWTSecret, cfg.JWTExpiry)
+	userSvc := service.NewUserService(userRepo, authRepo, houseRepo, photoRepo, payRepo, logRepo, settingsRepo)
 	msgSvc := service.NewMessageService(repository.NewMessageRepository(db), hub)
+	houseSvc := service.NewHouseService(service.HouseDeps{
+		Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo, Payments: payRepo, Settings: settingsRepo,
+		Files: files, AI: ai.New(cfg.AIEnabled, cfg.AIModel, cfg.AIWorkspace), Geo: geo.New(cfg.GoogleMapsKey),
+		Drive: drive, Public: cfg.PublicURL,
+	})
+	paySvc := service.NewPaymentService(payRepo, houseRepo, photoRepo, userRepo, logRepo, settingsRepo, files)
+
+	log.Printf("AI đọc ảnh: %v (%s) · Google Drive: %v · đăng nhập Google: %v", cfg.AIEnabled, cfg.AIModel, drive != nil, gVerifier.Enabled())
+	go houseSvc.RunDriveSync() // đẩy các hồ sơ còn chờ từ lần chạy trước
 
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,
 		Handler: router.New(router.Deps{
 			Config:         cfg,
 			AuthHandler:    handler.NewAuthHandler(authSvc),
-			UserHandler:    handler.NewUserHandler(userSvc),
+			UserHandler:    handler.NewUserHandler(userSvc, authSvc),
 			MessageHandler: handler.NewMessageHandler(msgSvc),
+			HouseHandler:   handler.NewHouseHandler(houseSvc),
+			PaymentHandler: handler.NewPaymentHandler(paySvc, gVerifier.ClientID()),
+			UserLookup:     userRepo.GetByID,
 			Hub:            hub,
 			HealthChecks: map[string]router.HealthCheck{
 				"postgres": db.Ping,
-				"redis":    func(ctx context.Context) error { return rdb.Ping(ctx).Err() },
+				"redis":    redisCheck,
 			},
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		// Tải tới 20 ảnh x 20MB qua 4G, và AI kiểm ảnh: cần thời gian dài
+		ReadTimeout:  10 * time.Minute,
+		WriteTimeout: 10 * time.Minute,
+		IdleTimeout:  60 * time.Second,
 	}
 
 	errCh := make(chan error, 1)
@@ -89,7 +131,9 @@ func run() error {
 	}
 
 	log.Println("shutting down...")
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	return srv.Shutdown(shutdownCtx)
+	err = srv.Shutdown(shutdownCtx)
+	houseSvc.Wait() // chờ AI / Drive đang chạy dở
+	return err
 }

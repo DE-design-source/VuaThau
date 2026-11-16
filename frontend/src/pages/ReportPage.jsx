@@ -1,26 +1,37 @@
-// Báo cáo (/bao-cao): tiền đã chi theo ngày / tuần / tháng, theo CTV, luồng hồ sơ, CTV mới; xuất Excel chi tiết.
-import { useSearchParams } from 'react-router-dom'
+// Báo cáo (/reports): tiền đã chi theo ngày / tuần / tháng, theo CTV, luồng hồ sơ, CTV mới; xuất Excel chi tiết.
+// Bộ lọc trên URL (?from=&to=&group=day|week|month), trùng tham số của GET /reports.
+import { Link, useSearchParams } from 'react-router-dom'
 import usePage from '@/hooks/usePage'
-import ntClient, { qs } from '@/api/ntClient'
+import reportApi from '@/api/reportApi'
 import { toast } from '@/services/toast'
 import { Button, Empty, Kpi, PageHead, PageState } from '@/components/ui'
 import { money } from '@/utils/format'
+import { saveBlob } from '@/utils/download'
 
 const FLOW = [
-  ['Gửi duyệt', 'CTV gửi duyệt', 'wait'],
-  ['Duyệt', 'Admin duyệt', 'ok'],
-  ['Trả lại cho CTV sửa', 'Trả lại', 'warn'],
-  ['Từ chối', 'Từ chối', 'bad'],
+  ['submitted', 'CTV gửi duyệt', 'wait'],
+  ['approved', 'Admin duyệt', 'ok'],
+  ['returned', 'Trả lại', 'warn'],
+  ['rejected', 'Từ chối', 'bad'],
 ]
+
+const GROUP = { day: 'Ngày', week: 'Tuần', month: 'Tháng' }
 
 export default function ReportPage() {
   const [sp, setSp] = useSearchParams()
-  const search = sp.toString()
-  const { data: d, err, busy, reload } = usePage(`/bao-cao${search ? `?${search}` : ''}`)
+  const cur = { from: sp.get('from') || '', to: sp.get('to') || '', group: sp.get('group') || '' }
+  const { data: d, err, busy, reload } = usePage(() => reportApi.get(cur), [cur.from, cur.to, cur.group])
   if (!d) return <PageState err={err} retry={reload} />
-  const go = (chg) => setSp(qs({ tu: d.tu, den: d.den, nhom: d.nhom, ...chg }).slice(1))
+  const group = d.group || cur.group || 'day'
+  const go = (chg) => {
+    const next = { from: d.from || '', to: d.to || '', group, ...chg }
+    setSp(Object.fromEntries(Object.entries(next).filter(([, v]) => v)))
+  }
   const excel = () =>
-    ntClient.download(`/bao-cao/excel${qs({ tu: d.tu, den: d.den })}`, `bao-cao-chi-${d.tu}-den-${d.den}.xlsx`).catch((e) => toast(e.message))
+    reportApi
+      .exportFile({ from: d.from, to: d.to })
+      .then((b) => saveBlob(b, `bao-cao-chi-${d.from}-den-${d.to}.xlsx`))
+      .catch((e) => toast(e.message))
 
   return (
     <section className="stack">
@@ -32,14 +43,14 @@ export default function ReportPage() {
 
       <div className="card filters">
         <label className="inline">
-          Từ <input className="input" type="date" value={d.tu} onChange={(e) => go({ tu: e.target.value })} />
+          Từ <input className="input" type="date" value={d.from || ''} onChange={(e) => go({ from: e.target.value })} />
         </label>
         <label className="inline">
-          đến <input className="input" type="date" value={d.den} onChange={(e) => go({ den: e.target.value })} />
+          đến <input className="input" type="date" value={d.to || ''} onChange={(e) => go({ to: e.target.value })} />
         </label>
         <div className="chips">
-          {Object.entries(d.GROUP || {}).map(([k, [label]]) => (
-            <button key={k} type="button" className={`chip ${d.nhom === k ? 'chip-on' : ''}`} onClick={() => go({ nhom: k })}>
+          {Object.entries(GROUP).map(([k, label]) => (
+            <button key={k} type="button" className={`chip ${group === k ? 'chip-on' : ''}`} onClick={() => go({ group: k })}>
               Theo {label.toLowerCase()}
             </button>
           ))}
@@ -49,9 +60,9 @@ export default function ReportPage() {
 
       <div className="kpis">
         <Kpi label="Đã chi" value={money(d.total)} tone="done" />
-        <Kpi label="Số lần chi" value={d.lan} />
-        <Kpi label="Hồ sơ được trả" value={d.hs} />
-        <Kpi label="CTV mới đăng ký" value={d.new_ctv} />
+        <Kpi label="Số lần chi" value={d.batches ?? 0} />
+        <Kpi label="Hồ sơ được trả" value={d.houses ?? 0} />
+        <Kpi label="CTV mới đăng ký" value={d.new_ctvs ?? 0} />
         {FLOW.map(([k, label, tone]) => (
           <Kpi key={k} label={label} value={d.flow?.[k] || 0} tone={tone} sub="hồ sơ" />
         ))}
@@ -59,12 +70,12 @@ export default function ReportPage() {
 
       <div className="grid-2">
         <div className="card stack">
-          <h2>Theo {(d.GROUP?.[d.nhom]?.[0] || 'ngày').toLowerCase()}</h2>
+          <h2>Theo {(GROUP[group] || 'ngày').toLowerCase()}</h2>
           {d.periods?.length ? (
             <table className="table">
               <thead>
                 <tr>
-                  <th>{d.GROUP?.[d.nhom]?.[0]}</th>
+                  <th>{GROUP[group] || 'Ngày'}</th>
                   <th className="num">Lần chi</th>
                   <th className="num">CTV</th>
                   <th className="num">Hồ sơ</th>
@@ -73,12 +84,12 @@ export default function ReportPage() {
               </thead>
               <tbody>
                 {d.periods.map((p) => (
-                  <tr key={p.k}>
-                    <td>{p.k}</td>
-                    <td className="num">{p.lan}</td>
-                    <td className="num">{p.ctv}</td>
-                    <td className="num">{p.hs}</td>
-                    <td className="num">{money(p.tien)}</td>
+                  <tr key={p.key}>
+                    <td>{p.key}</td>
+                    <td className="num">{p.batches}</td>
+                    <td className="num">{p.ctvs}</td>
+                    <td className="num">{p.houses}</td>
+                    <td className="num">{money(p.total)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -101,14 +112,14 @@ export default function ReportPage() {
               </thead>
               <tbody>
                 {d.per_ctv.map((c) => (
-                  <tr key={c.id ?? c.name}>
+                  <tr key={c.ctv_id ?? c.name}>
                     <td>
-                      {c.name}
-                      <small className="muted d-block">{c.phone}</small>
+                      {c.ctv_id ? <Link to={`/ctvs/${c.ctv_id}`}>{c.name}</Link> : c.name}
+                      <small className="muted d-block">{c.username}</small>
                     </td>
-                    <td className="num">{c.lan}</td>
-                    <td className="num">{c.hs}</td>
-                    <td className="num">{money(c.tien)}</td>
+                    <td className="num">{c.batches}</td>
+                    <td className="num">{c.houses}</td>
+                    <td className="num">{money(c.total)}</td>
                   </tr>
                 ))}
               </tbody>
