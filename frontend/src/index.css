@@ -511,3 +511,6 @@ details summary { cursor: pointer; }
   .nav-open { display: flex; }
   .who { display: none; }
 }
+
+/* bản 2.0 */
+.footer small { letter-spacing: 0.01em; }

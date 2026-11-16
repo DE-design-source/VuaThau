@@ -10,6 +10,8 @@ WORKDIR /app
 COPY bin/api bin/ntctl /app/
 COPY web/ /app/web/
 COPY migrations/ /app/migrations/
+# File chép từ Windows (scp) có thể mang quyền 700: cho mọi user đọc được web + migration
+RUN chmod -R a+rX /app/web /app/migrations && chmod 755 /app/api /app/ntctl
 
 ENV APP_ENV=production \
     PORT=8080 \

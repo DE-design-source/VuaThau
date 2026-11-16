@@ -14,6 +14,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -71,6 +73,10 @@ func withRateLimit(rps float64, burst int) envOption {
 
 func withHealthChecks(checks map[string]router.HealthCheck) envOption {
 	return func(s *envSettings) { s.healthChecks = checks }
+}
+
+func withStatic(dir string) envOption {
+	return func(s *envSettings) { s.cfg.StaticDir = dir }
 }
 
 func withCORSOrigins(origins ...string) envOption {
@@ -1135,7 +1141,40 @@ func TestCORS(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 7. Rate limiting
+// 7. Web tĩnh (STATIC_DIR)
+// ---------------------------------------------------------------------------
+
+func TestStaticWeb(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(dir, "assets"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "index.html"), []byte("<!doctype html><div id=root></div>"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "assets", "app-1.js"), []byte("console.log(1)"), 0o644)
+	e := newTestEnv(t, withStatic(dir))
+	get := func(p string) apiResp {
+		req, _ := http.NewRequest(http.MethodGet, e.srv.URL+p, nil)
+		return e.sendRaw(t, req)
+	}
+	r := get("/assets/app-1.js")
+	if r.Status != 200 || !strings.Contains(r.Header.Get("Content-Type"), "javascript") || !strings.Contains(r.Header.Get("Cache-Control"), "immutable") {
+		t.Fatalf("asset: %d %v", r.Status, r.Header)
+	}
+	// File không có: 404 thật, không trả index.html (trình duyệt sẽ giữ nhầm HTML dưới URL của file JS)
+	if r := get("/assets/khong-co.js"); r.Status != 404 || strings.Contains(string(r.Raw), "<!doctype") {
+		t.Fatalf("missing asset: %d %s", r.Status, r.Raw)
+	}
+	// Đường dẫn React Router: index.html, không Last-Modified, không lưu đệm
+	r = get("/houses/12")
+	if r.Status != 200 || !strings.Contains(string(r.Raw), "id=root") || r.Header.Get("Last-Modified") != "" || r.Header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("spa route: %d %v", r.Status, r.Header)
+	}
+	if r := get("/api/v1/khong-co"); r.Status != 404 || !strings.Contains(string(r.Raw), "route not found") {
+		t.Fatalf("api 404: %s", r.Raw)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 8. Rate limiting
 // ---------------------------------------------------------------------------
 
 func TestRateLimit(t *testing.T) {
