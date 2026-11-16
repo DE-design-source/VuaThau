@@ -8,7 +8,8 @@ import useCfg from '@/hooks/useCfg'
 import useAuth from '@/hooks/useAuth'
 import houseApi from '@/api/houseApi'
 import { Button, Icon, PageHead, PageState, PhotoGrid, Pill, StatusBadge, hsId } from '@/components/ui'
-import { REASONS, aiDiffText, bankParts, money, parseMoney, vnTime } from '@/utils/format'
+import { toast } from '@/services/toast'
+import { REASONS, aiDiffText, bankParts, copyGmap, gmapUrl, money, parseMoney, vnTime } from '@/utils/format'
 
 // Gộp lỗi từng ảnh theo loại lỗi: "Không thấy công trình đang xây: ảnh 3, 5"
 function groupIssues(issues) {
@@ -111,8 +112,13 @@ function House({ id, d, reload }) {
             <h2>Cộng tác viên</h2>
             <p>
               <Link to={`/ctvs/${h.ctv_id}`}>
-                <strong>{h.ctv_name}</strong>
+                <strong className="ctv-name">{h.ctv_name}</strong>
               </Link>{' '}
+              {h.vip && (
+                <span className="vip-tag" title="CTV chụp công trình này đầu tiên">
+                  VIP
+                </span>
+              )}{' '}
               · {h.ctv_phone}
             </p>
             <p className="muted">{bank.owner ? `${bank.name} · ${bank.no} · ${bank.owner}` : h.ctv_bank || 'Chưa có tài khoản ngân hàng'}</p>
@@ -129,9 +135,15 @@ function House({ id, d, reload }) {
               <h2>Thông tin công trình</h2>
               <Fact label="Địa chỉ" value={h.address}>
                 {h.lat != null && (
-                  <a href={`https://maps.google.com/?q=${h.lat},${h.lng}`} target="_blank" rel="noreferrer">
-                    Xem bản đồ
-                  </a>
+                  <span className="inline">
+                    <a href={gmapUrl(h.lat, h.lng)} target="_blank" rel="noreferrer">
+                      Xem Google Maps
+                    </a>
+                    {' · '}
+                    <a href="#" onClick={(e) => (e.preventDefault(), copyGmap(h.lat, h.lng, toast))}>
+                      Chép link
+                    </a>
+                  </span>
                 )}
               </Fact>
               <Fact label="Số tầng" value={h.floors}>
@@ -281,9 +293,15 @@ function InfoForm({ id, h, act, busy, stages, aiTag }) {
         <span>Địa chỉ {ai('address')}</span>
         <textarea className="input" rows={2} value={f.address} onChange={set('address')} />
         {h.lat != null && (
-          <a href={`https://maps.google.com/?q=${h.lat},${h.lng}`} target="_blank" rel="noreferrer">
-            Xem vị trí trên bản đồ
-          </a>
+          <span className="inline">
+            <a href={gmapUrl(h.lat, h.lng)} target="_blank" rel="noreferrer">
+              Xem vị trí trên Google Maps
+            </a>
+            {' · '}
+            <a href="#" onClick={(e) => (e.preventDefault(), copyGmap(h.lat, h.lng, toast))}>
+              Chép link
+            </a>
+          </span>
         )}
         {h.province_name && (
           <small className="muted">

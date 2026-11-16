@@ -8,6 +8,9 @@ const navLinks = [
   { to: '/ctvs', label: 'Cộng tác viên', icon: 'users', roles: ['admin', 'ketoan'], group: 'Vận hành' },
   { to: '/batches', label: 'Phiếu chi', icon: 'receipt', roles: ['admin', 'ketoan'], group: 'Tài chính' },
   { to: '/reports', label: 'Báo cáo', icon: 'chart', roles: ['admin', 'ketoan'], group: 'Tài chính' },
+  { to: '/sale/map', label: 'Bản đồ', icon: 'map', roles: ['sale'], group: 'Sale' },
+  { to: '/sale/projects', label: 'Dự án', icon: 'houses', roles: ['sale'], group: 'Sale' },
+  { to: '/sale/contractors', label: 'Nhà thầu', icon: 'users', roles: ['sale'], group: 'Sale' },
   { to: '/staff', label: 'Nhân viên', icon: 'staff', roles: ['admin'], group: 'Hệ thống' },
   { to: '/settings', label: 'Cấu hình', icon: 'settings', roles: ['admin'], group: 'Hệ thống' },
 ]

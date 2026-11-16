@@ -17,6 +17,7 @@ import (
 
 	"vuathau/backend/internal/integration/ai"
 	"vuathau/backend/internal/integration/gdrive"
+	"vuathau/backend/internal/integration/geo"
 	"vuathau/backend/internal/integration/inbox"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/imaging"
@@ -169,7 +170,11 @@ type Overview struct {
 type HouseService interface {
 	CTVHome(ctx context.Context, u *model.User, tab string) (*CTVHome, error)
 	Income(ctx context.Context, u *model.User) (*Income, error)
+	// Bản đồ trong app CTV: công trình của mình + chấm công trình CTV khác (chỉ toạ độ).
+	CTVMap(ctx context.Context, u *model.User) (*CTVMap, error)
 	Geocode(ctx context.Context, lat, lng float64) string
+	// Tìm địa điểm theo địa chỉ (ô tìm trên bản đồ).
+	SearchPlace(ctx context.Context, q string) ([]geo.Place, error)
 	CheckPhoto(ctx context.Context, u *model.User, f Upload, meta string) (*CheckResult, error)
 	Create(ctx context.Context, u *model.User, files []Upload, meta string) (*UploadResult, error)
 	AddPhotos(ctx context.Context, u *model.User, id int64, files []Upload, meta string) (*UploadResult, error)
@@ -189,6 +194,12 @@ type HouseService interface {
 
 	// Bản đồ công trình + số công trình mỗi CTV đã chụp.
 	Map(ctx context.Context, q OverviewQuery) (*MapData, error)
+
+	// Trang sale (sale_service.go): không CTV, không tiền.
+	SaleMap(ctx context.Context, province string) (*SaleMapData, error)
+	SaleProjects(ctx context.Context, f repository.SaleFilter, page int) (*SaleProjectList, error)
+	SaleProject(ctx context.Context, id int64) (*SaleProjectDetail, error)
+	Contractors(ctx context.Context, q string) ([]repository.Contractor, error)
 
 	// Hồ sơ Messenger (dezon-inbox): đồng bộ ngay, trạng thái, chạy định kỳ.
 	SyncInbox(ctx context.Context) (*SyncStatus, error)
@@ -227,6 +238,7 @@ type houseService struct {
 // Geocoder: địa chỉ của toạ độ.
 type Geocoder interface {
 	Address(ctx context.Context, lat, lng float64) (string, error)
+	Search(ctx context.Context, q string) ([]geo.Place, error)
 }
 
 type HouseDeps struct {
@@ -289,7 +301,8 @@ func withStats(ctx context.Context, photos repository.PhotoRepository, rows []mo
 // load: hồ sơ + quyền xem (CTV chỉ xem hồ sơ của mình).
 func (s *houseService) load(ctx context.Context, u *model.User, id int64) (*model.House, error) {
 	h, err := s.houses.Get(ctx, id)
-	if errors.Is(err, repository.ErrNotFound) || (err == nil && u.Role == model.RoleCTV && h.CTVID != u.ID) {
+	// sale không xem hồ sơ đầy đủ (có CTV, tiền): sale dùng /sale/projects/{id}
+	if errors.Is(err, repository.ErrNotFound) || (err == nil && u.Role == model.RoleCTV && h.CTVID != u.ID) || u.Role == model.RoleSale {
 		return nil, fail(ErrNotFound, "Không tìm thấy hồ sơ.")
 	}
 	return h, err
@@ -329,6 +342,9 @@ func (s *houseService) CTVHome(ctx context.Context, u *model.User, tab string) (
 	if err := withStats(ctx, s.photos, res.Rows); err != nil {
 		return nil, err
 	}
+	if err := s.markVIP(ctx, res.Rows); err != nil {
+		return nil, err
+	}
 	if res.Money, err = s.houses.CTVMoney(ctx, u.ID); err != nil {
 		return nil, err
 	}
@@ -347,6 +363,18 @@ func (s *houseService) Income(ctx context.Context, u *model.User) (*Income, erro
 	}
 	res.Adjustments, err = s.payments.Adjustments(ctx, u.ID, true)
 	return res, err
+}
+
+func (s *houseService) SearchPlace(ctx context.Context, q string) ([]geo.Place, error) {
+	if s.geo == nil {
+		return []geo.Place{}, nil
+	}
+	ps, err := s.geo.Search(ctx, q)
+	if err != nil {
+		log.Printf("tìm địa điểm %q: %v", q, err)
+		return nil, fail(ErrUnavailable, "Chưa tìm được địa điểm, thử lại sau ít giây.")
+	}
+	return ps, nil
 }
 
 func (s *houseService) Geocode(ctx context.Context, lat, lng float64) string {
@@ -668,7 +696,7 @@ func (s *houseService) Save(ctx context.Context, u *model.User, id int64, f mode
 	}
 	// Chặn chụp trùng: công trình đã có hồ sơ trong hạn thì không cho gửi
 	dup := ""
-	hit, err := s.checkSite(ctx, id, lat, lng, h.ContractorPhone)
+	hit, err := s.checkSite(ctx, id, lat, lng, h.ContractorPhone, true)
 	if err != nil {
 		return "", false, err
 	}
@@ -730,6 +758,9 @@ func (s *houseService) Detail(ctx context.Context, u *model.User, id int64) (*Ho
 	}
 	valid := FillProblems(ps, s.now())
 	h.PhotosTotal, h.PhotosValid = len(ps), valid
+	if idx, _, err := s.sites(ctx); err == nil {
+		h.VIP = idx[h.ID].VIP
+	}
 	if len(ps) > 0 {
 		h.CoverID = ptr(ps[0].ID)
 	}
@@ -775,7 +806,11 @@ func (s *houseService) PhotoFile(ctx context.Context, u *model.User, pid int64, 
 	if err != nil {
 		return nil, "", err
 	}
-	if _, err := s.load(ctx, u, p.HouseID); err != nil {
+	if u.Role == model.RoleSale {
+		if ok, err := s.houses.SaleCanSeeHouse(ctx, p.HouseID); err != nil || !ok {
+			return nil, "", fail(ErrNotFound, "Không tìm thấy ảnh.")
+		}
+	} else if _, err := s.load(ctx, u, p.HouseID); err != nil {
 		return nil, "", err
 	}
 	b, err := s.files.ReadPhoto(p.SHA256, !original)
@@ -1155,6 +1190,9 @@ func (s *houseService) Overview(ctx context.Context, q OverviewQuery) (*Overview
 		return nil, err
 	}
 	if err := withStats(ctx, s.photos, res.Rows); err != nil {
+		return nil, err
+	}
+	if err := s.markVIP(ctx, res.Rows); err != nil {
 		return nil, err
 	}
 	if res.CTVTotal, err = s.users.CountCTVs(ctx); err != nil {

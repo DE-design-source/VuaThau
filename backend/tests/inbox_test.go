@@ -162,6 +162,14 @@ func TestInboxSync(t *testing.T) {
 		t.Fatalf("thiếu lịch sử tự từ chối: %s", r.Raw)
 	}
 
+	// Không qua AI: giờ chụp = giờ CTV gửi tin, nên 6 ảnh đều đạt và có tiền; không có trạng thái AI; chụp đầu tiên: VIP
+	r = e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/houses/%d", h1.id), admin.AccessToken, nil)
+	decodeData(t, r, &det)
+	if det.Valid != 6 || det.House.Amount == 0 || det.House.AIState != "" || det.Photos[0].ExifTime == "" || !det.House.VIP {
+		t.Fatalf("h1 (Messenger, không AI): valid=%d amount=%d ai=%q exif=%q vip=%v", det.Valid, det.House.Amount,
+			det.House.AIState, det.Photos[0].ExifTime, det.House.VIP)
+	}
+
 	// Bản đồ: 4 điểm, bảng CTV (A: 2 công trình, B: 0 + 1 trùng)
 	r = e.do(t, http.MethodGet, "/api/v1/map", admin.AccessToken, nil)
 	expectStatus(t, r, http.StatusOK)
@@ -172,6 +180,11 @@ func TestInboxSync(t *testing.T) {
 	decodeData(t, r, &m)
 	if len(m.Points) != 4 {
 		t.Fatalf("map points: %s", r.Raw)
+	}
+	for _, p := range m.Points {
+		if p.LastAt.IsZero() || (p.ID == h1.id && !p.VIP) {
+			t.Fatalf("map point thiếu last_at / VIP: %+v", p)
+		}
 	}
 	counts := map[int64]repository.CTVSites{}
 	for _, c := range m.CTVs {

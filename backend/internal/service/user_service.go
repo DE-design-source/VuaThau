@@ -110,6 +110,8 @@ func todoOf(ctx context.Context, u *model.User, houses repository.HouseRepositor
 			return 0, err
 		}
 		return payments.CountReady(ctx, st.PayMin)
+	case model.RoleSale:
+		return 0, nil
 	default:
 		return houses.CTVTodo(ctx, u.ID)
 	}
@@ -193,11 +195,11 @@ func (s *userService) ListStaff(ctx context.Context) ([]model.User, error) {
 	return s.repo.ListStaff(ctx)
 }
 
-var roleLabel = map[string]string{model.RoleCTV: "cộng tác viên", model.RoleAdmin: "admin", model.RoleKetoan: "kế toán"}
+var roleLabel = map[string]string{model.RoleCTV: "cộng tác viên", model.RoleAdmin: "admin", model.RoleKetoan: "kế toán", model.RoleSale: "sale"}
 
 func (s *userService) AddStaff(ctx context.Context, by *model.User, in AddStaffInput) (*model.User, string, error) {
 	login, name := LoginID(in.Login), truncate(in.Name, 100)
-	if (in.Role != model.RoleAdmin && in.Role != model.RoleKetoan) || name == "" || len(in.Password) < 8 || len(in.Password) > 72 ||
+	if (in.Role != model.RoleAdmin && in.Role != model.RoleKetoan && in.Role != model.RoleSale) || name == "" || len(in.Password) < 8 || len(in.Password) > 72 ||
 		!(ValidPhone(login) || staffLogin.MatchString(login)) {
 		return nil, "", fail(ErrInvalidInput, "Chưa thêm: tên đăng nhập 3-30 ký tự a-z, 0-9, _ (hoặc SĐT), có họ tên, mật khẩu từ 8 ký tự.")
 	}

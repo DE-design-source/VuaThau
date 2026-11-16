@@ -29,6 +29,7 @@ type Deps struct {
 	UserLookup     middleware.UserLookup
 	Hub            *websocket.Hub
 	HealthChecks   map[string]HealthCheck // e.g. "postgres", "redis"
+	Tiles          *handler.TileHandler   // nền bản đồ qua máy chủ; nil: tạo mới theo DATA_DIR
 }
 
 func New(d Deps) http.Handler {
@@ -39,7 +40,7 @@ func New(d Deps) http.Handler {
 	role := func(fn http.HandlerFunc, roles ...string) http.Handler {
 		return auth(middleware.Session(d.UserLookup, roles...)(fn))
 	}
-	const ctv, admin, ketoan = model.RoleCTV, model.RoleAdmin, model.RoleKetoan
+	const ctv, admin, ketoan, sale = model.RoleCTV, model.RoleAdmin, model.RoleKetoan, model.RoleSale
 
 	mux.HandleFunc("GET /health", healthHandler(d.HealthChecks))
 
@@ -69,6 +70,8 @@ func New(d Deps) http.Handler {
 	// CTV
 	mux.Handle("GET /api/v1/ctv/home", role(h.Home, ctv))
 	mux.Handle("GET /api/v1/ctv/income", role(h.Income, ctv))
+	mux.Handle("GET /api/v1/ctv/map", role(h.CTVMap, ctv))
+	mux.Handle("GET /api/v1/geo/search", role(h.SearchPlace, ctv, admin, ketoan, sale))
 	mux.Handle("GET /api/v1/geocode", role(h.Geocode, ctv))
 	mux.Handle("POST /api/v1/photos/check", role(h.CheckPhoto, ctv))
 	mux.Handle("POST /api/v1/houses", role(h.Create, ctv))
@@ -77,11 +80,18 @@ func New(d Deps) http.Handler {
 	mux.Handle("DELETE /api/v1/houses/{id}/photos/{pid}", role(h.DeletePhoto, ctv))
 
 	// Hồ sơ: CTV chủ hồ sơ, admin, kế toán (service kiểm quyền xem)
-	mux.Handle("GET /api/v1/houses/{id}", role(h.Detail))
-	mux.Handle("GET /api/v1/houses/{id}/state", role(h.State))
-	mux.Handle("GET /api/v1/photos/{pid}", role(h.Photo))
-	mux.Handle("GET /api/v1/batches/{id}", role(p.Batch))
-	mux.Handle("GET /api/v1/batches/{id}/receipt", role(p.Receipt))
+	// (không cho sale: có tên CTV, tiền)
+	mux.Handle("GET /api/v1/houses/{id}", role(h.Detail, ctv, admin, ketoan))
+	mux.Handle("GET /api/v1/houses/{id}/state", role(h.State, ctv, admin, ketoan))
+	mux.Handle("GET /api/v1/photos/{pid}", role(h.Photo)) // sale: chỉ ảnh của dự án được xem
+	mux.Handle("GET /api/v1/batches/{id}", role(p.Batch, ctv, admin, ketoan))
+	mux.Handle("GET /api/v1/batches/{id}/receipt", role(p.Receipt, ctv, admin, ketoan))
+
+	// Sale: bản đồ, dự án, nhà thầu. Không có CTV, không có tiền. Admin xem được để kiểm tra.
+	mux.Handle("GET /api/v1/sale/map", role(h.SaleMap, sale, admin))
+	mux.Handle("GET /api/v1/sale/projects", role(h.SaleProjects, sale, admin))
+	mux.Handle("GET /api/v1/sale/projects/{id}", role(h.SaleProject, sale, admin))
+	mux.Handle("GET /api/v1/sale/contractors", role(h.Contractors, sale, admin))
 
 	// Admin
 	mux.Handle("GET /api/v1/admin/queue", role(h.Queue, admin))
@@ -122,8 +132,8 @@ func New(d Deps) http.Handler {
 	mux.Handle("POST /api/v1/batches/{id}/receipt", role(p.UploadReceipt, ketoan))
 
 	// Scaffold: người dùng, tin nhắn, WebSocket
-	mux.Handle("GET /api/v1/users", role(u.List))
-	mux.Handle("GET /api/v1/users/{id}", role(u.GetByID))
+	mux.Handle("GET /api/v1/users", role(u.List, ctv, admin, ketoan))
+	mux.Handle("GET /api/v1/users/{id}", role(u.GetByID, ctv, admin, ketoan))
 	mux.Handle("POST /api/v1/messages", protected(d.MessageHandler.Send))
 	mux.Handle("GET /api/v1/messages/{userID}", protected(d.MessageHandler.Conversation))
 
@@ -143,7 +153,22 @@ func New(d Deps) http.Handler {
 	var hd http.Handler = mux
 	hd = middleware.RateLimit(d.Config.RateLimitRPS, d.Config.RateLimitBurst)(hd)
 	hd = middleware.CORS(d.Config.CORSAllowedOrigins)(hd)
-	return hd
+
+	// Ô nền bản đồ: 1 lần mở bản đồ tải vài chục ô cùng lúc, không tính vào giới hạn tốc độ của API
+	tiles := http.NewServeMux()
+	tl := d.Tiles
+	if tl == nil {
+		tl = handler.NewTileHandler(d.Config.DataDir)
+	}
+	tiles.HandleFunc("GET /tiles/{z}/{x}/{file}", tl.Serve)
+	limited := hd
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/tiles/") {
+			tiles.ServeHTTP(w, r)
+			return
+		}
+		limited.ServeHTTP(w, r)
+	})
 }
 
 // spa phục vụ web React đã build: file có thật thì trả file, đường dẫn lạ trả index.html (React Router xử lý).

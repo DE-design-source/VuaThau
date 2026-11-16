@@ -20,8 +20,10 @@ import (
 )
 
 // Đồng bộ hồ sơ CTV gửi qua Messenger (dezon-inbox, chatbot "Cập nhật công trình") vào hệ thống nghiệm thu:
-// mỗi project_logs thành 1 hồ sơ nguồn "inbox", ảnh tải từ kho S3 qua cùng luồng kiểm ảnh như app
-// (trùng ảnh, AI đọc Timemark), rồi gửi duyệt và kiểm trùng công trình (trùng: tự từ chối).
+// mỗi project_logs thành 1 hồ sơ nguồn "inbox", ảnh tải từ kho S3 qua luồng kiểm ảnh như app (trùng ảnh, vị trí),
+// rồi gửi duyệt và kiểm trùng công trình (trùng: tự từ chối). KHÔNG dùng AI (không đọc chữ trên ảnh, không so ảnh):
+// giờ chụp lấy theo giờ CTV gửi tin; admin duyệt, kế toán thanh toán như hồ sơ app. Chỉ ảnh CTV chụp và nộp qua app
+// mới qua AI.
 // Người gửi ghép vào CTV cùng SĐT; chưa có thì tự tạo tài khoản CTV (chưa đăng nhập được tới khi admin đặt mật khẩu).
 
 const (
@@ -237,6 +239,7 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 	}
 	lat, lng := parseCoord(l.Fields["toa_do"])
 	addr := truncate(l.Fields["dia_chi"], MaxAddressLen)
+	sent := l.CreatedAt.In(VN).Format("2006-01-02 15:04") // giờ CTV gửi tin: dùng làm giờ chụp (không cho AI đọc giờ in trên ảnh)
 	files, metas := []Upload{}, []Meta{}
 	for i, im := range l.Images {
 		if i >= model.MaxPhotos {
@@ -247,7 +250,7 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 			return false, false, fmt.Errorf("tải ảnh %s: %w", im.Key, err)
 		}
 		files = append(files, Upload{Name: fmt.Sprintf("Ảnh %d", i+1), Data: b})
-		metas = append(metas, Meta{Lat: lat, Lng: lng, Addr: addr})
+		metas = append(metas, Meta{T: sent, Lat: lat, Lng: lng, Addr: addr})
 	}
 	ok, _, err := s.takeFiles(ctx, hid, files, metas)
 	if err != nil {
@@ -275,17 +278,6 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 	} else if ok == 0 {
 		return false, false, nil // không có ảnh mới
 	}
-	if s.ai.Enabled() {
-		s.aiSem <- struct{}{}
-		_ = s.houses.SetAIState(ctx, hid, model.AIReading)
-		actx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-		if err := s.runAI(actx, hid); err != nil {
-			log.Printf("AI hồ sơ Messenger #%d: %v", hid, err)
-			_ = s.houses.ApplyAI(ctx, hid, model.HouseFields{}, false)
-		}
-		cancel()
-		<-s.aiSem
-	}
 	if !created { // hồ sơ đang chờ duyệt có thêm ảnh: cập nhật số tiền theo ảnh đạt, giữ trạng thái
 		return false, false, nil
 	}
@@ -307,7 +299,7 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 			break
 		}
 	}
-	hit, err := s.checkSite(ctx, hid, lat, lng, h.ContractorPhone)
+	hit, err := s.checkSite(ctx, hid, lat, lng, h.ContractorPhone, false)
 	if err != nil {
 		return false, false, err
 	}

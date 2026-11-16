@@ -142,7 +142,7 @@ var downloadPage = template.Must(template.New("tai-app").Parse(`<!doctype html>
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .top{background:var(--navy);color:#fff;text-align:center;padding:36px 16px 28px}
-.mark{display:inline-grid;place-items:center;width:64px;height:64px;border-radius:16px;background:var(--amber)}
+.mark{display:inline-block;width:88px;height:88px;border-radius:20px}
 h1{font-size:22px;margin:14px 0 4px}
 .top p{margin:0;color:#c5cbe0}
 main{max-width:460px;margin:-12px auto 32px;padding:0 16px;display:grid;gap:14px}
@@ -154,7 +154,7 @@ main{max-width:460px;margin:-12px auto 32px;padding:0 16px;display:grid;gap:14px
 ol{margin:6px 0 0;padding-left:22px}li{margin:6px 0}
 </style></head><body>
 <header class="top">
-  <span class="mark" aria-hidden="true"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#0f1f3d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></span>
+  <img class="mark" src="/app/icons/Icon-192.png" width="88" height="88" alt="Vua Thầu Map">
   <h1>Vua Thầu Nghiệm thu</h1>
   <p>App cho cộng tác viên: chụp ảnh công trình, nộp hồ sơ, xem tiền về</p>
 </header>

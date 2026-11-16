@@ -21,7 +21,7 @@ export default function StaffPage() {
 
   return (
     <section className="stack">
-      <PageHead title="Nhân viên" sub="Tài khoản admin và kế toán đăng nhập web này." />
+      <PageHead title="Nhân viên" sub="Tài khoản admin, kế toán và sale đăng nhập web này. Sale chỉ xem bản đồ, dự án, nhà thầu (không thấy CTV, không thấy tiền)." />
       <div className="card">
         <div className="table-wrap">
           <table className="table">
@@ -103,6 +103,7 @@ export default function StaffPage() {
             <select className="input" value={f.role} onChange={set('role')}>
               <option value="ketoan">Kế toán</option>
               <option value="admin">Admin</option>
+              <option value="sale">Sale (chỉ xem bản đồ, dự án, nhà thầu)</option>
             </select>
           </label>
           <label className="field">

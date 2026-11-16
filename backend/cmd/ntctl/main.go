@@ -28,7 +28,7 @@ import (
 func usage() {
 	fmt.Fprintln(os.Stderr, `Cách dùng:
   ntctl migrate [-dir migrations]
-  ntctl adduser <đăng nhập> "<Họ tên>" admin|ketoan <mật khẩu>
+  ntctl adduser <đăng nhập> "<Họ tên>" admin|ketoan|sale <mật khẩu>
   ntctl import-legacy -db <nghiemthu.db> [-src <thư mục có anh/ và bienlai/>]`)
 	os.Exit(2)
 }
@@ -105,8 +105,8 @@ var (
 
 func addUser(ctx context.Context, pool *pgxpool.Pool, login, name, role, pw string) {
 	login = strings.ToLower(regexp.MustCompile(`[\s.\-]`).ReplaceAllString(login, ""))
-	if role != "admin" && role != "ketoan" {
-		fail(fmt.Errorf("vai trò phải là admin hoặc ketoan"))
+	if role != "admin" && role != "ketoan" && role != "sale" {
+		fail(fmt.Errorf("vai trò phải là admin, ketoan hoặc sale"))
 	}
 	if !phoneRE.MatchString(login) && !loginRE.MatchString(login) {
 		fail(fmt.Errorf("tên đăng nhập: SĐT hoặc 3-30 ký tự a-z, 0-9, _"))

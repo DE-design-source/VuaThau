@@ -44,7 +44,9 @@ type siteCand struct {
 	phone bool
 }
 
-func (s *houseService) checkSite(ctx context.Context, hid int64, lat, lng *float64, contractorPhone string) (*SiteHit, error) {
+// useAI: false với hồ sơ lấy từ Messenger / DB (không cho AI so ảnh): chỉ chặn khi ảnh giống hệt, hoặc cùng chỗ
+// và cùng SĐT nhà thầu; còn lại ghi cảnh báo cho admin.
+func (s *houseService) checkSite(ctx context.Context, hid int64, lat, lng *float64, contractorPhone string, useAI bool) (*SiteHit, error) {
 	st, err := s.settings.Get(ctx)
 	if err != nil {
 		return nil, err
@@ -91,7 +93,7 @@ func (s *houseService) checkSite(ctx context.Context, hid int64, lat, lng *float
 
 	comparer, _ := s.ai.(ai.Comparer)
 	var mine [][]byte
-	if comparer != nil && s.ai.Enabled() {
+	if useAI && comparer != nil && s.ai.Enabled() {
 		mine = s.compareImages(ps)
 	}
 	warn := ""
@@ -111,7 +113,7 @@ func (s *houseService) checkSite(ctx context.Context, hid int64, lat, lng *float
 			return s.hit(n, true, "cùng chỗ và cùng SĐT nhà thầu", ""), nil
 		default:
 			if warn == "" {
-				warn = fmt.Sprintf("Gần hồ sơ #%d%s, có thể trùng công trình (AI chưa so được ảnh)", n.c.ID, dist(n.m))
+				warn = fmt.Sprintf("Gần hồ sơ #%d%s, có thể trùng công trình (chưa so ảnh)", n.c.ID, dist(n.m))
 			}
 		}
 	}

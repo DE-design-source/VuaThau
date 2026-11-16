@@ -1319,4 +1319,10 @@ func TestRateLimit(t *testing.T) {
 	if last.Header.Get("Retry-After") == "" {
 		t.Fatal("429 response missing Retry-After header")
 	}
+	// Ô nền bản đồ không tính vào giới hạn (1 lần mở bản đồ tải vài chục ô). Ô sai: 404, không gọi OSM.
+	for range 10 {
+		if r := e.getRaw(t, "/tiles/20/0/0.png", ""); r.Status != http.StatusNotFound {
+			t.Fatalf("tiles bị giới hạn tốc độ: %d", r.Status)
+		}
+	}
 }

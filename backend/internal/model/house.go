@@ -84,6 +84,7 @@ type House struct {
 	CoverID         *int64    `json:"cover_id"`
 	PhotosTotal     int       `json:"photos_total"`
 	PhotosValid     int       `json:"photos_valid"`
+	VIP             bool      `json:"vip"` // chụp công trình này đầu tiên (không có hồ sơ nào gần đó gửi sớm hơn)
 }
 
 // HouseFields: các ô thông tin công trình (CTV lưu, admin sửa).

@@ -16,6 +16,7 @@ var (
 	ErrTooManyAttempts    = errors.New("Sai mật khẩu nhiều lần, thử lại sau 5 phút.")
 	ErrLocked             = errors.New("Tài khoản đã bị khoá. Liên hệ Vua Thầu để được mở lại.")
 	ErrUnauthorized       = errors.New("Hết phiên đăng nhập, đăng nhập lại nhé.")
+	ErrUnavailable        = errors.New("Dịch vụ tạm thời không dùng được, thử lại sau.") // dịch vụ ngoài (tra địa chỉ...) lỗi
 )
 
 // UserError: lỗi kèm câu báo cho người dùng, vẫn so được bằng errors.Is với sentinel.
