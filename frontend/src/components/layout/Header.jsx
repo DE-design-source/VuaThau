@@ -7,13 +7,9 @@ import useTheme from '@/hooks/useTheme'
 import Icon from '@/components/ui/Icon'
 import { ROLE_LABEL, initials } from '@/utils/format'
 
+/** Logo Vua Thầu Map (dùng chung với app CTV). */
 export function Mark({ size = 28 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="7" fill="#F5B301" />
-      <path d="M8.5 16.5l5 5 10-11" fill="none" stroke="#0B1F3A" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
+  return <img src="/logo.png" width={size} height={size} alt="" aria-hidden="true" style={{ borderRadius: size * 0.2, display: 'block' }} />
 }
 
 export default function Header() {
@@ -38,10 +34,10 @@ export default function Header() {
     <>
       <aside className={`side ${open ? 'side-open' : ''}`} aria-label="Điều hướng">
         <Link to="/" className="side-brand" onClick={() => setOpen(false)}>
-          <Mark />
+          <Mark size={36} />
           <span>
-            <b>Vua Thầu</b>
-            <small>Nghiệm thu</small>
+            <b>Vua Thầu Map</b>
+            <small>Quản lý nghiệm thu</small>
           </span>
         </Link>
         <nav className="side-nav" onClick={() => setOpen(false)}>
@@ -82,7 +78,7 @@ export default function Header() {
           <Icon name="menu" />
         </button>
         <div className="crumbs">
-          <span>Vua Thầu</span>
+          <span>Vua Thầu Map</span>
           <Icon name="right" size={14} />
           <b>{current?.label || (pathname.startsWith('/me') ? 'Tài khoản' : 'Tổng quan')}</b>
         </div>

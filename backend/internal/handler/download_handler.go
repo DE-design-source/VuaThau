@@ -83,7 +83,7 @@ func (h *DownloadHandler) APK(w http.ResponseWriter, r *http.Request) {
 	defer f.Close()
 	st, _ := f.Stat()
 	w.Header().Set("Content-Type", "application/vnd.android.package-archive")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="VuaThau-NghiemThu-%s.apk"`, a.Version))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="VuaThauMap-%s.apk"`, a.Version))
 	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeContent(w, r, "", st.ModTime(), f)
 }
@@ -132,8 +132,8 @@ func (h *DownloadHandler) LegacyConfig(w http.ResponseWriter, r *http.Request) {
 var downloadPage = template.Must(template.New("tai-app").Parse(`<!doctype html>
 <html lang="vi"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tải app · Vua Thầu Nghiệm thu</title>
-<meta property="og:title" content="Vua Thầu Nghiệm thu: app cho cộng tác viên">
+<title>Tải app · Vua Thầu Map</title>
+<meta property="og:title" content="Vua Thầu Map: app cho cộng tác viên">
 <meta property="og:description" content="Chụp ảnh công trình, nộp hồ sơ nghiệm thu, theo dõi tiền về. Bấm để tải app Android.">
 <meta property="og:url" content="https://{{.Host}}/tai-app">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -155,7 +155,7 @@ ol{margin:6px 0 0;padding-left:22px}li{margin:6px 0}
 </style></head><body>
 <header class="top">
   <img class="mark" src="/app/icons/Icon-192.png" width="88" height="88" alt="Vua Thầu Map">
-  <h1>Vua Thầu Nghiệm thu</h1>
+  <h1>Vua Thầu Map</h1>
   <p>App cho cộng tác viên: chụp ảnh công trình, nộp hồ sơ, xem tiền về</p>
 </header>
 <main>
@@ -177,7 +177,7 @@ ol{margin:6px 0 0;padding-left:22px}li{margin:6px 0}
   <p class="muted">Phiên bản {{.APK.Version}} · nên tải bằng Wi-Fi</p>
   <div class="card"><h2>Cách cài</h2><ol>
     <li>Bấm <b>Tải app Android</b>, chờ tải xong.</li>
-    <li>Mở file <b>VuaThau-NghiemThu</b> trong thông báo hoặc thư mục <b>Tải xuống</b>.</li>
+    <li>Mở file <b>VuaThauMap</b> trong thông báo hoặc thư mục <b>Tải xuống</b>.</li>
     <li>Máy hỏi <b>Cài ứng dụng không rõ nguồn gốc</b>: chọn <b>Cài đặt</b>, bật <b>Cho phép từ nguồn này</b>, rồi quay lại.</li>
     <li>Máy <b>OPPO, realme, OnePlus</b> báo <b>Enhanced installation protection</b>: bấm <b>⋮</b> góc trên bên phải, chọn <b>Deep scan</b>, quét xong chọn tiếp tục cài.</li>
     <li>Bấm <b>Cài đặt</b>, xong bấm <b>Mở</b>. Đăng nhập bằng số điện thoại và mật khẩu đã đăng ký.</li>

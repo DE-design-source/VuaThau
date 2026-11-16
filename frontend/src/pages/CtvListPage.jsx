@@ -29,7 +29,7 @@ function AddCtv({ reload, onClose }) {
   const phoneOk = /^(0|\+84)\d{9,10}$/.test(f.phone.replace(/[\s.-]/g, ''))
 
   if (done) {
-    const text = `Tài khoản app Vua Thầu Nghiệm thu của ${done.name}:\n- Tải app (Android): ${APP_URL}\n- Đăng nhập: SĐT ${done.phone}\n- Mật khẩu: ${done.password}\nĐăng nhập xong vào Tài khoản để thêm / kiểm tra tài khoản ngân hàng nhận tiền.`
+    const text = `Tài khoản app Vua Thầu Map của ${done.name}:\n- Tải app (Android): ${APP_URL}\n- Đăng nhập: SĐT ${done.phone}\n- Mật khẩu: ${done.password}\nĐăng nhập xong vào Tài khoản để thêm / kiểm tra tài khoản ngân hàng nhận tiền.`
     return (
       <div className="card stack">
         <h2>Đã tạo tài khoản CTV {done.name}</h2>
