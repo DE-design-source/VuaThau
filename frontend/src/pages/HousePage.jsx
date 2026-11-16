@@ -35,12 +35,24 @@ function House({ id, d, reload }) {
     <section className="stack">
       <PageHead title={`Hồ sơ #${h.id}`} sub={h.address || 'Chưa có địa chỉ'}>
         <StatusBadge status={h.status} />
+        {h.source === 'inbox' && <Pill tone="wait">Gửi qua Messenger</Pill>}
         {h.status === 'cho_duyet' && <span className="muted">Còn {d.queue_left} hồ sơ chờ duyệt</span>}
       </PageHead>
 
-      {h.dup && <div className="note tone-warn">⚠ {h.dup}</div>}
+      {h.dup && !(h.status === 'tu_choi' && h.dup === h.note) && <div className="note tone-warn">⚠ {h.dup}</div>}
       {h.status === 'tra_lai' && h.note && <div className="note tone-warn">Đã trả lại cho CTV: {h.note}</div>}
-      {h.status === 'tu_choi' && <div className="note tone-bad">Đã từ chối: {h.note || 'không ghi lý do'}</div>}
+      {h.status === 'tu_choi' && (
+        <div className="note tone-bad">
+          {h.dup_of ? 'Tự từ chối vì chụp trùng' : 'Đã từ chối'}: {h.note || 'không ghi lý do'}
+          {h.dup_of && (
+            <>
+              {' '}
+              <Link to={`/houses/${h.dup_of}`}>Xem hồ sơ #{h.dup_of} đã chụp trước</Link>
+              {admin && '. AI nhầm thì bấm Hoàn tác để đưa về chờ duyệt.'}
+            </>
+          )}
+        </div>
+      )}
 
       <div className="grid-2">
         <div className="stack">

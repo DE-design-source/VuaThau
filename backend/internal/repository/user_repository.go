@@ -31,6 +31,8 @@ type CTVRow struct {
 type UserRepository interface {
 	GetByID(ctx context.Context, id int64) (*model.User, error)
 	List(ctx context.Context, limit, offset int) ([]model.User, error)
+	ByInboxContact(ctx context.Context, contact string) (*model.User, error)
+	SetInboxContact(ctx context.Context, id int64, contact string) error
 
 	UpdateBank(ctx context.Context, id int64, bank string) error
 	// UpdatePassword đổi mật khẩu và tăng token_version (token cũ hết hiệu lực).
@@ -72,6 +74,19 @@ func scanUser(row pgx.Row) (*model.User, error) {
 
 func (r *userRepository) GetByID(ctx context.Context, id int64) (*model.User, error) {
 	return scanUser(r.db.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE id = $1`, id))
+}
+
+// ByInboxContact: CTV đã ghép với liên hệ Messenger (contacts.id bên dezon-inbox).
+func (r *userRepository) ByInboxContact(ctx context.Context, contact string) (*model.User, error) {
+	return scanUser(r.db.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE inbox_contact = $1`, contact))
+}
+
+func (r *userRepository) SetInboxContact(ctx context.Context, id int64, contact string) error {
+	_, err := r.db.Exec(ctx, `UPDATE users SET inbox_contact = $2 WHERE id = $1`, id, contact)
+	if pgErrCode(err) == pgUniqueViolation {
+		return ErrDuplicate
+	}
+	return err
 }
 
 func (r *userRepository) List(ctx context.Context, limit, offset int) ([]model.User, error) {

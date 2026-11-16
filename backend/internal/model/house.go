@@ -75,6 +75,9 @@ type House struct {
 	BatchID         *int64    `json:"batch_id"`
 	Drive           string    `json:"-"`
 	CreatedAt       time.Time `json:"created_at"`
+	Source          string    `json:"source"` // app | inbox (Messenger)
+	DupOf           *int64    `json:"dup_of"` // hồ sơ trùng công trình (đã chụp trước)
+	SubmittedAt     *time.Time `json:"submitted_at"`
 	CoverID         *int64    `json:"cover_id"`
 	PhotosTotal     int       `json:"photos_total"`
 	PhotosValid     int       `json:"photos_valid"`

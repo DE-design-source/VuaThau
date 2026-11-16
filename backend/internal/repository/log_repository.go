@@ -27,13 +27,15 @@ func NewLogRepository(db *pgxpool.Pool) LogRepository {
 }
 
 func (r *logRepository) Add(ctx context.Context, userID int64, action string, houseID, batchID *int64, note string) error {
-	_, err := r.db.Exec(ctx, `INSERT INTO house_logs (user_id, action, house_id, batch_id, note) VALUES ($1, $2, $3, $4, $5)`,
+	// userID 0: hệ thống làm (đồng bộ Messenger, tự từ chối hồ sơ trùng)
+	_, err := r.db.Exec(ctx, `INSERT INTO house_logs (user_id, action, house_id, batch_id, note) VALUES (NULLIF($1, 0), $2, $3, $4, $5)`,
 		userID, action, houseID, batchID, note)
 	return err
 }
 
 func (r *logRepository) list(ctx context.Context, where string, args ...any) ([]model.Log, error) {
-	rows, err := r.db.Query(ctx, `SELECT l.id, l.house_id, l.batch_id, l.user_id, COALESCE(u.name, ''), l.action, l.note, l.at
+	rows, err := r.db.Query(ctx, `SELECT l.id, l.house_id, l.batch_id, l.user_id,
+		CASE WHEN l.user_id IS NULL THEN 'Hệ thống' ELSE COALESCE(u.name, '') END, l.action, l.note, l.at
 		FROM house_logs l LEFT JOIN users u ON u.id = l.user_id WHERE `+where+` ORDER BY l.at, l.id`, args...)
 	if err != nil {
 		return nil, err

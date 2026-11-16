@@ -55,7 +55,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    networks: [vtnt, edge]
+    # inbox: mạng của dezon-inbox, để đọc hồ sơ Messenger (dezon-inbox-db, kho ảnh dezon-inbox-s3). Chỉ đọc.
+    networks: [vtnt, edge, inbox]
     mem_limit: 384m
     logging:
       driver: json-file
@@ -74,4 +75,7 @@ networks:
     name: vtnt
   edge:
     name: qspro_default
+    external: true
+  inbox:
+    name: dezon-prod_backend
     external: true

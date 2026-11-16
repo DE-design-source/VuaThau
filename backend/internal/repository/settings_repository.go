@@ -43,6 +43,10 @@ func (r *settingsRepository) Get(ctx context.Context) (model.Settings, error) {
 			s.MinPhotos = int(v)
 		case "pay_min":
 			s.PayMin = int(v)
+		case "dup_days":
+			s.DupDays = int(v)
+		case "dup_radius_m":
+			s.DupRadiusM = int(v)
 		}
 	}
 	return s, rows.Err()
@@ -50,7 +54,7 @@ func (r *settingsRepository) Get(ctx context.Context) (model.Settings, error) {
 
 func (r *settingsRepository) Save(ctx context.Context, s model.Settings) error {
 	_, err := r.db.Exec(ctx, `INSERT INTO settings (k, v) VALUES
-		('price_min', $1), ('price_more', $2), ('min_photos', $3), ('pay_min', $4)
-		ON CONFLICT (k) DO UPDATE SET v = EXCLUDED.v`, s.PriceMin, s.PriceMore, s.MinPhotos, s.PayMin)
+		('price_min', $1), ('price_more', $2), ('min_photos', $3), ('pay_min', $4), ('dup_days', $5), ('dup_radius_m', $6)
+		ON CONFLICT (k) DO UPDATE SET v = EXCLUDED.v`, s.PriceMin, s.PriceMore, s.MinPhotos, s.PayMin, s.DupDays, s.DupRadiusM)
 	return err
 }

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"image"
 	"log"
-	"math"
 	"regexp"
 	"slices"
 	"strings"
@@ -18,6 +17,7 @@ import (
 
 	"vuathau/backend/internal/integration/ai"
 	"vuathau/backend/internal/integration/gdrive"
+	"vuathau/backend/internal/integration/inbox"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/imaging"
 	"vuathau/backend/internal/repository"
@@ -185,6 +185,14 @@ type HouseService interface {
 	SetAmount(ctx context.Context, by *model.User, id int64, amount int64, reason string) (string, error)
 	Overview(ctx context.Context, q OverviewQuery) (*Overview, error)
 
+	// Bản đồ công trình + số công trình mỗi CTV đã chụp.
+	Map(ctx context.Context, q OverviewQuery) (*MapData, error)
+
+	// Hồ sơ Messenger (dezon-inbox): đồng bộ ngay, trạng thái, chạy định kỳ.
+	SyncInbox(ctx context.Context) (*SyncStatus, error)
+	InboxStatus(ctx context.Context) (*SyncStatus, error)
+	StartInboxSync(every time.Duration)
+
 	// RunDriveSync đẩy các hồ sơ chờ lên Google Drive (chạy nền, gọi lúc khởi động và sau mỗi lần gửi duyệt).
 	RunDriveSync()
 	// Wait chờ các việc chạy nền (AI, Drive) xong: dùng khi tắt máy chủ và trong test.
@@ -203,6 +211,7 @@ type houseService struct {
 	geo      Geocoder
 	drive    *gdrive.Client // nil: tắt
 	public   string
+	inbox    *inboxSync // nil: không lấy hồ sơ Messenger
 
 	bg      sync.WaitGroup
 	aiSem   chan struct{} // giới hạn số lượt AI chạy cùng lúc
@@ -227,15 +236,23 @@ type HouseDeps struct {
 	Geo      Geocoder
 	Drive    *gdrive.Client
 	Public   string
+	// Hồ sơ Messenger: Inbox nil thì tắt; Auth (tạo CTV) và Sync (con trỏ đồng bộ) cần khi bật.
+	Inbox inbox.Source
+	Auth  repository.AuthRepository
+	Sync  repository.SyncRepository
 }
 
 func NewHouseService(d HouseDeps) HouseService {
 	if d.AI == nil {
 		d.AI = ai.New(false, "", "")
 	}
-	return &houseService{houses: d.Houses, photos: d.Photos, logs: d.Logs, users: d.Users, payments: d.Payments,
+	s := &houseService{houses: d.Houses, photos: d.Photos, logs: d.Logs, users: d.Users, payments: d.Payments,
 		settings: d.Settings, files: d.Files, ai: d.AI, geo: d.Geo, drive: d.Drive, public: d.Public,
 		aiSem: make(chan struct{}, 4), now: time.Now}
+	if d.Inbox != nil {
+		s.inbox = &inboxSync{src: d.Inbox, users: d.Users, auth: d.Auth, state: d.Sync}
+	}
+	return s
 }
 
 func (s *houseService) Wait() { s.bg.Wait() }
@@ -644,21 +661,19 @@ func (s *houseService) Save(ctx context.Context, u *model.User, id int64, f mode
 			break
 		}
 	}
+	// Chặn chụp trùng: công trình đã có hồ sơ trong hạn thì không cho gửi
 	dup := ""
-	if lat != nil {
-		near, err := s.houses.Nearby(ctx, id)
-		if err != nil {
-			return "", false, err
-		}
-		best, bestID := math.Inf(1), int64(0)
-		for _, o := range near {
-			if d := imaging.Meters(*lat, *lng, o.Lat, o.Lng); d < best {
-				best, bestID = d, o.ID
-			}
-		}
-		if best < DupHouseM {
-			dup = fmt.Sprintf("Cách hồ sơ #%d khoảng %.0fm, có thể trùng nhà", bestID, best)
-		}
+	hit, err := s.checkSite(ctx, id, lat, lng, h.ContractorPhone)
+	if err != nil {
+		return "", false, err
+	}
+	if hit != nil && hit.Block {
+		s.note(ctx, u, "Chặn gửi: trùng công trình", id, hit.Reason)
+		return fmt.Sprintf("Chưa gửi được: công trình này đã có người chụp ngày %s (hồ sơ #%d). Mỗi công trình chỉ nhận 1 hồ sơ trong %d ngày.",
+			hit.Of.SubmittedAt.In(VN).Format("02/01/2006"), hit.Of.ID, st.DupDays), false, nil
+	}
+	if hit != nil {
+		dup = truncate(hit.Warn, MaxReasonLen)
 	}
 	amount := st.Amount(valid)
 	if err := s.houses.Submit(ctx, id, amount, lat, lng, dup, s.drive != nil); err != nil {

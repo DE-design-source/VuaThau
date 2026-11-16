@@ -203,3 +203,29 @@ flow: {submitted, approved, returned, rejected}, new_ctvs, total, batches, house
 
 Trả tiền gửi kèm đúng danh sách / tổng tiền kế toán đang thấy: khác dữ liệu hiện tại (vừa có hồ sơ mới duyệt, vừa thêm thưởng)
 thì máy chủ từ chối (409) để tránh trả nhầm.
+
+## Hồ sơ Messenger, chặn chụp trùng, bản đồ (bản 2.1)
+
+### Chặn chụp trùng công trình
+Mỗi công trình chỉ nhận 1 hồ sơ trong `dup_days` ngày (cấu hình, mặc định 30). Khi CTV bấm Gửi duyệt
+(`PUT /houses/{id}` với `submit: true`) và khi lấy hồ sơ từ Messenger, máy chủ tìm hồ sơ đã gửi duyệt trong hạn
+(trừ bị từ chối) cách dưới `dup_radius_m` mét (mặc định 50), hoặc cùng SĐT nhà thầu ở gần:
+- có ảnh giống hệt ảnh của hồ sơ đó (dHash): trùng;
+- AI so ảnh 2 hồ sơ (tối đa 2 hồ sơ gần nhất, 3 ảnh mỗi bên), chắc từ 0.6: trùng;
+- AI tắt / lỗi: chỉ trùng khi vừa trong bán kính vừa cùng SĐT nhà thầu; còn lại chỉ ghi cảnh báo `dup`.
+
+Trùng: app nhận `submitted: false` và câu báo "Chưa gửi được: công trình này đã có người chụp ngày …";
+hồ sơ Messenger tự chuyển `tu_choi`, `dup_of` = hồ sơ gốc, `note` = lý do (admin Hoàn tác được nếu AI nhầm).
+`house` có thêm `source` (`app` | `inbox`), `dup_of`, `submitted_at`.
+
+### `GET /map?ctv=&status=&from=&to=` (admin, kế toán)
+`{ points: [{id, lat, lng, status, ctv_id, ctv_name, address, contractor, source, at}], ctvs: [{id, name, phone,
+total, recent, dups, inbox, last}], dup_days, filter }`. `total`: công trình đã gửi duyệt (không tính bị từ chối),
+`recent`: trong `dup_days` ngày, `dups`: bị tự từ chối vì chụp trùng, `inbox`: gửi qua Messenger.
+
+### Hồ sơ Messenger (dezon-inbox)
+Bật khi có `INBOX_DATABASE_URL` (+ `INBOX_S3_ENDPOINT`, `INBOX_S3_BUCKET`, `INBOX_S3_ACCESS_KEY`, `INBOX_S3_SECRET_KEY`,
+`INBOX_S3_REGION`; `INBOX_SYNC_EVERY` mặc định 5m). Đọc `project_logs` (chatbot "Cập nhật công trình") ở chế độ chỉ đọc,
+ảnh tải từ kho S3; người gửi ghép vào CTV cùng SĐT, chưa có thì tạo CTV (chưa đăng nhập được tới khi admin đặt mật khẩu).
+- `GET /admin/inbox` (admin): `{ enabled, running, at, added, rejected, error, total }`
+- `POST /admin/inbox/sync` (admin): lấy ngay, trả như trên.

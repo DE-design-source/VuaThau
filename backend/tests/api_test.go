@@ -28,6 +28,7 @@ import (
 	"vuathau/backend/internal/config"
 	"vuathau/backend/internal/handler"
 	"vuathau/backend/internal/integration/google"
+	"vuathau/backend/internal/integration/inbox"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/token"
 	"vuathau/backend/internal/repository"
@@ -58,6 +59,7 @@ type testEnv struct {
 }
 
 type envSettings struct {
+	inbox        inbox.Source
 	cfg          *config.Config
 	healthChecks map[string]router.HealthCheck
 }
@@ -127,7 +129,8 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 	userSvc := service.NewUserService(userRepo, authRepo, houseRepo, photoRepo, payRepo, logRepo, settingsRepo)
 	msgSvc := service.NewMessageService(repository.NewMessageRepository(db), hub)
 	houseSvc := service.NewHouseService(service.HouseDeps{Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo,
-		Payments: payRepo, Settings: settingsRepo, Files: files, Public: "http://test"})
+		Payments: payRepo, Settings: settingsRepo, Files: files, Public: "http://test",
+		Inbox: settings.inbox, Auth: authRepo, Sync: repository.NewSyncRepository(db)})
 	paySvc := service.NewPaymentService(payRepo, houseRepo, photoRepo, userRepo, logRepo, settingsRepo, files)
 
 	deps := router.Deps{
@@ -637,6 +640,12 @@ type uploadRes struct {
 // newHouse: CTV nộp 1 hồ sơ n ảnh (camera app, có giờ + GPS), điền thông tin và gửi duyệt.
 func (e *testEnv) newHouse(t *testing.T, ctv authData, n int, seed uint64, lat float64) int64 {
 	t.Helper()
+	return e.newHouseP(t, ctv, n, seed, lat, "0901 234 567")
+}
+
+// uploadAndSave: tải ảnh + điền thông tin + bấm Gửi duyệt; trả id hồ sơ và kết quả lưu.
+func (e *testEnv) uploadAndSave(t *testing.T, ctv authData, n int, seed uint64, lat float64, contractorPhone string) (int64, apiResp) {
+	t.Helper()
 	files := make([][]byte, n)
 	for i := range files {
 		files[i] = photo(t, seed+uint64(i))
@@ -650,9 +659,15 @@ func (e *testEnv) newHouse(t *testing.T, ctv authData, n int, seed uint64, lat f
 	}
 	r = e.do(t, http.MethodPut, fmt.Sprintf("/api/v1/houses/%d", *up.HouseID), ctv.AccessToken, map[string]any{
 		"address": "12 Lê Lợi", "floors": 3, "stage": model.Stages[1], "contractor_name": "Xây dựng ABC",
-		"contractor_phone": "0901 234 567", "submit": true,
+		"contractor_phone": contractorPhone, "submit": true,
 	})
 	expectStatus(t, r, http.StatusOK)
+	return *up.HouseID, r
+}
+
+func (e *testEnv) newHouseP(t *testing.T, ctv authData, n int, seed uint64, lat float64, contractorPhone string) int64 {
+	t.Helper()
+	id, r := e.uploadAndSave(t, ctv, n, seed, lat, contractorPhone)
 	var saved struct {
 		Message   string `json:"message"`
 		Submitted bool   `json:"submitted"`
@@ -661,7 +676,7 @@ func (e *testEnv) newHouse(t *testing.T, ctv authData, n int, seed uint64, lat f
 	if !saved.Submitted {
 		t.Fatalf("not submitted: %s", r.Raw)
 	}
-	return *up.HouseID
+	return id
 }
 
 func TestNghiemThuFlow(t *testing.T) {
@@ -729,8 +744,8 @@ func TestNghiemThuFlow(t *testing.T) {
 	// đang chờ duyệt: CTV không sửa được nữa
 	expectStatus(t, e.do(t, http.MethodPut, fmt.Sprintf("/api/v1/houses/%d", hid), ctv.AccessToken, map[string]any{}), http.StatusForbidden)
 
-	// Nhà thứ 2 sát nhà 1 (< 30m): cảnh báo trùng nhà
-	hid2 := e.newHouse(t, ctv, 5, 300, 10.80005)
+	// Nhà thứ 2 sát nhà 1 (< 50m), khác nhà thầu, AI tắt: không đủ chắc để chặn, chỉ cảnh báo
+	hid2 := e.newHouseP(t, ctv, 5, 300, 10.80005, "0988 777 666")
 	r = e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/houses/%d", hid2), admin.AccessToken, nil)
 	decodeData(t, r, &det)
 	if !strings.Contains(det.House.Dup, fmt.Sprintf("#%d", hid)) || det.House.Amount != 35000 {

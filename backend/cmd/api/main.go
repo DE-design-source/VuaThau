@@ -15,6 +15,7 @@ import (
 	"vuathau/backend/internal/handler"
 	"vuathau/backend/internal/integration/ai"
 	"vuathau/backend/internal/integration/gdrive"
+	"vuathau/backend/internal/integration/inbox"
 	"vuathau/backend/internal/integration/geo"
 	"vuathau/backend/internal/integration/google"
 	"vuathau/backend/internal/repository"
@@ -87,15 +88,29 @@ func run() error {
 	authSvc := service.NewAuthService(authRepo, gVerifier, cfg.JWTSecret, cfg.JWTExpiry)
 	userSvc := service.NewUserService(userRepo, authRepo, houseRepo, photoRepo, payRepo, logRepo, settingsRepo)
 	msgSvc := service.NewMessageService(repository.NewMessageRepository(db), hub)
+	// Hồ sơ Messenger từ dezon-inbox (chỉ đọc DB + kho ảnh S3)
+	var inboxSrc inbox.Source
+	if cfg.InboxDatabaseURL != "" {
+		if inboxSrc, err = inbox.New(ctx, inbox.Config{DatabaseURL: cfg.InboxDatabaseURL, S3Endpoint: cfg.InboxS3Endpoint,
+			S3Bucket: cfg.InboxS3Bucket, S3Access: cfg.InboxS3Access, S3Secret: cfg.InboxS3Secret, S3Region: cfg.InboxS3Region}); err != nil {
+			log.Printf("dezon-inbox: %v (tắt đồng bộ Messenger)", err)
+			inboxSrc = nil
+		} else {
+			defer inboxSrc.Close()
+		}
+	}
 	houseSvc := service.NewHouseService(service.HouseDeps{
 		Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo, Payments: payRepo, Settings: settingsRepo,
 		Files: files, AI: ai.New(cfg.AIEnabled, cfg.AIModel, cfg.AIWorkspace), Geo: geo.New(cfg.GoogleMapsKey),
 		Drive: drive, Public: cfg.PublicURL,
+		Inbox: inboxSrc, Auth: authRepo, Sync: repository.NewSyncRepository(db),
 	})
 	paySvc := service.NewPaymentService(payRepo, houseRepo, photoRepo, userRepo, logRepo, settingsRepo, files)
 
 	log.Printf("AI đọc ảnh: %v (%s) · Google Drive: %v · đăng nhập Google: %v", cfg.AIEnabled, cfg.AIModel, drive != nil, gVerifier.Enabled())
+	log.Printf("Hồ sơ Messenger (dezon-inbox): %v, mỗi %s", inboxSrc != nil, cfg.InboxSyncEvery)
 	go houseSvc.RunDriveSync() // đẩy các hồ sơ còn chờ từ lần chạy trước
+	houseSvc.StartInboxSync(cfg.InboxSyncEvery)
 
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,
