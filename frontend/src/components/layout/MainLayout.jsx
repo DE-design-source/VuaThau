@@ -1,4 +1,5 @@
 import { Outlet } from 'react-router-dom'
+import { Toasts } from '@/components/ui'
 import Header from './Header'
 import Footer from './Footer'
 
@@ -10,6 +11,7 @@ export default function MainLayout() {
         <Outlet />
       </main>
       <Footer />
+      <Toasts />
     </div>
   )
 }

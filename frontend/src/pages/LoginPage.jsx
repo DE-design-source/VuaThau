@@ -2,104 +2,52 @@ import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import useAuth from '@/hooks/useAuth'
 import { Button, Input } from '@/components/ui'
-import { validateLoginForm, validateRegisterForm } from '@/utils/validators'
-
-const EMPTY_FORM = { username: '', email: '', password: '' }
+import { STAFF_HOME } from '@/redux/slices/authSlice'
+import { toast } from '@/services/toast'
 
 export default function LoginPage() {
-  const { isAuthenticated, isLoading, error, login, register, clearError } = useAuth()
+  const { isAuthenticated, isLoading, error, login, clearError } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const [mode, setMode] = useState('login') // 'login' | 'register'
-  const [form, setForm] = useState(EMPTY_FORM)
-  const [fieldErrors, setFieldErrors] = useState({})
+  const [form, setForm] = useState({ phone: '', pw: '' })
 
-  const isRegister = mode === 'register'
-  const redirectTo = location.state?.from?.pathname || '/'
+  if (isAuthenticated) return <Navigate to={location.state?.from?.pathname || '/'} replace />
 
-  if (isAuthenticated) return <Navigate to={redirectTo} replace />
-
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setForm((prev) => ({ ...prev, [name]: value }))
-    setFieldErrors((prev) => ({ ...prev, [name]: '' }))
+  const change = (e) => {
+    setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
+    if (error) clearError()
   }
 
-  const toggleMode = () => {
-    setMode(isRegister ? 'login' : 'register')
-    setFieldErrors({})
-    clearError()
-  }
-
-  const handleSubmit = async (e) => {
+  const submit = async (e) => {
     e.preventDefault()
-    const errors = isRegister ? validateRegisterForm(form) : validateLoginForm(form)
-    setFieldErrors(errors)
-    if (Object.keys(errors).length) return
-
+    if (!form.phone.trim() || !form.pw) return
     try {
-      if (isRegister) {
-        await register({
-          username: form.username.trim(),
-          email: form.email.trim(),
-          password: form.password,
-        })
-      } else {
-        await login({ email: form.email.trim(), password: form.password })
-      }
-      navigate(redirectTo, { replace: true })
+      const r = await login({ phone: form.phone.trim(), pw: form.pw })
+      toast(r.msgs)
+      navigate(location.state?.from?.pathname || STAFF_HOME[r.user?.role] || '/', { replace: true })
     } catch {
-      // error message is stored in redux (auth.error)
+      // câu báo nằm trong auth.error
     }
   }
 
   return (
     <section className="card auth-card">
-      <h1>{isRegister ? 'Đăng ký' : 'Đăng nhập'}</h1>
+      <div className="auth-top">
+        <img src="/favicon.svg" alt="" width="48" height="48" />
+        <h1>Vua Thầu Nghiệm thu</h1>
+        <p className="muted">Web quản lý cho admin và kế toán</p>
+      </div>
 
-      <form className="stack" onSubmit={handleSubmit} noValidate>
-        {isRegister && (
-          <Input
-            label="Tên người dùng"
-            name="username"
-            autoComplete="username"
-            value={form.username}
-            onChange={handleChange}
-            error={fieldErrors.username}
-          />
-        )}
-        <Input
-          label="Email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          value={form.email}
-          onChange={handleChange}
-          error={fieldErrors.email}
-        />
-        <Input
-          label="Mật khẩu"
-          name="password"
-          type="password"
-          autoComplete={isRegister ? 'new-password' : 'current-password'}
-          value={form.password}
-          onChange={handleChange}
-          error={fieldErrors.password}
-        />
-
+      <form className="stack" onSubmit={submit} noValidate>
+        <Input label="Tên đăng nhập hoặc số điện thoại" name="phone" autoComplete="username" value={form.phone} onChange={change} autoFocus />
+        <Input label="Mật khẩu" name="pw" type="password" autoComplete="current-password" value={form.pw} onChange={change} />
         {error && <p className="field-error">{error}</p>}
-
-        <Button type="submit" loading={isLoading}>
-          {isRegister ? 'Tạo tài khoản' : 'Đăng nhập'}
+        <Button type="submit" loading={isLoading} disabled={!form.phone.trim() || !form.pw}>
+          Đăng nhập
         </Button>
       </form>
 
-      <p className="muted auth-switch">
-        {isRegister ? 'Đã có tài khoản?' : 'Chưa có tài khoản?'}{' '}
-        <button type="button" className="link-button" onClick={toggleMode}>
-          {isRegister ? 'Đăng nhập' : 'Đăng ký'}
-        </button>
-      </p>
+      <p className="muted auth-switch">Cộng tác viên: đăng ký, nộp hồ sơ và xem thu nhập trên app Vua Thầu (Android).</p>
     </section>
   )
 }

@@ -1,63 +1,43 @@
+// Đăng nhập web quản lý: chỉ admin và kế toán. CTV dùng app điện thoại.
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
-import authApi from '@/api/authApi'
-import userApi from '@/api/userApi'
+import ntClient, { setNtToken } from '@/api/ntClient'
 import storageService from '@/services/storageService'
 
-const errorMessage = (err) => err?.message || 'Đã có lỗi xảy ra'
+export const STAFF_HOME = { admin: '/duyet', ketoan: '/ke-toan' }
 
-export const login = createAsyncThunk('auth/login', async (credentials, { rejectWithValue }) => {
+export const login = createAsyncThunk('auth/login', async ({ phone, pw }, { rejectWithValue }) => {
   try {
-    const res = await authApi.login(credentials)
-    return res.data
+    const j = await ntClient.post('/login', { phone, pw })
+    if (!j.token) return rejectWithValue(j.msgs?.[0] || 'Chưa đăng nhập được, thử lại nhé.')
+    if (!Object.values(STAFF_HOME).includes(j.url)) {
+      return rejectWithValue('Tài khoản cộng tác viên dùng app điện thoại. Web này dành cho admin và kế toán.')
+    }
+    setNtToken(j.token)
+    const me = await ntClient.get('/toi')
+    return { token: j.token, user: me.user, msgs: j.msgs }
   } catch (err) {
-    return rejectWithValue(errorMessage(err))
-  }
-})
-
-export const register = createAsyncThunk('auth/register', async (payload, { rejectWithValue }) => {
-  try {
-    const res = await authApi.register(payload)
-    return res.data
-  } catch (err) {
-    return rejectWithValue(errorMessage(err))
+    setNtToken(null)
+    return rejectWithValue(err.message)
   }
 })
 
 export const fetchMe = createAsyncThunk('auth/fetchMe', async (_, { rejectWithValue }) => {
   try {
-    const res = await userApi.getMe()
-    return res.data
+    const me = await ntClient.get('/toi')
+    return me.user
   } catch (err) {
-    return rejectWithValue(errorMessage(err))
+    return rejectWithValue(err.message)
   }
 })
 
-const initialState = {
-  user: null,
-  token: storageService.getToken(), // persisted by the store subscriber (see store.js)
-  status: 'idle', // idle | loading | succeeded | failed
-  error: null,
-}
-
-const setPending = (state) => {
-  state.status = 'loading'
-  state.error = null
-}
-
-const setRejected = (state, action) => {
-  state.status = 'failed'
-  state.error = action.payload ?? action.error.message
-}
-
-const setSession = (state, action) => {
-  state.status = 'succeeded'
-  state.user = action.payload.user
-  state.token = action.payload.access_token
-}
-
 const authSlice = createSlice({
   name: 'auth',
-  initialState,
+  initialState: {
+    user: null,
+    token: storageService.getToken(), // lưu lại qua store.subscribe (store.js)
+    status: 'idle', // idle | loading | succeeded | failed
+    error: null,
+  },
   reducers: {
     logout(state) {
       state.user = null
@@ -65,32 +45,40 @@ const authSlice = createSlice({
       state.status = 'idle'
       state.error = null
     },
+    renewToken(state, action) {
+      state.token = action.payload
+    },
     clearAuthError(state) {
       state.error = null
     },
   },
-  extraReducers: (builder) => {
-    builder
-      .addCase(login.pending, setPending)
-      .addCase(login.fulfilled, setSession)
-      .addCase(login.rejected, setRejected)
-      .addCase(register.pending, setPending)
-      .addCase(register.fulfilled, setSession)
-      .addCase(register.rejected, setRejected)
-      .addCase(fetchMe.pending, setPending)
-      .addCase(fetchMe.fulfilled, (state, action) => {
-        state.status = 'succeeded'
-        state.user = action.payload
+  extraReducers: (b) => {
+    b.addCase(login.pending, (s) => {
+      s.status = 'loading'
+      s.error = null
+    })
+      .addCase(login.fulfilled, (s, a) => {
+        s.status = 'succeeded'
+        s.user = a.payload.user
+        s.token = a.payload.token
       })
-      .addCase(fetchMe.rejected, setRejected)
+      .addCase(login.rejected, (s, a) => {
+        s.status = 'failed'
+        s.error = a.payload ?? a.error.message
+      })
+      .addCase(fetchMe.fulfilled, (s, a) => {
+        s.status = 'succeeded'
+        s.user = a.payload
+      })
+      .addCase(fetchMe.rejected, (s, a) => {
+        s.status = 'failed'
+        s.error = a.payload ?? a.error.message
+      })
   },
 })
 
-export const { logout, clearAuthError } = authSlice.actions
-
+export const { logout, renewToken, clearAuthError } = authSlice.actions
 export const selectAuth = (state) => state.auth
 export const selectUser = (state) => state.auth.user
-export const selectToken = (state) => state.auth.token
-export const selectIsAuthenticated = (state) => Boolean(state.auth.token)
-
+export const selectRole = (state) => state.auth.user?.role
 export default authSlice.reducer

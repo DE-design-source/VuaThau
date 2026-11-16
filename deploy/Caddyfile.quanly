@@ -1,0 +1,31 @@
+# Web quản lý cho admin + kế toán: React (frontend/dist) + chuyển /nt/* sang máy chủ Nghiệm thu.
+# App CTV và web này gọi CÙNG máy chủ nghiemthu-web nên chung dữ liệu. Cùng tên miền nên không cần CORS.
+#
+# Chạy trên máy chủ dùng chung (Caddy của QS Pro giữ cổng 80/443, cùng mạng qspro_default với nghiemthu-web):
+#   1. cd frontend && npm ci && npm run build
+#   2. chép frontend/dist vào thư mục Caddy đọc được, vd /srv/vuathau-quanly (mount vào container Caddy)
+#   3. thêm khối dưới vào Caddyfile của QS Pro, trỏ DNS quanly.vuathau.com.vn về máy chủ, reload Caddy
+# Đổi tên miền theo ý bạn.
+quanly.vuathau.com.vn {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	# API Nghiệm thu: /nt/duyet -> nghiemthu-web:8000/duyet
+	handle_path /nt/* {
+		reverse_proxy nghiemthu-web:8000
+	}
+
+	# Trang React (SPA): đường dẫn lạ trả index.html để React Router xử lý
+	handle {
+		root * /srv/vuathau-quanly
+		try_files {path} /index.html
+		file_server
+	}
+}
