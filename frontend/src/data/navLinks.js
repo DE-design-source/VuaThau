@@ -1,13 +1,13 @@
-// Menu theo vai trò. roles: ai thấy mục này. badge: số việc chờ máy chủ gửi kèm (badge).
+// Menu theo vai trò. roles: ai thấy mục này. badge: mục ứng với số việc chờ `todo` của GET /me.
 const navLinks = [
-  { to: '/duyet', label: 'Duyệt hồ sơ', roles: ['admin'], badge: true },
-  { to: '/ke-toan', label: 'Thanh toán', roles: ['ketoan'], badge: true },
-  { to: '/tong-quan', label: 'Hồ sơ', roles: ['admin', 'ketoan'] },
-  { to: '/ctv', label: 'Cộng tác viên', roles: ['admin', 'ketoan'] },
-  { to: '/da-tra', label: 'Phiếu chi', roles: ['admin', 'ketoan'] },
-  { to: '/bao-cao', label: 'Báo cáo', roles: ['admin', 'ketoan'] },
-  { to: '/nhan-vien', label: 'Nhân viên', roles: ['admin'] },
-  { to: '/cau-hinh', label: 'Cấu hình', roles: ['admin'] },
+  { to: '/queue', label: 'Duyệt hồ sơ', roles: ['admin'], badge: true },
+  { to: '/accounting', label: 'Thanh toán', roles: ['ketoan'], badge: true },
+  { to: '/houses', label: 'Hồ sơ', roles: ['admin', 'ketoan'] },
+  { to: '/ctvs', label: 'Cộng tác viên', roles: ['admin', 'ketoan'] },
+  { to: '/batches', label: 'Phiếu chi', roles: ['admin', 'ketoan'] },
+  { to: '/reports', label: 'Báo cáo', roles: ['admin', 'ketoan'] },
+  { to: '/staff', label: 'Nhân viên', roles: ['admin'] },
+  { to: '/settings', label: 'Cấu hình', roles: ['admin'] },
 ]
 
 export default navLinks

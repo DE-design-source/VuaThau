@@ -1,0 +1,46 @@
+# Vua Thầu nghiệm thu (backend Go): CSDL + lưu trữ ảnh trên máy chủ dùng chung 222.255.184.134.
+# Thư mục: /opt/vuathau-nt. Không mở cổng ra Internet; Postgres chỉ nghe 127.0.0.1:5434 (quản trị qua SSH tunnel).
+#   cd /opt/vuathau-nt && docker compose up -d
+# API Go (sau này) thêm vào file này, cùng mạng vtnt, dùng DATA_DIR=/data (volume vtnt_data).
+name: vtnt
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: vtnt-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vuathau
+      POSTGRES_USER: vuathau
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?đặt POSTGRES_PASSWORD trong .env}
+      # Dữ liệu tiếng Việt: bắt buộc UTF-8
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+      TZ: Asia/Ho_Chi_Minh
+      PGTZ: Asia/Ho_Chi_Minh
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5434:5432"
+    networks: [vtnt]
+    mem_limit: 384m
+    shm_size: 128m
+    command: ["postgres", "-c", "shared_buffers=96MB", "-c", "max_connections=40", "-c", "timezone=Asia/Ho_Chi_Minh"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vuathau -d vuathau"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  pgdata:
+    name: vtnt_pgdata
+  # Ảnh hồ sơ (anh/) + biên lai (bienlai/): DATA_DIR của backend. SAO LƯU cùng CSDL.
+  data:
+    name: vtnt_data
+
+networks:
+  vtnt:
+    name: vtnt

@@ -1,12 +1,10 @@
-# Web quản lý cho admin + kế toán: React (frontend/dist) + chuyển /nt/* sang máy chủ Nghiệm thu.
-# App CTV và web này gọi CÙNG máy chủ nghiemthu-web nên chung dữ liệu. Cùng tên miền nên không cần CORS.
+# Vua Thầu nghiệm thu: backend Go phục vụ cả API (/api/v1) và web quản lý (STATIC_DIR = frontend/dist).
+# App CTV gọi https://nghiemthu.vuathau.com.vn/api/v1, nên khi chuyển hẳn sang backend Go thì trỏ tên miền này vào container API.
 #
-# Chạy trên máy chủ dùng chung (Caddy của QS Pro giữ cổng 80/443, cùng mạng qspro_default với nghiemthu-web):
-#   1. cd frontend && npm ci && npm run build
-#   2. chép frontend/dist vào thư mục Caddy đọc được, vd /srv/vuathau-quanly (mount vào container Caddy)
-#   3. thêm khối dưới vào Caddyfile của QS Pro, trỏ DNS quanly.vuathau.com.vn về máy chủ, reload Caddy
-# Đổi tên miền theo ý bạn.
-quanly.vuathau.com.vn {
+# Máy chủ dùng chung: Caddy của QS Pro (qspro-web-1) giữ cổng 80/443. Container API (vtnt-api, xem deploy/server)
+# phải nối thêm mạng qspro_default để Caddy gọi được. Chép khối dưới vào /opt/qspro/infra/deploy/Caddyfile
+# (thay khối nghiemthu cũ khi đã chuyển dữ liệu xong), rồi reload Caddy.
+nghiemthu.vuathau.com.vn {
 	encode zstd gzip
 
 	header {
@@ -17,15 +15,6 @@ quanly.vuathau.com.vn {
 		-Server
 	}
 
-	# API Nghiệm thu: /nt/duyet -> nghiemthu-web:8000/duyet
-	handle_path /nt/* {
-		reverse_proxy nghiemthu-web:8000
-	}
-
-	# Trang React (SPA): đường dẫn lạ trả index.html để React Router xử lý
-	handle {
-		root * /srv/vuathau-quanly
-		try_files {path} /index.html
-		file_server
-	}
+	# Ảnh tải lên tới 20 MB/ảnh, tối đa 20 ảnh/lần: không giới hạn body ở Caddy, API tự kiểm.
+	reverse_proxy vtnt-api:8080
 }

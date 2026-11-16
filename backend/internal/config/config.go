@@ -29,6 +29,32 @@ type Config struct {
 
 	RateLimitRPS   float64
 	RateLimitBurst int
+
+	// ---- Nghiệm thu ----
+
+	// DataDir chứa ảnh hồ sơ (anh/) và ảnh biên lai (bienlai/). SAO LƯU thư mục này cùng Postgres.
+	DataDir string
+	// PublicURL: địa chỉ web quản lý, ghi vào file thông tin trên Google Drive.
+	PublicURL string
+	// StaticDir: thư mục build của web (frontend/dist). Đặt thì API phục vụ luôn web ở "/".
+	StaticDir string
+
+	// AI đọc ảnh (Claude). Bật khi có ANTHROPIC_API_KEY hoặc ANTHROPIC_AUTH_TOKEN (SDK tự đọc).
+	AIEnabled   bool
+	AIModel     string
+	AIWorkspace string // ANTHROPIC_WORKSPACE_ID, chỉ cần với key cá nhân (sk-ant-usr-...)
+
+	// Tra địa chỉ từ GPS: có key Google thì dùng Google Geocoding, không thì OpenStreetMap.
+	GoogleMapsKey string
+
+	// Đăng nhập / đăng ký bằng Google trong app: OAuth client loại Web (id đầu tiên gửi cho app).
+	GoogleClientIDs []string
+
+	// Google Drive: mỗi hồ sơ gửi duyệt thành 1 thư mục con. Thiếu refresh token: tắt.
+	GDriveClientID     string
+	GDriveClientSecret string
+	GDriveRefreshToken string
+	GDriveFolder       string
 }
 
 // Load reads configuration from the environment. A .env file in the working
@@ -44,19 +70,33 @@ func Load() (*Config, error) {
 		RedisPassword:      getEnv("REDIS_PASSWORD", ""),
 		JWTSecret:          getEnv("JWT_SECRET", ""),
 		CORSAllowedOrigins: splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")),
+
+		DataDir:            getEnv("DATA_DIR", "./data"),
+		PublicURL:          strings.TrimRight(getEnv("PUBLIC_URL", "https://nghiemthu.vuathau.com.vn"), "/"),
+		StaticDir:          getEnv("STATIC_DIR", ""),
+		AIEnabled:          os.Getenv("ANTHROPIC_API_KEY") != "" || os.Getenv("ANTHROPIC_AUTH_TOKEN") != "",
+		AIModel:            getEnv("AI_MODEL", "claude-opus-5-5"),
+		AIWorkspace:        getEnv("ANTHROPIC_WORKSPACE_ID", ""),
+		GoogleMapsKey:      getEnv("GOOGLE_MAPS_API_KEY", ""),
+		GoogleClientIDs:    splitCSV(getEnv("GOOGLE_CLIENT_IDS", "")),
+		GDriveClientID:     getEnv("GDRIVE_CLIENT_ID", ""),
+		GDriveClientSecret: getEnv("GDRIVE_CLIENT_SECRET", ""),
+		GDriveRefreshToken: getEnv("GDRIVE_REFRESH_TOKEN", ""),
+		GDriveFolder:       getEnv("GDRIVE_FOLDER", ""),
 	}
 
 	var err error
 	if cfg.RedisDB, err = strconv.Atoi(getEnv("REDIS_DB", "0")); err != nil {
 		return nil, fmt.Errorf("REDIS_DB: %w", err)
 	}
-	if cfg.JWTExpiry, err = time.ParseDuration(getEnv("JWT_EXPIRY", "24h")); err != nil {
+	// App điện thoại giữ đăng nhập lâu: mặc định 30 ngày
+	if cfg.JWTExpiry, err = time.ParseDuration(getEnv("JWT_EXPIRY", "720h")); err != nil {
 		return nil, fmt.Errorf("JWT_EXPIRY: %w", err)
 	}
 	if cfg.RateLimitRPS, err = strconv.ParseFloat(getEnv("RATE_LIMIT_RPS", "10"), 64); err != nil {
 		return nil, fmt.Errorf("RATE_LIMIT_RPS: %w", err)
 	}
-	if cfg.RateLimitBurst, err = strconv.Atoi(getEnv("RATE_LIMIT_BURST", "20")); err != nil {
+	if cfg.RateLimitBurst, err = strconv.Atoi(getEnv("RATE_LIMIT_BURST", "40")); err != nil {
 		return nil, fmt.Errorf("RATE_LIMIT_BURST: %w", err)
 	}
 	if len(cfg.JWTSecret) < 32 {
@@ -73,6 +113,11 @@ func Load() (*Config, error) {
 }
 
 func (c *Config) IsProduction() bool { return c.AppEnv == "production" }
+
+// DriveEnabled: đủ thông tin để đẩy hồ sơ lên Google Drive.
+func (c *Config) DriveEnabled() bool {
+	return c.GDriveClientID != "" && c.GDriveClientSecret != "" && c.GDriveRefreshToken != "" && c.GDriveFolder != ""
+}
 
 func getEnv(key, fallback string) string {
 	if v, ok := os.LookupEnv(key); ok && v != "" {

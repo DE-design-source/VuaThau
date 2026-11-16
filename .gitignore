@@ -12,3 +12,7 @@ dist/
 Thumbs.db
 .vscode/
 .idea/
+
+# Postgres nhúng của cmd/devdb, ảnh dev
+backend/.devdb/
+backend/data/

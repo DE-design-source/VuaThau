@@ -3,13 +3,12 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import useAuth from '@/hooks/useAuth'
 import { Button, Input } from '@/components/ui'
 import { STAFF_HOME } from '@/redux/slices/authSlice'
-import { toast } from '@/services/toast'
 
 export default function LoginPage() {
   const { isAuthenticated, isLoading, error, login, clearError } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const [form, setForm] = useState({ phone: '', pw: '' })
+  const [form, setForm] = useState({ login: '', password: '' })
 
   if (isAuthenticated) return <Navigate to={location.state?.from?.pathname || '/'} replace />
 
@@ -20,10 +19,9 @@ export default function LoginPage() {
 
   const submit = async (e) => {
     e.preventDefault()
-    if (!form.phone.trim() || !form.pw) return
+    if (!form.login.trim() || !form.password) return
     try {
-      const r = await login({ phone: form.phone.trim(), pw: form.pw })
-      toast(r.msgs)
+      const r = await login({ login: form.login.trim(), password: form.password })
       navigate(location.state?.from?.pathname || STAFF_HOME[r.user?.role] || '/', { replace: true })
     } catch {
       // câu báo nằm trong auth.error
@@ -39,10 +37,10 @@ export default function LoginPage() {
       </div>
 
       <form className="stack" onSubmit={submit} noValidate>
-        <Input label="Tên đăng nhập hoặc số điện thoại" name="phone" autoComplete="username" value={form.phone} onChange={change} autoFocus />
-        <Input label="Mật khẩu" name="pw" type="password" autoComplete="current-password" value={form.pw} onChange={change} />
+        <Input label="Tên đăng nhập hoặc số điện thoại" name="login" autoComplete="username" value={form.login} onChange={change} autoFocus />
+        <Input label="Mật khẩu" name="password" type="password" autoComplete="current-password" value={form.password} onChange={change} />
         {error && <p className="field-error">{error}</p>}
-        <Button type="submit" loading={isLoading} disabled={!form.phone.trim() || !form.pw}>
+        <Button type="submit" loading={isLoading} disabled={!form.login.trim() || !form.password}>
           Đăng nhập
         </Button>
       </form>

@@ -1,7 +1,6 @@
 import { useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { clearAuthError, fetchMe, login, logout, selectAuth } from '@/redux/slices/authSlice'
-import ntClient from '@/api/ntClient'
+import { clearAuthError, fetchMe, login, logout, renewToken, selectAuth } from '@/redux/slices/authSlice'
 
 /** Trạng thái đăng nhập + thao tác. login/fetchMe trả promise (unwrap) để trang tự bắt lỗi. */
 export default function useAuth() {
@@ -18,10 +17,9 @@ export default function useAuth() {
     isLoading: status === 'loading',
     login: useCallback((cred) => dispatch(login(cred)).unwrap(), [dispatch]),
     fetchMe: useCallback(() => dispatch(fetchMe()).unwrap(), [dispatch]),
-    logout: useCallback(() => {
-      ntClient.post('/logout').catch(() => {})
-      dispatch(logout())
-    }, [dispatch]),
+    // API dùng JWT, không có phiên ở máy chủ: đăng xuất là bỏ token.
+    logout: useCallback(() => dispatch(logout()), [dispatch]),
+    renewToken: useCallback((t) => dispatch(renewToken(t)), [dispatch]),
     clearError: useCallback(() => dispatch(clearAuthError()), [dispatch]),
   }
 }

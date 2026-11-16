@@ -1,20 +1,20 @@
 # Vua Thầu: web quản lý nghiệm thu (admin + kế toán)
 
-React + Vite, Redux Toolkit, React Router.
+React + Vite, Redux Toolkit, React Router, axios.
 
 **Ai dùng gì**
 
 | Người dùng | Dùng | Ở đâu |
 |---|---|---|
-| Cộng tác viên | App Android | repo `app-Vua-Thau-` |
-| Admin, kế toán | Web này | repo này, thư mục `frontend/` |
+| Cộng tác viên | App điện thoại (Flutter) | repo app |
+| Admin, kế toán | Web này | thư mục `frontend/` |
 
-App và web đều gọi **cùng một máy chủ Nghiệm thu** (`nghiemthu.vuathau.com.vn`, mã nguồn ở repo `vuathau-nghiemthu`),
-nên chung dữ liệu theo thời gian thực. CTV nộp hồ sơ trên app thì admin thấy ngay ở mục Duyệt hồ sơ. Admin duyệt hoặc trả lại
-thì CTV thấy trên app. Kế toán trả tiền, tải biên lai thì CTV thấy trong Thu nhập.
+Web gọi **backend Go** của repo (`../backend`) qua REST API `/api/v1`, đúng API mà app CTV dùng, cùng một CSDL nên dữ liệu
+thông nhau. CTV nộp hồ sơ trên app thì admin thấy ngay ở mục Duyệt hồ sơ. Admin duyệt hoặc trả lại thì CTV thấy trên app.
+Kế toán trả tiền, tải biên lai thì CTV thấy trong Thu nhập.
 
-Web gửi header `X-App: 1` nên máy chủ trả JSON, đăng nhập bằng token `Bearer` như app. Mọi request đi qua đường dẫn `/nt`
-trên cùng tên miền (Vite proxy khi dev, Caddy khi chạy thật), nên không phải sửa máy chủ, cũng không cần CORS.
+Hợp đồng API: `../backend/docs/nghiemthu-api.md`. Mọi response là envelope `{success, data, error}`; đăng nhập trả JWT,
+gửi `Authorization: Bearer <token>`. Khi dev, Vite chuyển `/api` (và `/ws`) sang `http://localhost:8080`, nên không cần CORS.
 
 ## Chức năng
 
@@ -35,40 +35,46 @@ Phiếu chi, Báo cáo (theo ngày/tuần/tháng, theo CTV, luồng duyệt, xu�
 
 Tài khoản CTV đăng nhập web sẽ bị từ chối (CTV dùng app).
 
-## Lệnh
+## Chạy khi dev
+
+1. Chạy backend Go ở cổng 8080 (xem `../backend`).
+2. Chạy web:
 
 ```bash
 npm install
 cp .env.example .env   # tuỳ chọn
-npm run dev            # http://localhost:5173, /nt chuyển tới máy chủ thật (NT_PROXY_TARGET)
+npm run dev            # http://localhost:5173, /api chuyển tới http://localhost:8080
 npm run lint
 npm run build          # ra dist/
 ```
 
-Chạy với máy chủ Nghiệm thu ở máy mình (bản demo có sẵn tài khoản mẫu):
-`DEMO=1 uvicorn app:app --port 8000` trong repo `vuathau-nghiemthu`, rồi đặt `NT_PROXY_TARGET=http://localhost:8000`.
-
 ## Triển khai
 
-Xem `../deploy/Caddyfile.quanly`: Caddy phục vụ `dist/` và chuyển `/nt/*` sang container `nghiemthu-web:8000`.
+Phục vụ `dist/` và chuyển `/api/*` (cùng tên miền) sang backend Go. Muốn gọi API ở tên miền khác thì build với
+`VITE_API_URL=https://.../api/v1` (backend phải cho phép CORS).
 
 ## Biến môi trường
 
 | Biến | Mặc định | Mô tả |
 |---|---|---|
-| `VITE_NT_URL` | `/nt` | Đường dẫn tới máy chủ Nghiệm thu (lúc build) |
-| `NT_PROXY_TARGET` | `https://nghiemthu.vuathau.com.vn` | Dev: máy chủ mà Vite chuyển `/nt` tới |
-| `VITE_API_URL` | `/api/v1` | Backend Go của repo (chưa dùng cho nghiệm thu) |
+| `VITE_API_URL` | `/api/v1` | Địa chỉ API backend Go (lúc build) |
+| `VITE_WS_URL` | cùng tên miền | Địa chỉ WebSocket (scaffold, chưa dùng cho nghiệm thu) |
 
 ## Cấu trúc
 
 ```
 src/
-  api/ntClient.js      gọi máy chủ Nghiệm thu (X-App, token, tải file, ảnh cần đăng nhập)
-  hooks/usePage.js     dữ liệu 1 trang; useAct.js gửi thao tác rồi đi tới url máy chủ trả về; useCfg.js hằng số chung
-  pages/               mỗi trang ứng với 1 route của máy chủ (/duyet, /nha/:id, /ke-toan, /dot/:id...)
-  components/ui/nt.jsx bảng hồ sơ, lưới ảnh + xem lớn, nhãn trạng thái, thẻ số liệu, phân trang, thông báo
-  redux/               đăng nhập (chỉ admin, kế toán)
+  api/axiosClient.js   axios: baseURL /api/v1, Bearer token, trả envelope; 401 -> đăng xuất; getBlob (ảnh, Excel), postForm (multipart)
+  api/*Api.js          mỗi miền 1 module: authApi, userApi (/me, khoá, mật khẩu), configApi (/config, /settings),
+                       houseApi (/houses, /photos), adminApi (/admin/queue, /staff), ctvApi (/ctvs, /adjustments),
+                       accountingApi (/accounting, /payouts, /batches), reportApi (/reports)
+  hooks/usePage.js     usePage(fetcher, deps) -> {data, err, busy, reload}
+  hooks/useAct.js      gửi thao tác ghi, báo data.message, rồi tải lại hoặc sang trang khác (vd duyệt xong sang next_id)
+  hooks/useCfg.js      hằng số chung từ GET /config (trạng thái, giai đoạn, lý do mẫu, pay_min)
+  pages/               /queue, /houses, /houses/:id, /ctvs, /ctvs/:id, /staff, /settings, /accounting,
+                       /payouts/:ctvId, /batches, /batches/:id, /reports, /me
+  components/ui/nt.jsx bảng hồ sơ, lưới ảnh + xem lớn, ảnh cần đăng nhập (AuthImage), nhãn trạng thái, thẻ số liệu, phân trang, thông báo
+  redux/               đăng nhập (chỉ admin, kế toán), lưu token qua storageService
 ```
 
-Route của web trùng đường dẫn máy chủ, nên `url` máy chủ trả sau mỗi thao tác (vd duyệt xong sang `/nha/12`) dùng thẳng được.
+Trang chủ `/` chuyển admin tới `/queue`, kế toán tới `/accounting`.

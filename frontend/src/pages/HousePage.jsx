@@ -1,4 +1,4 @@
-// 1 hồ sơ (/nha/:id) cho admin, kế toán: ảnh + lỗi AI, thông tin công trình, tiến trình, lịch sử.
+// 1 hồ sơ (/houses/:id) cho admin, kế toán: ảnh + lỗi AI, thông tin công trình, tiến trình, lịch sử.
 // Admin: duyệt / trả lại / từ chối, hoàn tác, sửa thông tin. Admin + kế toán: sửa tiền hồ sơ đã duyệt.
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -6,31 +6,36 @@ import usePage from '@/hooks/usePage'
 import useAct from '@/hooks/useAct'
 import useCfg from '@/hooks/useCfg'
 import useAuth from '@/hooks/useAuth'
+import houseApi from '@/api/houseApi'
 import { Button, PageHead, PageState, PhotoGrid, Pill, StatusBadge } from '@/components/ui'
-import { REASONS, bankParts, money, vnTime } from '@/utils/format'
+import { REASONS, bankParts, money, parseMoney, vnTime } from '@/utils/format'
 
 export default function HousePage() {
   const { id } = useParams()
-  const { data: d, err, reload } = usePage(`/nha/${id}`)
+  const { data: d, err, reload } = usePage(() => houseApi.get(id), [id])
   if (!d) return <PageState err={err} retry={reload} />
-  return <House key={`${id}-${d.h.status}`} id={id} d={d} reload={reload} />
+  // Vừa sang hồ sơ khác (duyệt lần lượt): chờ dữ liệu hồ sơ mới
+  if (String(d.house?.id) !== String(id)) return <PageState err={err} retry={reload} />
+  return <House key={`${id}-${d.house.status}`} id={id} d={d} reload={reload} />
 }
 
 function House({ id, d, reload }) {
   const { role } = useAuth()
   const cfg = useCfg()
   const [act, busy] = useAct(reload)
-  const { h, ps } = d
+  const h = d.house
+  const ps = d.photos || []
   const admin = role === 'admin'
   const issues = d.issues || []
-  const fieldsTodo = (d.todo || []).filter((t) => t[0] !== 'anh')
+  // Điều còn thiếu ngoài ảnh (lỗi từng ảnh đã nằm trong issues)
+  const fieldsTodo = (d.checklist || []).filter((c) => !c.ok && c.key !== 'anh')
   const bank = bankParts(h.ctv_bank)
 
   return (
     <section className="stack">
       <PageHead title={`Hồ sơ #${h.id}`} sub={h.address || 'Chưa có địa chỉ'}>
         <StatusBadge status={h.status} />
-        {h.status === 'cho_duyet' && <span className="muted">Còn {d.left} hồ sơ chờ duyệt</span>}
+        {h.status === 'cho_duyet' && <span className="muted">Còn {d.queue_left} hồ sơ chờ duyệt</span>}
       </PageHead>
 
       {h.dup && <div className="note tone-warn">⚠ {h.dup}</div>}
@@ -49,26 +54,26 @@ function House({ id, d, reload }) {
             {ps.length ? <PhotoGrid ps={ps} /> : <p className="muted">Chưa có ảnh.</p>}
             {(issues.length > 0 || fieldsTodo.length > 0) && (
               <ul className="issues">
-                {issues.map(([n, why]) => (
-                  <li key={n}>
-                    Ảnh {n}: {why.join('; ')}
+                {issues.map((it) => (
+                  <li key={it.index}>
+                    Ảnh {it.index}: {(it.problems || []).join('; ')}
                   </li>
                 ))}
-                {fieldsTodo.map((t) => (
-                  <li key={t[0]}>{t[3]}</li>
+                {fieldsTodo.map((c) => (
+                  <li key={c.key}>{c.message || c.label}</li>
                 ))}
               </ul>
             )}
           </div>
 
-          {admin && h.status === 'cho_duyet' && <Review id={id} act={act} busy={busy} pay={d.pay} />}
+          {admin && h.status === 'cho_duyet' && <Review id={id} act={act} busy={busy} pay={d.pay} reasons={cfg?.reasons || REASONS} />}
           {admin && ['da_duyet', 'tra_lai', 'tu_choi'].includes(h.status) && (
             <div className="card row-between">
               <span className="muted">Duyệt / trả lại / từ chối nhầm?</span>
               <Button
                 variant="secondary"
                 loading={busy === 'undo'}
-                onClick={() => window.confirm(`Đưa hồ sơ #${h.id} về Chờ duyệt?`) && act('undo', `/nha/${id}/hoan-tac`, {})}
+                onClick={() => window.confirm(`Đưa hồ sơ #${h.id} về Chờ duyệt?`) && act('undo', () => houseApi.undo(id))}
               >
                 Hoàn tác về Chờ duyệt
               </Button>
@@ -81,7 +86,7 @@ function House({ id, d, reload }) {
           <div className="card stack">
             <h2>Cộng tác viên</h2>
             <p>
-              <Link to={`/ctv/${h.ctv_id}`}>
+              <Link to={`/ctvs/${h.ctv_id}`}>
                 <strong>{h.ctv_name}</strong>
               </Link>{' '}
               · {h.ctv_phone}
@@ -94,7 +99,7 @@ function House({ id, d, reload }) {
           </div>
 
           {admin && h.status !== 'da_chi' ? (
-            <InfoForm id={id} h={h} act={act} busy={busy} stages={cfg?.STAGES || []} aiTag={d.ai_tag || []} />
+            <InfoForm id={id} h={h} act={act} busy={busy} stages={cfg?.stages || []} aiTag={d.ai_fields || []} />
           ) : (
             <div className="card stack">
               <h2>Thông tin công trình</h2>
@@ -136,7 +141,7 @@ function House({ id, d, reload }) {
                   <li key={l.id}>
                     <small className="muted">{vnTime(l.at)}</small>
                     <span>
-                      <strong>{l.action}</strong> · {l.name}
+                      <strong>{l.action}</strong> · {l.user_name}
                     </span>
                     {l.note && <small className="muted">{l.note}</small>}
                   </li>
@@ -160,10 +165,14 @@ function Fact({ label, value, children }) {
   )
 }
 
-function Review({ id, act, busy, pay }) {
+function Review({ id, act, busy, pay, reasons }) {
   const [mode, setMode] = useState('') // '' | tra_lai | tu_choi
   const [reason, setReason] = useState('')
-  const send = (action) => act(action, `/nha/${id}/duyet`, { action, reason })
+  // Duyệt xong sang hồ sơ chờ duyệt kế tiếp (next_id), hết thì về hàng chờ
+  const send = (action) =>
+    act(action, () => houseApi.review(id, { action, reason: action === 'duyet' ? '' : reason }), {
+      go: (data) => (data.next_id ? `/houses/${data.next_id}` : '/queue'),
+    })
   return (
     <div className="card stack review">
       <h2>Duyệt hồ sơ</h2>
@@ -182,7 +191,7 @@ function Review({ id, act, busy, pay }) {
       {mode && (
         <div className="stack">
           <div className="chips">
-            {REASONS[mode].map((r) => (
+            {(reasons[mode] || REASONS[mode] || []).map((r) => (
               <button key={r} type="button" className="chip" onClick={() => setReason(reason ? `${reason}; ${r}` : r)}>
                 {r}
               </button>
@@ -213,7 +222,8 @@ function InfoForm({ id, h, act, busy, stages, aiTag }) {
       className="card stack"
       onSubmit={(e) => {
         e.preventDefault()
-        act('info', `/nha/${id}/sua`, f)
+        const fl = String(f.floors).trim()
+        act('info', () => houseApi.updateInfo(id, { ...f, floors: fl === '' ? null : Number(fl) }))
       }}
     >
       <h2>Thông tin công trình</h2>
@@ -264,7 +274,7 @@ function AmountForm({ id, act, busy, amount }) {
       className="card stack"
       onSubmit={(e) => {
         e.preventDefault()
-        act('amount', `/nha/${id}/tien`, { amount: v, reason })
+        act('amount', () => houseApi.setAmount(id, { amount: parseMoney(v), reason }))
       }}
     >
       <h2>Sửa số tiền hồ sơ</h2>
@@ -273,7 +283,7 @@ function AmountForm({ id, act, busy, amount }) {
         <input className="input" inputMode="numeric" value={v} onChange={(e) => setV(e.target.value)} aria-label="Số tiền" />
         <input className="input" placeholder="Lý do" value={reason} onChange={(e) => setReason(e.target.value)} />
       </div>
-      <Button type="submit" variant="secondary" loading={busy === 'amount'} disabled={!reason.trim()}>
+      <Button type="submit" variant="secondary" loading={busy === 'amount'} disabled={!reason.trim() || Number.isNaN(parseMoney(v))}>
         Lưu số tiền
       </Button>
     </form>

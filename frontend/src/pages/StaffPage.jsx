@@ -1,15 +1,17 @@
-// Nhân viên (/nhan-vien, chỉ admin): danh sách admin, kế toán; thêm người, khoá, đặt lại mật khẩu.
+// Nhân viên (/staff, chỉ admin): danh sách admin, kế toán; thêm người, khoá, đặt lại mật khẩu.
 import { useState } from 'react'
 import usePage from '@/hooks/usePage'
 import useAct from '@/hooks/useAct'
 import useAuth from '@/hooks/useAuth'
+import adminApi from '@/api/adminApi'
+import userApi from '@/api/userApi'
 import { Button, PageHead, PageState, Pill } from '@/components/ui'
 import { ROLE_LABEL } from '@/utils/format'
 
-const EMPTY = { login: '', name: '', role: 'ketoan', pw: '' }
+const EMPTY = { login: '', name: '', role: 'ketoan', password: '' }
 
 export default function StaffPage() {
-  const { data: d, err, reload } = usePage('/nhan-vien')
+  const { data: d, err, reload } = usePage(() => adminApi.staff())
   const [act, busy] = useAct(reload)
   const { user } = useAuth()
   const [f, setF] = useState(EMPTY)
@@ -38,7 +40,7 @@ export default function StaffPage() {
                   <td>
                     <strong>{r.name}</strong> {r.locked ? <Pill tone="bad">Đã khoá</Pill> : null}
                   </td>
-                  <td>{r.phone}</td>
+                  <td>{r.username}</td>
                   <td>{ROLE_LABEL[r.role] || r.role}</td>
                   <td>
                     <div className="row-wrap">
@@ -52,7 +54,7 @@ export default function StaffPage() {
                         variant="secondary"
                         disabled={(pwFor[r.id] || '').length < 6}
                         loading={busy === `pw${r.id}`}
-                        onClick={() => act(`pw${r.id}`, `/nguoi-dung/${r.id}/mat-khau`, { pw: pwFor[r.id] }).then((j) => j && setPwFor({ ...pwFor, [r.id]: '' }))}
+                        onClick={() => act(`pw${r.id}`, () => userApi.setPassword(r.id, pwFor[r.id])).then((j) => j && setPwFor({ ...pwFor, [r.id]: '' }))}
                       >
                         Đặt
                       </Button>
@@ -65,7 +67,7 @@ export default function StaffPage() {
                         loading={busy === `lock${r.id}`}
                         onClick={() =>
                           window.confirm(`${r.locked ? 'Mở khoá' : 'Khoá'} ${r.name}?`) &&
-                          act(`lock${r.id}`, `/nguoi-dung/${r.id}/khoa`, { khoa: r.locked ? 0 : 1 })
+                          act(`lock${r.id}`, () => userApi.lock(r.id, !r.locked))
                         }
                       >
                         {r.locked ? 'Mở khoá' : 'Khoá'}
@@ -83,7 +85,7 @@ export default function StaffPage() {
         className="card stack"
         onSubmit={(e) => {
           e.preventDefault()
-          act('add', '/nhan-vien', f).then((j) => j && setF(EMPTY))
+          act('add', () => adminApi.addStaff(f)).then((j) => j && setF(EMPTY))
         }}
       >
         <h2>Thêm nhân viên</h2>
@@ -105,10 +107,10 @@ export default function StaffPage() {
           </label>
           <label className="field">
             <span>Mật khẩu (từ 8 ký tự)</span>
-            <input className="input" type="text" value={f.pw} onChange={set('pw')} autoComplete="new-password" />
+            <input className="input" type="text" value={f.password} onChange={set('password')} autoComplete="new-password" />
           </label>
         </div>
-        <Button type="submit" loading={busy === 'add'} disabled={!f.login || !f.name || f.pw.length < 8}>
+        <Button type="submit" loading={busy === 'add'} disabled={!f.login || !f.name || f.password.length < 8}>
           Thêm nhân viên
         </Button>
       </form>

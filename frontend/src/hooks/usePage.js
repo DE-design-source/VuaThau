@@ -1,30 +1,27 @@
-import { useCallback, useEffect, useState } from 'react'
-import ntClient from '@/api/ntClient'
-import { toast } from '@/services/toast'
+import { useCallback, useEffect, useEffectEvent, useState } from 'react'
 
-/** Dữ liệu 1 trang từ máy chủ Nghiệm thu. reload() tải lại (sau khi thao tác). */
-export default function usePage(path) {
-  const [state, setState] = useState({ data: null, err: '', path: null })
-  const [key, setKey] = useState(0)
+/**
+ * Dữ liệu 1 trang từ API. fetcher() trả promise envelope {success, data}; deps: giá trị làm tải lại (vd id, bộ lọc).
+ * Trả { data, err, busy, reload }. Đổi deps: dữ liệu cũ vẫn hiện tới khi có dữ liệu mới, busy báo đang tải.
+ */
+export default function usePage(fetcher, deps = []) {
+  const key = JSON.stringify(deps)
+  const [state, setState] = useState({ data: null, err: '', key: null })
+  const [n, setN] = useState(0)
+  const run = useEffectEvent(() => fetcher())
 
   useEffect(() => {
     let dead = false
-    ntClient.get(path).then(
-      (j) => {
-        if (dead) return
-        toast(j.msgs)
-        setState({ data: j, err: '', path })
-      },
-      (e) => {
-        if (!dead) setState((s) => ({ ...s, err: e.message, path }))
-      },
+    const tag = `${key}#${n}`
+    run().then(
+      (res) => !dead && setState({ data: res?.data ?? null, err: '', key: tag }),
+      (e) => !dead && setState((s) => ({ ...s, err: e.message, key: tag })),
     )
     return () => {
       dead = true
     }
-  }, [path, key])
+  }, [key, n])
 
-  const reload = useCallback(() => setKey((k) => k + 1), [])
-  // Đổi trang (vd lọc khác): dữ liệu cũ vẫn hiện tới khi có dữ liệu mới, busy báo đang tải
-  return { data: state.data, err: state.err, busy: state.path !== path, reload }
+  const reload = useCallback(() => setN((k) => k + 1), [])
+  return { data: state.data, err: state.err, busy: state.key !== `${key}#${n}`, reload }
 }

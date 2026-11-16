@@ -1,12 +1,13 @@
-// Admin: hồ sơ chờ duyệt (/duyet). Duyệt nhiều một lúc; trả lại / từ chối làm trong từng hồ sơ vì cần lý do.
+// Admin: hồ sơ chờ duyệt (/queue). Duyệt nhiều một lúc; trả lại / từ chối làm trong từng hồ sơ vì cần lý do.
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import usePage from '@/hooks/usePage'
 import useAct from '@/hooks/useAct'
+import adminApi from '@/api/adminApi'
 import { Button, Empty, HouseTable, PageHead, PageState } from '@/components/ui'
 
 export default function QueuePage() {
-  const { data: d, err, reload } = usePage('/duyet')
+  const { data: d, err, reload } = usePage(() => adminApi.queue())
   const [act, busy] = useAct(reload)
   const [sel, setSel] = useState(() => new Set())
 
@@ -23,7 +24,7 @@ export default function QueuePage() {
 
   const approve = async () => {
     if (!window.confirm(`Duyệt ${sel.size} hồ sơ đã chọn?`)) return
-    const j = await act('many', '/duyet/nhieu', { ids: [...sel] }, { stay: true })
+    const j = await act('many', () => adminApi.approve([...sel]))
     if (j) setSel(new Set())
   }
 
@@ -32,7 +33,7 @@ export default function QueuePage() {
       <PageHead title="Hồ sơ chờ duyệt" sub={`${rows.length} hồ sơ đang chờ. Mở từng hồ sơ để xem ảnh, trả lại hoặc từ chối kèm lý do.`}>
         {rows.length > 0 && (
           <>
-            <Link className="btn btn-secondary" to={`/nha/${rows[0].id}`}>
+            <Link className="btn btn-secondary" to={`/houses/${rows[0].id}`}>
               Duyệt lần lượt từ #{rows[0].id}
             </Link>
             <Button onClick={approve} disabled={!sel.size} loading={busy === 'many'}>
@@ -46,7 +47,7 @@ export default function QueuePage() {
           <label className="check-all">
             <input type="checkbox" checked={all} onChange={() => setSel(all ? new Set() : new Set(rows.map((r) => r.id)))} /> Chọn tất cả
           </label>
-          <HouseTable rows={rows} stats={d.stats} selectable selected={sel} onToggle={toggle} />
+          <HouseTable rows={rows} selectable selected={sel} onToggle={toggle} />
         </div>
       ) : (
         <div className="card">

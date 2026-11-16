@@ -1,18 +1,24 @@
-// Danh sách cộng tác viên (/ctv): tìm theo tên, SĐT, email; số hồ sơ, chờ duyệt, đã duyệt, đã trả, còn nợ.
+// Danh sách cộng tác viên (/ctvs): tìm theo tên, SĐT, email; số hồ sơ, chờ duyệt, đã duyệt, đã trả, còn nợ.
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import usePage from '@/hooks/usePage'
+import ctvApi from '@/api/ctvApi'
 import { Button, Empty, PageHead, PageState, Pager, Pill } from '@/components/ui'
-import { qs } from '@/api/ntClient'
 import { money, vnDate } from '@/utils/format'
 
 export default function CtvListPage() {
   const [sp, setSp] = useSearchParams()
-  const search = sp.toString()
-  const { data: d, err, busy, reload } = usePage(`/ctv${search ? `?${search}` : ''}`)
-  const [q, setQ] = useState(sp.get('q') || '')
+  const cur = { q: sp.get('q') || '', page: sp.get('page') || '' }
+  const { data: d, err, busy, reload } = usePage(() => ctvApi.list(cur), [cur.q, cur.page])
+  const [q, setQ] = useState(cur.q)
   if (!d) return <PageState err={err} retry={reload} />
   const rows = d.rows || []
+  const go = ({ q: nq = cur.q, page }) => {
+    const next = {}
+    if (nq) next.q = nq
+    if (page > 1) next.page = String(page)
+    setSp(next)
+  }
 
   return (
     <section className="stack">
@@ -21,7 +27,7 @@ export default function CtvListPage() {
         className="card filters"
         onSubmit={(e) => {
           e.preventDefault()
-          setSp(qs({ q }).slice(1))
+          go({ q })
         }}
       >
         <input className="input" placeholder="Tìm tên, SĐT, email" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -48,22 +54,22 @@ export default function CtvListPage() {
                 {rows.map((r) => (
                   <tr key={r.id}>
                     <td>
-                      <Link to={`/ctv/${r.id}`}>
+                      <Link to={`/ctvs/${r.id}`}>
                         <strong>{r.name}</strong>
                       </Link>{' '}
                       {r.locked === 1 && <Pill tone="bad">Đã khoá</Pill>}
                       {r.locked === 2 && <Pill>Đã xoá</Pill>}
                       <small className="muted d-block">
-                        {r.phone}
+                        {r.username}
                         {r.email ? ` · ${r.email}` : ''}
                       </small>
                     </td>
-                    <td className="num">{r.n}</td>
-                    <td className="num">{r.wait}</td>
-                    <td className="num">{r.ok}</td>
+                    <td className="num">{r.houses}</td>
+                    <td className="num">{r.waiting}</td>
+                    <td className="num">{r.approved}</td>
                     <td className="num">{money(r.paid)}</td>
                     <td className="num">{money(r.owed)}</td>
-                    <td className="muted">{vnDate(r.last) || '—'}</td>
+                    <td className="muted">{vnDate(r.last_at) || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -72,7 +78,7 @@ export default function CtvListPage() {
         ) : (
           <Empty title="Không tìm thấy cộng tác viên" />
         )}
-        <Pager trang={d.trang} pages={d.pages} onGo={(t) => setSp(qs({ q: d.q, trang: t }).slice(1))} />
+        <Pager page={d.page} pages={d.pages} onGo={(p) => go({ page: p })} />
       </div>
     </section>
   )

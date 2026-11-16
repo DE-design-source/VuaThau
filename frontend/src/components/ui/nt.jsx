@@ -1,8 +1,11 @@
 // Mảnh giao diện dùng chung cho web quản lý Nghiệm thu.
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { Link } from 'react-router-dom'
-import ntClient from '@/api/ntClient'
-import { clearToast, currentToast, subscribeToast } from '@/services/toast'
+import { getBlob } from '@/api/axiosClient'
+import houseApi from '@/api/houseApi'
+import { clearToast, currentToast, subscribeToast, toast } from '@/services/toast'
+import { saveBlob } from '@/utils/download'
+import { vnDate } from '@/utils/format'
 import useCfg from '@/hooks/useCfg'
 import Loader from './Loader'
 import Button from './Button'
@@ -64,7 +67,9 @@ export function Kpi({ label, value, sub, tone }) {
 /** Nhãn trạng thái hồ sơ (nhãn nội bộ, cùng tông màu với app). */
 export function StatusBadge({ status }) {
   const cfg = useCfg()
-  const [label, , tone] = cfg?.STATUS?.[status] ?? [status, '', 'draft']
+  const st = cfg?.statuses?.[status]
+  const label = st?.label || status
+  const tone = st?.tone || 'draft'
   return <span className={`badge tone-${tone}`}>{label}</span>
 }
 
@@ -81,31 +86,31 @@ export function Empty({ title, text }) {
   )
 }
 
-export function Pager({ trang, pages, onGo }) {
+export function Pager({ page, pages, onGo }) {
   if (pages <= 1) return null
   return (
     <nav className="pager" aria-label="Phân trang">
-      <Button variant="secondary" disabled={trang <= 1} onClick={() => onGo(trang - 1)}>
+      <Button variant="secondary" disabled={page <= 1} onClick={() => onGo(page - 1)}>
         ‹ Trước
       </Button>
       <span className="muted">
-        Trang {trang} / {pages}
+        Trang {page} / {pages}
       </span>
-      <Button variant="secondary" disabled={trang >= pages} onClick={() => onGo(trang + 1)}>
+      <Button variant="secondary" disabled={page >= pages} onClick={() => onGo(page + 1)}>
         Sau ›
       </Button>
     </nav>
   )
 }
 
-/** Ảnh cần đăng nhập (ảnh hồ sơ, biên lai): tải bằng token rồi hiện. */
+/** Ảnh cần đăng nhập (ảnh hồ sơ, biên lai): tải qua axiosClient (Bearer) dạng Blob rồi hiện. path: đường dẫn API, vd /photos/101. */
 export function AuthImage({ path, alt = '', className = '', onClick }) {
   const [src, setSrc] = useState(null)
   const [failed, setFailed] = useState(false)
   useEffect(() => {
     let url = null
     let dead = false
-    ntClient.blob(path).then(
+    getBlob(path).then(
       (b) => {
         url = URL.createObjectURL(b)
         if (dead) URL.revokeObjectURL(url)
@@ -124,8 +129,13 @@ export function AuthImage({ path, alt = '', className = '', onClick }) {
 }
 
 /** Ảnh bìa nhỏ của hồ sơ trong danh sách. */
-export function Cover({ st }) {
-  return st?.cover ? <AuthImage path={`/anh/${st.cover}`} className="thumb" /> : <div className="thumb img-ph" />
+export function Cover({ id }) {
+  return id ? <AuthImage path={`/photos/${id}`} className="thumb" /> : <div className="thumb img-ph" />
+}
+
+/** Tải ảnh gốc về máy. */
+function downloadOriginal(id) {
+  houseApi.photo(id, { original: true }).then((b) => saveBlob(b, `anh-${id}.jpg`), (e) => toast(e.message))
 }
 
 /** Lưới ảnh hồ sơ + xem lớn (vuốt bằng phím ← →). */
@@ -148,7 +158,7 @@ export function PhotoGrid({ ps }) {
       <div className="photo-grid">
         {ps.map((x, k) => (
           <button key={x.id} type="button" className={`photo ${x.problems?.length ? 'photo-bad' : ''}`} onClick={() => setAt(k)}>
-            <AuthImage path={`/anh/${x.id}`} alt={`Ảnh ${k + 1}`} />
+            <AuthImage path={`/photos/${x.id}`} alt={`Ảnh ${k + 1}`} />
             <span className={`photo-mark ${x.problems?.length ? 'bad' : 'ok'}`}>{x.problems?.length ? '✕' : '✓'}</span>
             <span className="photo-n">{k + 1}</span>
           </button>
@@ -167,7 +177,7 @@ export function PhotoGrid({ ps }) {
             <Button variant="ghost" disabled={at === ps.length - 1} onClick={() => setAt(at + 1)}>
               ›
             </Button>
-            <a className="btn btn-ghost" href="#goc" onClick={(e) => { e.preventDefault(); ntClient.download(`/anh/${p.id}?goc=1`, `anh-${p.id}.jpg`) }}>
+            <a className="btn btn-ghost" href="#goc" onClick={(e) => { e.preventDefault(); downloadOriginal(p.id) }}>
               Tải ảnh gốc
             </a>
             <Button variant="ghost" onClick={() => setAt(null)} aria-label="Đóng">
@@ -175,7 +185,7 @@ export function PhotoGrid({ ps }) {
             </Button>
           </div>
           <div className="lightbox-img" onClick={(e) => e.stopPropagation()}>
-            <AuthImage key={p.id} path={`/anh/${p.id}`} alt={`Ảnh ${at + 1}`} />
+            <AuthImage key={p.id} path={`/photos/${p.id}`} alt={`Ảnh ${at + 1}`} />
           </div>
           <div className="lightbox-info" onClick={(e) => e.stopPropagation()}>
             <span>🕒 {p.exif_time || p.ai_time || 'Không đọc được giờ chụp'}</span>
@@ -207,7 +217,7 @@ export function PhotoGrid({ ps }) {
 }
 
 /** Bảng hồ sơ dùng ở nhiều trang. */
-export function HouseTable({ rows, stats, showCtv = true, selectable, selected, onToggle }) {
+export function HouseTable({ rows, showCtv = true, selectable, selected, onToggle }) {
   if (!rows.length) return <Empty title="Không có hồ sơ nào" />
   return (
     <div className="table-wrap">
@@ -225,7 +235,6 @@ export function HouseTable({ rows, stats, showCtv = true, selectable, selected, 
         </thead>
         <tbody>
           {rows.map((r) => {
-            const st = stats?.[r.id] ?? stats?.[String(r.id)]
             return (
               <tr key={r.id}>
                 {selectable && (
@@ -234,8 +243,8 @@ export function HouseTable({ rows, stats, showCtv = true, selectable, selected, 
                   </td>
                 )}
                 <td>
-                  <Link to={`/nha/${r.id}`} className="row-link">
-                    <Cover st={st} />
+                  <Link to={`/houses/${r.id}`} className="row-link">
+                    <Cover id={r.cover_id} />
                     <span>
                       <strong>#{r.id}</strong> {r.address || <span className="muted">(chưa có địa chỉ)</span>}
                       {r.dup && <small className="text-warn d-block">⚠ {r.dup}</small>}
@@ -244,15 +253,15 @@ export function HouseTable({ rows, stats, showCtv = true, selectable, selected, 
                 </td>
                 {showCtv && (
                   <td>
-                    <Link to={`/ctv/${r.ctv_id}`}>{r.ctv_name}</Link>
+                    <Link to={`/ctvs/${r.ctv_id}`}>{r.ctv_name}</Link>
                   </td>
                 )}
-                <td>{st ? `${st.valid}/${st.n}` : '—'}</td>
+                <td>{r.photos_total != null ? `${r.photos_valid ?? 0}/${r.photos_total}` : '—'}</td>
                 <td>
                   <StatusBadge status={r.status} />
                 </td>
                 <td className="num">{r.amount ? `${r.amount.toLocaleString('vi-VN')}đ` : '—'}</td>
-                <td className="muted">{r.created_at?.slice(0, 10).split('-').reverse().join('/')}</td>
+                <td className="muted">{vnDate(r.created_at)}</td>
               </tr>
             )
           })}
