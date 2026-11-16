@@ -39,14 +39,28 @@ func TestSale(t *testing.T) {
 		}
 	}
 
-	// Bản đồ
+	// Bản đồ: có tên CTV để lọc (từ 17/11/2026), vẫn không có SĐT, tiền, ngân hàng
 	r = e.do(t, http.MethodGet, "/api/v1/sale/map", sale.AccessToken, nil)
 	expectStatus(t, r, http.StatusOK)
-	noSecret("map", r)
+	for _, bad := range []string{ctv.User.Username, "amount", "bank", "status", "phone"} {
+		if strings.Contains(string(r.Raw), bad) {
+			t.Fatalf("map lộ %q: %s", bad, r.Raw)
+		}
+	}
 	var m service.SaleMapData
 	decodeData(t, r, &m)
-	if len(m.Points) != 2 || len(m.Provinces) != 34 {
+	if len(m.Points) != 2 || len(m.Provinces) != 34 || len(m.CTVs) != 1 || m.CTVs[0].Name != "Trần Bí Mật" || m.CTVs[0].Total != 2 ||
+		m.Points[0].CTVName != "Trần Bí Mật" {
 		t.Fatalf("sale map: %s", r.Raw)
+	}
+	other := e.register(t, "CTV Khác")
+	decodeData(t, e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/sale/map?ctv=%d", other.User.ID), sale.AccessToken, nil), &m)
+	if len(m.Points) != 0 {
+		t.Fatalf("lọc CTV: %d điểm", len(m.Points))
+	}
+	decodeData(t, e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/sale/map?ctv=%d", m.CTVs[0].ID), sale.AccessToken, nil), &m)
+	if len(m.Points) != 2 {
+		t.Fatalf("lọc CTV có công trình: %d điểm", len(m.Points))
 	}
 
 	// Danh sách dự án + tìm kiếm (không tìm theo tên CTV)

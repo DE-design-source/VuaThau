@@ -2,15 +2,17 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"vuathau/backend/internal/repository"
 )
 
 // Trang sale: bản đồ, dự án, nhà thầu (không có CTV, không có tiền).
 
-// SaleMap handles GET /api/v1/sale/map?province=
+// SaleMap handles GET /api/v1/sale/map?province=&ctv=
 func (h *HouseHandler) SaleMap(w http.ResponseWriter, r *http.Request) {
-	res, err := h.svc.SaleMap(r.Context(), r.URL.Query().Get("province"))
+	ctv, _ := strconv.ParseInt(r.URL.Query().Get("ctv"), 10, 64)
+	res, err := h.svc.SaleMap(r.Context(), r.URL.Query().Get("province"), ctv)
 	if err != nil {
 		writeServiceError(w, err)
 		return

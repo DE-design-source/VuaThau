@@ -196,7 +196,7 @@ type HouseService interface {
 	Map(ctx context.Context, q OverviewQuery) (*MapData, error)
 
 	// Trang sale (sale_service.go): không CTV, không tiền.
-	SaleMap(ctx context.Context, province string) (*SaleMapData, error)
+	SaleMap(ctx context.Context, province string, ctv int64) (*SaleMapData, error)
 	SaleProjects(ctx context.Context, f repository.SaleFilter, page int) (*SaleProjectList, error)
 	SaleProject(ctx context.Context, id int64) (*SaleProjectDetail, error)
 	Contractors(ctx context.Context, q string) ([]repository.Contractor, error)

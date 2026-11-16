@@ -80,6 +80,7 @@ type HouseRepository interface {
 	// Trang sale (sale_repository.go): không CTV, không tiền.
 	SalePoints(ctx context.Context, f SaleFilter) ([]SalePoint, error)
 	SaleProvinceCounts(ctx context.Context) (map[string]int, error)
+	SaleCTVs(ctx context.Context) ([]SaleCTV, error)
 	SaleProjects(ctx context.Context, f SaleFilter, limit, offset int) ([]SaleProject, int, error)
 	SaleProject(ctx context.Context, id int64) (*SaleProject, error)
 	SaleCanSeeHouse(ctx context.Context, id int64) (bool, error)

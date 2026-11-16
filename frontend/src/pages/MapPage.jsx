@@ -9,6 +9,7 @@ import usePage from '@/hooks/usePage'
 import useCfg from '@/hooks/useCfg'
 import mapApi from '@/api/mapApi'
 import MapSearch from '@/components/MapSearch'
+import SiteList from '@/components/SiteList'
 import { Button, Empty, Kpi, PageHead, PageState, Pill } from '@/components/ui'
 import { AGE_FRESH, AGE_FRESH_LINE, AGE_STALE, ageTip, esc, gmapUrl, hsId, isStale, vnDate } from '@/utils/format'
 
@@ -44,7 +45,8 @@ export default function MapPage() {
   }
   const { data: d, err, busy, reload } = usePage(() => mapApi.get(cur), [cur.ctv, cur.status, cur.from, cur.to, cur.province])
   const cfg = useCfg()
-  const [tab, setTab] = useState(cur.province ? 'tinh' : 'ctv')
+  const [tab, setTab] = useState('list') // list | ctv | tinh
+  const [focus, setFocus] = useState(null)
   // Tô màu chấm: theo lần chụp gần nhất của công trình (mặc định) hoặc theo trạng thái hồ sơ
   const [mode, setMode] = useState('age')
   // Cập nhật theo thời gian thực: tự tải lại mỗi LIVE_MS, đánh dấu công trình mới xuất hiện
@@ -139,81 +141,35 @@ export default function MapPage() {
           </div>
         </div>
       </PageHead>
-      <div className="kpis">
-        <Kpi label="Công trình trên bản đồ" value={points.length} sub={[sel?.name, prov?.name].filter(Boolean).join(' · ') || 'theo bộ lọc'} />
-        <Kpi label="Tỉnh, thành có công trình" value={`${withSites.length}/34`} />
-        <Kpi label="CTV đã chụp" value={ctvs.filter((c) => c.total > 0).length} />
-        <Kpi label={`Chụp trong ${d.dup_days} ngày`} value={sum('recent')} />
-        <Kpi label="Bị chặn vì chụp trùng" value={sum('dups')} tone={sum('dups') ? 'bad' : undefined} />
-      </div>
-
-      <div className="card filters">
-        <select className="input" value={cur.province} onChange={(e) => set({ province: e.target.value })} aria-label="Tỉnh, thành">
-          <option value="">Cả nước (34 tỉnh, thành)</option>
-          {[...provinces]
-            .sort((a, b) => a.name.localeCompare(b.name, 'vi'))
-            .map((p) => (
-              <option key={p.code} value={p.code}>
-                {p.name} ({p.total})
-              </option>
-            ))}
-        </select>
-        <select className="input" value={cur.ctv} onChange={(e) => set({ ctv: e.target.value })} aria-label="CTV">
-          <option value="">Tất cả CTV</option>
-          {ctvs.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name} ({c.total})
-            </option>
-          ))}
-        </select>
-        <select className="input" value={cur.status} onChange={(e) => set({ status: e.target.value })} aria-label="Trạng thái">
-          <option value="">Mọi trạng thái</option>
-          {Object.entries(statuses)
-            .filter(([k]) => k !== 'nhap')
-            .map(([k, s]) => (
-              <option key={k} value={k}>
-                {s.label}
-              </option>
-            ))}
-        </select>
-        {busy && <span className="muted">Đang tải…</span>}
-        {Object.values(cur).some(Boolean) && (
-          <Button
-            variant="ghost"
-            type="button"
-            onClick={() => setSp({})}
-          >
-            Bỏ lọc
-          </Button>
-        )}
-      </div>
-
       {prov && prov.merged?.length > 0 && (
         <div className="note tone-wait">
           {prov.name} từ 1/7/2025 gồm: {prov.merged.join(', ')}. Công trình có địa chỉ ghi tên tỉnh cũ vẫn được tính vào {prov.name}.
         </div>
       )}
 
-      <div className="map-layout">
+      <div className="map-grid">
         <div className="card map-card">
           <SiteMap
             points={points}
             provinces={provinces}
             selected={cur.province}
-            onProvince={(code) => {
-              setTab('tinh')
-              set({ province: code === cur.province ? '' : code })
-            }}
+            onProvince={(code) => set({ province: code === cur.province ? '' : code })}
             fitKey={`${cur.ctv}|${cur.status}|${cur.from}|${cur.to}|${cur.province}`}
             color={mode === 'age' ? (p) => (isStale(p.last_at, d.dup_days) ? AGE_STALE : AGE_FRESH) : undefined}
             stroke={(p) => (fresh.has(p.id) ? '#dc2626' : mode === 'age' && !isStale(p.last_at, d.dup_days) ? AGE_FRESH_LINE : '#fff')}
             tip={(p) => ageTip(p.last_at, d.dup_days)}
             staleDays={d.dup_days}
+            paintKey={`${mode}|${fresh.size}`}
+            focus={focus}
           />
           <div className="map-legend">
             <span className="seg seg-sm" role="tablist" aria-label="Tô màu">
-              <button type="button" className={mode === 'age' ? 'on' : ''} onClick={() => setMode('age')}>Theo lần chụp</button>
-              <button type="button" className={mode === 'status' ? 'on' : ''} onClick={() => setMode('status')}>Theo trạng thái</button>
+              <button type="button" className={mode === 'age' ? 'on' : ''} onClick={() => setMode('age')}>
+                Theo lần chụp
+              </button>
+              <button type="button" className={mode === 'status' ? 'on' : ''} onClick={() => setMode('status')}>
+                Theo trạng thái
+              </button>
             </span>
             {mode === 'age' ? (
               <>
@@ -226,27 +182,89 @@ export default function MapPage() {
               </>
             ) : (
               Object.entries(TONE).map(([k, tone]) => (
-              <span key={k}>
-                <i style={{ background: `var(--tone-${tone})` }} /> {statuses[k]?.label || k}
-              </span>
-            ))
+                <span key={k}>
+                  <i style={{ background: `var(--tone-${tone})` }} /> {statuses[k]?.label || k}
+                </span>
+              ))
             )}
-            <span className="spacer" />
-            <span>Nền: ranh giới 34 tỉnh, thành (OCHA, 2025) · đậm = nhiều công trình</span>
           </div>
         </div>
-        <div className="card map-side">
-          <div className="seg" role="tablist">
+
+        <div className="card map-aside">
+          <div className="aside-filters">
+            <select className="input" value={cur.province} onChange={(e) => set({ province: e.target.value })} aria-label="Tỉnh, thành">
+              <option value="">Tỉnh thành: cả nước</option>
+              {[...provinces]
+                .sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+                .map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {p.name} ({p.total})
+                  </option>
+                ))}
+            </select>
+            <select className="input" value={cur.ctv} onChange={(e) => set({ ctv: e.target.value })} aria-label="Cộng tác viên">
+              <option value="">Cộng tác viên: tất cả</option>
+              {ctvs.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.total})
+                </option>
+              ))}
+            </select>
+            <select className="input" value={cur.status} onChange={(e) => set({ status: e.target.value })} aria-label="Trạng thái">
+              <option value="">Trạng thái: tất cả</option>
+              {Object.entries(statuses)
+                .filter(([k]) => k !== 'nhap')
+                .map(([k, s]) => (
+                  <option key={k} value={k}>
+                    {s.label}
+                  </option>
+                ))}
+            </select>
+            {(busy || Object.values(cur).some(Boolean)) && (
+              <div className="aside-filters-foot">
+                {busy ? <span className="muted">Đang tải…</span> : <span />}
+                {Object.values(cur).some(Boolean) && (
+                  <Button variant="ghost" type="button" onClick={() => setSp({})}>
+                    Bỏ lọc
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="seg aside-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected={tab === 'list'} className={tab === 'list' ? 'on' : ''} onClick={() => setTab('list')}>
+              Công trình <b className="mono">{points.length}</b>
+            </button>
             <button type="button" role="tab" aria-selected={tab === 'ctv'} className={tab === 'ctv' ? 'on' : ''} onClick={() => setTab('ctv')}>
               Theo CTV <b className="mono">{ctvs.length}</b>
             </button>
             <button type="button" role="tab" aria-selected={tab === 'tinh'} className={tab === 'tinh' ? 'on' : ''} onClick={() => setTab('tinh')}>
-              Theo tỉnh <b className="mono">34</b>
+              Theo tỉnh
             </button>
           </div>
-          {tab === 'ctv' ? (
-            ctvs.length ? (
-              <div className="table-wrap">
+          <div className="aside-body">
+            {tab === 'list' && (
+              <SiteList
+                points={points}
+                staleDays={d.dup_days}
+                active={focus?.id}
+                onPick={(p) => setFocus({ id: p.id, n: (focus?.n || 0) + 1 })}
+                badge={(p) => (
+                  <>
+                    {p.vip && <span className="vip-tag">VIP</span>}
+                    {fresh.has(p.id) && <span className="new-tag">MỚI</span>}
+                  </>
+                )}
+                meta={(p) => (
+                  <>
+                    <b className="ctv-name">{p.ctv_name}</b> · {statuses[p.status]?.label || p.status}
+                    {p.contractor ? ` · ${p.contractor}` : ''}
+                  </>
+                )}
+              />
+            )}
+            {tab === 'ctv' &&
+              (ctvs.length ? (
                 <table className="table">
                   <thead>
                     <tr>
@@ -280,12 +298,10 @@ export default function MapPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            ) : (
-              <Empty title="Chưa có công trình nào" />
-            )
-          ) : (
-            <div className="table-wrap">
+              ) : (
+                <Empty title="Chưa có công trình nào" />
+              ))}
+            {tab === 'tinh' && (
               <table className="table">
                 <thead>
                   <tr>
@@ -314,9 +330,18 @@ export default function MapPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
-          )}
+            )}
+          </div>
         </div>
+      </div>
+
+      <div className="kpis">
+        <Kpi label="Công trình trên bản đồ" value={points.length} sub={[sel?.name, prov?.name].filter(Boolean).join(' · ') || 'theo bộ lọc'} />
+        <Kpi label="Cần cập nhật" value={points.filter((p) => isStale(p.last_at, d.dup_days)).length} sub={`quá ${d.dup_days} ngày`} />
+        <Kpi label="Tỉnh, thành có công trình" value={`${withSites.length}/34`} />
+        <Kpi label="CTV đã chụp" value={ctvs.filter((c) => c.total > 0).length} />
+        <Kpi label={`Chụp trong ${d.dup_days} ngày`} value={sum('recent')} />
+        <Kpi label="Bị chặn vì chụp trùng" value={sum('dups')} tone={sum('dups') ? 'bad' : undefined} />
       </div>
     </section>
   )
@@ -324,11 +349,14 @@ export default function MapPage() {
 
 /** Bản đồ Leaflet: nền OpenStreetMap + ranh giới 34 tỉnh (tô theo số công trình) + mỗi công trình 1 chấm.
  *  pop(p): HTML popup của 1 điểm (link nội bộ: <a data-to="/đường/dẫn">); color(p) / stroke(p): màu chấm / viền;
- *  tip(p): HTML hiện khi rê chuột. Bỏ trống: kiểu trang admin (màu theo trạng thái). */
-export function SiteMap({ points, provinces, selected, onProvince, fitKey, pop, color, stroke, tip, staleDays = 30 }) {
+ *  tip(p): HTML hiện khi rê chuột. Bỏ trống: kiểu trang admin (màu theo trạng thái).
+ *  paintKey: đổi giá trị này để vẽ lại màu chấm (đổi cách tô, đánh dấu công trình mới).
+ *  focus: { id, n } bay tới công trình id và mở popup (n tăng mỗi lần bấm, để bấm lại cùng dòng vẫn bay). */
+export function SiteMap({ points, provinces, selected, onProvince, fitKey, pop, color, stroke, tip, staleDays = 30, paintKey = '', focus }) {
   const el = useRef(null)
   const map = useRef(null)
   const dots = useRef(null)
+  const marks = useRef(new Map()) // id công trình -> chấm
   const getMap = useCallback(() => map.current, [])
   const fitted = useRef(null) // fitKey đã canh khung: tự tải lại (thời gian thực) không làm bản đồ nhảy
   const areas = useRef(null)
@@ -433,6 +461,7 @@ export function SiteMap({ points, provinces, selected, onProvince, fitKey, pop, 
     const g = dots.current
     if (!m || !g) return
     g.clearLayers()
+    marks.current = new Map()
     const latlngs = []
     for (const p of points) {
       const c = color ? color(p) : cssVar(`--tone-${TONE[p.status] || 'wait'}`, '#2563eb')
@@ -448,6 +477,7 @@ export function SiteMap({ points, provinces, selected, onProvince, fitKey, pop, 
           ` · <a href="${gmapUrl(p.lat, p.lng)}" target="_blank" rel="noreferrer">Google Maps</a></div>`,
       )
       mk.addTo(g)
+      marks.current.set(p.id, mk)
       latlngs.push([p.lat, p.lng])
     }
     if (selected || fitted.current === fitKey) return // đã canh theo ranh giới tỉnh / đã canh với bộ lọc này
@@ -457,12 +487,20 @@ export function SiteMap({ points, provinces, selected, onProvince, fitKey, pop, 
     if (filtered && latlngs.length) m.fitBounds(latlngs, { padding: [30, 30], maxZoom: 14 })
     else m.fitBounds(VN_BOUNDS)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitKey, points, labels])
+  }, [fitKey, points, labels, paintKey])
+
+  // Bấm 1 dòng trong danh sách: bay tới chấm, mở popup
+  useEffect(() => {
+    const mk = focus && marks.current.get(focus.id)
+    if (!mk) return
+    map.current.setView(mk.getLatLng(), Math.max(map.current.getZoom(), 16))
+    mk.openPopup()
+  }, [focus])
 
   return (
     <div className="site-map-wrap">
-      <div ref={el} className="site-map" role="region" aria-label="Bản đồ công trình" />
       <MapSearch getMap={getMap} points={points} staleDays={staleDays} />
+      <div ref={el} className="site-map" role="region" aria-label="Bản đồ công trình" />
     </div>
   )
 }

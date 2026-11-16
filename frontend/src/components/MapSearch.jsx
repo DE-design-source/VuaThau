@@ -71,7 +71,7 @@ export default function MapSearch({ getMap, points, staleDays }) {
           className="input"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Tìm địa điểm: số nhà, đường, phường…"
+          placeholder="Tìm kiếm địa chỉ, số nhà, đường, phường…"
           aria-label="Tìm địa điểm"
         />
         <button className="btn btn-primary" type="submit" disabled={busy || q.trim().length < 3}>
@@ -92,6 +92,7 @@ export default function MapSearch({ getMap, points, staleDays }) {
           </button>
         )}
       </form>
+      <div className="map-search-pop">
       {err && <div className="map-search-box text-bad">{err}</div>}
       {res && !place && (
         <div className="map-search-box">
@@ -133,6 +134,7 @@ export default function MapSearch({ getMap, points, staleDays }) {
           )}
         </div>
       )}
+      </div>
     </div>
   )
 }

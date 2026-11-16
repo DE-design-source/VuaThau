@@ -24,8 +24,16 @@ type SalePoint struct {
 	Contractor string    `json:"contractor"`
 	Stage      string    `json:"stage"`
 	Province   string    `json:"province"`
+	CTVName    string    `json:"ctv_name"` // chỉ tên CTV (sale lọc theo CTV); không SĐT, tiền, ngân hàng
 	At         time.Time `json:"at"`
 	LastAt     time.Time `json:"last_at"` // lần chụp gần nhất ở công trình này (service điền)
+}
+
+// SaleCTV: 1 CTV trong ô lọc của sale: chỉ tên và số công trình.
+type SaleCTV struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Total int    `json:"total"`
 }
 
 // SaleProject: 1 dự án (công trình) trong danh sách / chi tiết của sale.
@@ -50,6 +58,7 @@ type SaleFilter struct {
 	Q          string // địa chỉ, nhà thầu, SĐT nhà thầu, mã
 	Province   string
 	Contractor string // khoá nhà thầu (Contractor.Key)
+	CTVID      int64  // chỉ công trình của 1 CTV (bản đồ sale)
 }
 
 // Contractor: 1 nhà thầu gộp từ các công trình.
@@ -70,6 +79,9 @@ func (f SaleFilter) where() (string, []any) {
 	}
 	if f.Province != "" {
 		add("h.province = ?", f.Province)
+	}
+	if f.CTVID > 0 {
+		add("h.ctv_id = ?", f.CTVID)
 	}
 	if f.Contractor != "" {
 		add(saleContractorKey+" = ?", f.Contractor)
@@ -94,7 +106,8 @@ const saleContractorKey = `COALESCE(NULLIF(regexp_replace(h.contractor_phone, '\
 func (r *houseRepository) SalePoints(ctx context.Context, f SaleFilter) ([]SalePoint, error) {
 	where, args := f.where()
 	rows, err := r.db.Query(ctx, `SELECT h.id, h.lat, h.lng, h.address, h.contractor_name, h.stage, COALESCE(h.province, ''),
-		COALESCE(h.submitted_at, h.created_at) FROM houses h WHERE `+where+` AND h.lat IS NOT NULL AND h.lng IS NOT NULL
+		COALESCE(u.name, ''), COALESCE(h.submitted_at, h.created_at) FROM houses h LEFT JOIN users u ON u.id = h.ctv_id
+		WHERE `+where+` AND h.lat IS NOT NULL AND h.lng IS NOT NULL
 		ORDER BY h.id DESC LIMIT 20000`, args...)
 	if err != nil {
 		return nil, err
@@ -103,7 +116,7 @@ func (r *houseRepository) SalePoints(ctx context.Context, f SaleFilter) ([]SaleP
 	out := []SalePoint{}
 	for rows.Next() {
 		var p SalePoint
-		if err := rows.Scan(&p.ID, &p.Lat, &p.Lng, &p.Address, &p.Contractor, &p.Stage, &p.Province, &p.At); err != nil {
+		if err := rows.Scan(&p.ID, &p.Lat, &p.Lng, &p.Address, &p.Contractor, &p.Stage, &p.Province, &p.CTVName, &p.At); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -201,6 +214,25 @@ func (r *houseRepository) Contractors(ctx context.Context, q string) ([]Contract
 	for rows.Next() {
 		var c Contractor
 		if err := rows.Scan(&c.Key, &c.Name, &c.Phone, &c.Total, &c.Provinces, &c.Last); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// SaleCTVs: CTV có công trình sale được xem (ô lọc CTV): chỉ id, tên, số công trình.
+func (r *houseRepository) SaleCTVs(ctx context.Context) ([]SaleCTV, error) {
+	rows, err := r.db.Query(ctx, `SELECT u.id, u.name, COUNT(*) FROM houses h JOIN users u ON u.id = h.ctv_id
+		WHERE `+saleVisible+` GROUP BY u.id, u.name ORDER BY 3 DESC, u.name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SaleCTV{}
+	for rows.Next() {
+		var c SaleCTV
+		if err := rows.Scan(&c.ID, &c.Name, &c.Total); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
