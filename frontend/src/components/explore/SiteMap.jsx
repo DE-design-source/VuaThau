@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import 'maplibre-gl/dist/maplibre-gl.css'
+import { maplibreGL } from '@maplibre/maplibre-gl-leaflet'
 import MapSearch from '@/components/MapSearch'
 import { fillCover, stageLabel } from '@/utils/siteTip'
 import { esc, isStale } from '@/utils/format'
@@ -70,16 +72,38 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
   useEffect(() => {
     const m = L.map(el.current, { zoomControl: false, minZoom: 5 }).setView(VN_CENTER, 6)
     L.control.zoom({ position: 'topright' }).addTo(m)
-    // Nền OSM qua máy chủ mình (/tiles: lưu sẵn, không bị chặn); màn nét lấy ô chi tiết hơn
-    L.tileLayer('/tiles/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      detectRetina: true,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Ranh giới: OCHA/HDX',
-    }).addTo(m)
+    // Nền kiểu Airbnb: bản đồ vector OpenFreeMap tô lại màu (/map-style.json, cùng file với app CTV), nét ở mọi mức phóng.
+    // Máy không vẽ được (không có WebGL) hoặc tải kiểu lỗi: quay về nền OSM qua máy chủ mình (/tiles).
+    const osm = () =>
+      L.tileLayer('/tiles/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        detectRetina: true,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Ranh giới: OCHA/HDX',
+      }).addTo(m)
+    let vec = null
+    const fallback = () => {
+      if (!vec) return
+      m.removeLayer(vec)
+      vec = null
+      osm()
+    }
+    try {
+      vec = maplibreGL({
+        style: '/map-style.json',
+        attribution: '&copy; OpenFreeMap &copy; OpenMapTiles &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Ranh giới: OCHA/HDX',
+      }).addTo(m)
+      const gl = vec.getMaplibreMap()
+      let loaded = false
+      gl.once('load', () => (loaded = true))
+      gl.on('error', (e) => !loaded && /style|Failed to fetch|404/i.test(String(e?.error?.message || e?.error)) && fallback())
+    } catch {
+      fallback()
+      if (!vec) osm()
+    }
     const pane = m.createPane('areas')
     pane.style.zIndex = 350
     const zoom = () => {
-      pane.style.opacity = m.getZoom() >= 10 ? '0.25' : '1'
+      pane.style.opacity = m.getZoom() >= 10 ? '0.06' : m.getZoom() >= 8 ? '0.4' : '1' // phóng gần: gần như ẩn lớp tô tỉnh, giữ màu nền
       el.current?.classList.toggle('zoom-far', m.getZoom() < FAR)
       el.current?.classList.toggle('zoom-near', m.getZoom() >= NEAR)
     }
