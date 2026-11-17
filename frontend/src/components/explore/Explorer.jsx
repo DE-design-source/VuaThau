@@ -7,6 +7,16 @@ import SiteCard from './SiteCard'
 
 const PAGE = 24
 
+/** Ghim nhỏ trong chú thích (cùng hình với ghim trên bản đồ). */
+function PinMark({ stale }) {
+  return (
+    <svg className={`pin-mark ${stale ? 'stale' : ''}`} viewBox="0 0 32 42" width="14" height="19" aria-hidden="true">
+      <path d="M16 1.5C8.3 1.5 2 7.7 2 15.4 2 25.8 16 40.5 16 40.5S30 25.8 30 15.4C30 7.7 23.7 1.5 16 1.5z" fill="currentColor" />
+      <circle cx="16" cy="15.4" r="6.2" fill="#fff" />
+    </svg>
+  )
+}
+
 /**
  * points; provinces; staleDays
  * selects: [{ key, label, value, options: [{ value, label }], onChange(v) }] ô lọc trong thanh tìm
@@ -88,8 +98,8 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
               {rows.length} công trình {busy && <span className="muted ex-busy">· đang tải…</span>}
             </h2>
             <span className="ex-legend">
-              <span className="site-pill">Phần thô</span> chưa quá {staleDays} ngày
-              <span className="site-pill stale">Phần thô</span> cần cập nhật
+              <PinMark /> chưa quá {staleDays} ngày
+              <PinMark stale /> cần cập nhật
             </span>
           </div>
           {rows.length ? (

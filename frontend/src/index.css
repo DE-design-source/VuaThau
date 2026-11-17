@@ -2601,3 +2601,79 @@ details summary {
     display: none;
   }
 }
+
+/* ---------- Ghim định vị trên bản đồ (thay nhãn viên thuốc) ---------- */
+.site-pin-icon {
+  background: none;
+  border: 0;
+}
+.site-pin {
+  position: absolute;
+  left: -15px;
+  top: -40px;
+  width: 30px;
+  height: 40px;
+  color: #f5b301;
+  transform-origin: 50% 100%;
+  transition: transform 0.12s, color 0.12s;
+  filter: drop-shadow(0 2px 2px rgb(0 0 0 / 0.35));
+  cursor: pointer;
+}
+.site-pin svg {
+  display: block;
+}
+.site-pin.stale {
+  color: #22c55e;
+}
+.site-pin.new {
+  color: #dc2626;
+}
+.site-pin:hover,
+.site-pin.on {
+  color: #0b1f3a;
+  transform: scale(1.2);
+}
+.site-pin-label {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  margin-top: 3px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 10px;
+  background: #fff;
+  color: #222;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.08), 0 1px 4px rgb(0 0 0 / 0.2);
+}
+.zoom-near .site-pin-label,
+.site-pin:hover .site-pin-label,
+.site-pin.on .site-pin-label {
+  display: block;
+}
+.site-pin:hover .site-pin-label,
+.site-pin.on .site-pin-label {
+  transform: translateX(-50%) scale(0.85);
+}
+/* phóng xa: ghim nhỏ lại cho đỡ chồng */
+.zoom-far .site-pin {
+  transform: scale(0.72);
+}
+.zoom-far .site-pin:hover,
+.zoom-far .site-pin.on {
+  transform: scale(1);
+}
+/* ghim nhỏ trong chú thích */
+.pin-mark {
+  color: #f5b301;
+  vertical-align: -3px;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.3));
+}
+.pin-mark.stale {
+  color: #22c55e;
+  margin-left: 10px;
+}
