@@ -223,13 +223,17 @@ func (h *HouseHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	ok(w, res)
 }
 
-// Photo handles GET /api/v1/photos/{pid}[?original=1]: trả file ảnh.
+// Photo handles GET /api/v1/photos/{pid}[?original=1][?size=card]: trả file ảnh (thu nhỏ 1568px / gốc / cỡ thẻ 640px).
 func (h *HouseHandler) Photo(w http.ResponseWriter, r *http.Request) {
 	pid, valid := idOr400(w, r, "pid")
 	if !valid {
 		return
 	}
-	data, mime, err := h.svc.PhotoFile(r.Context(), me(r), pid, r.URL.Query().Get("original") == "1")
+	size := r.URL.Query().Get("size")
+	if r.URL.Query().Get("original") == "1" {
+		size = "original"
+	}
+	data, mime, err := h.svc.PhotoFile(r.Context(), me(r), pid, size)
 	if err != nil {
 		writeServiceError(w, err)
 		return

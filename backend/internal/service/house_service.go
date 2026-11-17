@@ -182,7 +182,8 @@ type HouseService interface {
 	Save(ctx context.Context, u *model.User, id int64, f model.HouseFields, submit bool) (string, bool, error)
 	State(ctx context.Context, u *model.User, id int64) (map[string]string, error)
 	Detail(ctx context.Context, u *model.User, id int64) (*HouseDetail, error)
-	PhotoFile(ctx context.Context, u *model.User, pid int64, original bool) ([]byte, string, error)
+	// size: "" ảnh thu nhỏ 1568px, "card" ảnh cỡ thẻ 640px, "original" ảnh gốc
+	PhotoFile(ctx context.Context, u *model.User, pid int64, size string) ([]byte, string, error)
 
 	Queue(ctx context.Context) ([]model.House, error)
 	ApproveMany(ctx context.Context, by *model.User, ids []int64) (string, int, error)
@@ -798,7 +799,7 @@ func (s *houseService) Detail(ctx context.Context, u *model.User, id int64) (*Ho
 	return d, nil
 }
 
-func (s *houseService) PhotoFile(ctx context.Context, u *model.User, pid int64, original bool) ([]byte, string, error) {
+func (s *houseService) PhotoFile(ctx context.Context, u *model.User, pid int64, size string) ([]byte, string, error) {
 	p, err := s.photos.Get(ctx, pid)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, "", fail(ErrNotFound, "Không tìm thấy ảnh.")
@@ -813,12 +814,20 @@ func (s *houseService) PhotoFile(ctx context.Context, u *model.User, pid int64, 
 	} else if _, err := s.load(ctx, u, p.HouseID); err != nil {
 		return nil, "", err
 	}
-	b, err := s.files.ReadPhoto(p.SHA256, !original)
+	var b []byte
+	switch size {
+	case "card":
+		b, err = s.files.ReadCard(p.SHA256)
+	case "original":
+		b, err = s.files.ReadPhoto(p.SHA256, false)
+	default:
+		b, err = s.files.ReadPhoto(p.SHA256, true)
+	}
 	if err != nil {
 		return nil, "", fail(ErrNotFound, "Không tìm thấy file ảnh.")
 	}
 	mime := "image/jpeg"
-	if original {
+	if size == "original" {
 		mime = p.Mime
 	}
 	return b, mime, nil
