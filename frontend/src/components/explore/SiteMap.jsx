@@ -1,6 +1,6 @@
-// Bản đồ công trình kiểu Airbnb: mỗi công trình là 1 nhãn viên thuốc ghi giai đoạn thi công
-// (trắng: chụp chưa quá hạn; xanh lá: cần cập nhật; đỏ: mới xuất hiện khi xem thời gian thực).
-// Phóng xa (< cấp 12) nhãn thu thành chấm cho đỡ chồng. Bấm nhãn: thẻ có hình đại diện. Nền: ranh giới 34 tỉnh.
+// Bản đồ công trình: mỗi công trình là 1 ghim định vị (giọt nước, lỗ tròn trắng giữa):
+// vàng: chụp chưa quá hạn; xanh lá: cần cập nhật; đỏ: mới xuất hiện (thời gian thực); navy: đang chọn / rê chuột.
+// Giai đoạn thi công: nhãn nhỏ dưới ghim khi phóng gần (>= cấp 15) hoặc khi rê chuột. Bấm ghim: thẻ có hình đại diện.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import L from 'leaflet'
@@ -14,7 +14,14 @@ const VN_BOUNDS = [
   [8.3, 102.1],
   [23.4, 109.6],
 ]
-const FAR = 12 // phóng xa hơn cấp này: nhãn thành chấm
+const FAR = 12 // phóng xa hơn cấp này: ghim nhỏ lại
+const NEAR = 15 // phóng gần từ cấp này: hiện giai đoạn dưới ghim
+
+// Ghim định vị (vẽ bằng SVG, màu theo class qua currentColor)
+const PIN =
+  '<svg viewBox="0 0 32 42" width="30" height="40" aria-hidden="true">' +
+  '<path d="M16 1.5C8.3 1.5 2 7.7 2 15.4 2 25.8 16 40.5 16 40.5S30 25.8 30 15.4C30 7.7 23.7 1.5 16 1.5z" fill="currentColor" stroke="rgba(0,0,0,.28)" stroke-width="1.4"/>' +
+  '<circle cx="16" cy="15.4" r="6.2" fill="#fff"/></svg>'
 
 function cssVar(name, fallback) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
@@ -74,6 +81,7 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
     const zoom = () => {
       pane.style.opacity = m.getZoom() >= 10 ? '0.25' : '1'
       el.current?.classList.toggle('zoom-far', m.getZoom() < FAR)
+      el.current?.classList.toggle('zoom-near', m.getZoom() >= NEAR)
     }
     m.on('zoomend', zoom)
     zoom()
@@ -139,8 +147,13 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
     marks.current = new Map()
     const latlngs = []
     for (const p of points) {
-      const cls = ['site-pill', isStale(p.last_at || p.at, staleDays) ? 'stale' : '', fresh?.has(p.id) ? 'new' : ''].join(' ')
-      const icon = L.divIcon({ className: 'site-pill-icon', html: `<span class="${cls}">${esc(stageLabel(p.stage))}</span>`, iconSize: null })
+      const cls = ['site-pin', isStale(p.last_at || p.at, staleDays) ? 'stale' : '', fresh?.has(p.id) ? 'new' : ''].join(' ')
+      const icon = L.divIcon({
+        className: 'site-pin-icon',
+        html: `<span class="${cls}">${PIN}<span class="site-pin-label">${esc(stageLabel(p.stage))}</span></span>`,
+        iconSize: null,
+        popupAnchor: [0, -38],
+      })
       const mk = L.marker([p.lat, p.lng], { icon, riseOnHover: true, keyboard: false })
       if (pop) {
         mk.bindPopup(pop(p), { className: 'site-pop', minWidth: 260, maxWidth: 260, autoPanPadding: [24, 24] })
@@ -163,7 +176,7 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
   useEffect(() => {
     for (const [id, mk] of marks.current) {
       const on = id === active
-      mk.getElement()?.querySelector('.site-pill')?.classList.toggle('on', on)
+      mk.getElement()?.querySelector('.site-pin')?.classList.toggle('on', on)
       mk.setZIndexOffset(on ? 1000 : 0)
     }
   }, [active, points])
