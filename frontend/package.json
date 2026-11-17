@@ -10,9 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@maplibre/maplibre-gl-leaflet": "^0.1.4",
     "@reduxjs/toolkit": "^2.14.0",
     "axios": "^1.21.1",
     "leaflet": "^1.9.4",
+    "maplibre-gl": "^4.7.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-redux": "^9.3.1",
