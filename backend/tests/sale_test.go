@@ -60,6 +60,13 @@ func TestSale(t *testing.T) {
 		if ph := e.getRaw(t, fmt.Sprintf("/api/v1/photos/%d", *p.CoverID), sale.AccessToken); ph.Status != 200 {
 			t.Fatalf("sale không xem được hình đại diện: %d", ph.Status)
 		}
+		// cỡ thẻ (lưới thẻ trên web): tạo lần đầu, lần sau đọc file đã lưu
+		for range 2 {
+			if ph := e.getRaw(t, fmt.Sprintf("/api/v1/photos/%d?size=card", *p.CoverID), sale.AccessToken); ph.Status != 200 ||
+				ph.Header.Get("Content-Type") != "image/jpeg" || len(ph.Raw) == 0 {
+				t.Fatalf("ảnh cỡ thẻ: %d %v", ph.Status, ph.Header)
+			}
+		}
 	}
 	other := e.register(t, "CTV Khác")
 	decodeData(t, e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/sale/map?ctv=%d", other.User.ID), sale.AccessToken, nil), &m)

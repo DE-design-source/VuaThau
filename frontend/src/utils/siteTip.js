@@ -39,3 +39,12 @@ export function fillCover(el, id) {
     else img.closest('.site-tip-img')?.remove()
   })
 }
+
+/** Chữ ngắn trên nhãn bản đồ / tiêu đề thẻ: giai đoạn thi công. */
+export function stageLabel(stage) {
+  const s = (stage || '').trim()
+  if (!s) return 'Công trình'
+  const short = { 'Đào móng / làm móng': 'Làm móng', 'Xây phần thô': 'Phần thô', 'Đã hoàn công': 'Hoàn công' }[s]
+  if (short) return short
+  return s.length > 16 ? s.slice(0, 15) + '…' : s
+}

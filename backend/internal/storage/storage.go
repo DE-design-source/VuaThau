@@ -3,10 +3,17 @@
 package storage
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	_ "image/jpeg"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
+	"time"
+
+	"vuathau/backend/internal/pkg/imaging"
 )
 
 type Files struct {
@@ -65,6 +72,43 @@ func (f *Files) DeletePhoto(sha string) {
 			_ = os.Remove(p)
 		}
 	}
+	if shaRE.MatchString(sha) {
+		_ = os.Remove(filepath.Join(f.photos, sha+"_c.jpg"))
+	}
+}
+
+// CardSize: cạnh dài ảnh cỡ thẻ (lưới thẻ công trình trên web).
+const CardSize = 640
+
+// ReadCard: ảnh cỡ thẻ (cạnh dài <= CardSize). Tạo lần đầu từ ảnh thu nhỏ rồi lưu <sha>_c.jpg cho lần sau.
+func (f *Files) ReadCard(sha string) ([]byte, error) {
+	if !shaRE.MatchString(sha) {
+		return nil, fmt.Errorf("sha256 không hợp lệ")
+	}
+	p := filepath.Join(f.photos, sha+"_c.jpg")
+	if b, err := os.ReadFile(p); err == nil {
+		return b, nil
+	}
+	src, err := f.ReadPhoto(sha, true)
+	if err != nil {
+		return nil, err
+	}
+	img, _, err := image.Decode(bytes.NewReader(src))
+	if err != nil {
+		return src, nil // không đọc được: trả ảnh thu nhỏ
+	}
+	b, err := imaging.SmallJPEG(img, CardSize)
+	if err != nil {
+		return src, nil
+	}
+	// ghi file tạm rồi đổi tên: người khác không đọc phải file đang ghi dở
+	tmp := p + ".tmp" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	if os.WriteFile(tmp, b, 0o644) == nil {
+		if os.Rename(tmp, p) != nil {
+			_ = os.Remove(tmp)
+		}
+	}
+	return b, nil
 }
 
 func (f *Files) SaveReceipt(name string, data []byte) error {
