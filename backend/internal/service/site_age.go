@@ -111,3 +111,73 @@ func (s *houseService) siteCovers(ctx context.Context, idx map[int64]SiteInfo, i
 	}
 	return out, nil
 }
+
+// JournalSet: 1 bộ ảnh (1 hồ sơ) trong nhật ký công trình.
+type JournalSet struct {
+	HouseID int64   `json:"house_id"`
+	Stage   string  `json:"stage"`
+	Status  string  `json:"status"`
+	At      string  `json:"at"`
+	CTV     string  `json:"ctv,omitempty"` // tên người chụp (không gửi cho CTV)
+	Photos  []int64 `json:"photos"`
+	Self    bool    `json:"self,omitempty"` // chính hồ sơ đang xem
+}
+
+// journal: các bộ ảnh đã duyệt của cùng công trình với h (trong bán kính chặn trùng) + chính h, cũ trước.
+// CTV chỉ thấy hồ sơ của mình (ảnh hồ sơ người khác CTV không được mở).
+func (s *houseService) journal(ctx context.Context, u *model.User, h *model.House, radiusM int) ([]JournalSet, error) {
+	if h.Lat == nil || h.Lng == nil {
+		ps, err := s.photos.ListByHouse(ctx, h.ID)
+		if err != nil {
+			return nil, err
+		}
+		at := h.CreatedAt
+		if h.SubmittedAt != nil {
+			at = *h.SubmittedAt
+		}
+		return []JournalSet{{HouseID: h.ID, Stage: h.Stage, Status: h.Status, At: at.In(VN).Format(time.RFC3339), Photos: photoIDs(ps), Self: true}}, nil
+	}
+	r := float64(radiusM)
+	if r <= 0 {
+		r = 50
+	}
+	var ctv int64
+	if u.Role == model.RoleCTV {
+		ctv = u.ID
+	}
+	rows, err := s.houses.Journal(ctx, *h.Lat, *h.Lng, r/100000*1.5, h.ID, ctv)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(rows))
+	near := rows[:0]
+	for _, j := range rows {
+		if j.ID == h.ID || imaging.Meters(*h.Lat, *h.Lng, j.Lat, j.Lng) <= r {
+			near = append(near, j)
+			ids = append(ids, j.ID)
+		}
+	}
+	ps, err := s.photos.ListByHouses(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]JournalSet, 0, len(near))
+	for _, j := range near {
+		set := JournalSet{HouseID: j.ID, Stage: j.Stage, Status: j.Status, At: j.At.In(VN).Format(time.RFC3339), Photos: photoIDs(ps[j.ID]), Self: j.ID == h.ID}
+		if u.Role != model.RoleCTV {
+			set.CTV = j.CTVName
+		}
+		if len(set.Photos) > 0 || set.Self {
+			out = append(out, set)
+		}
+	}
+	return out, nil
+}
+
+func photoIDs(ps []model.Photo) []int64 {
+	out := make([]int64, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, p.ID)
+	}
+	return out
+}

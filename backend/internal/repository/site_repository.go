@@ -81,3 +81,36 @@ func (r *houseRepository) SearchSites(ctx context.Context, q string, ctvID int64
 	}
 	return out, rows.Err()
 }
+
+// JournalHouse: 1 hồ sơ ở quanh 1 toạ độ (nhật ký ảnh công trình theo giai đoạn).
+type JournalHouse struct {
+	ID       int64
+	Lat, Lng float64
+	Stage    string
+	Status   string
+	CTVName  string
+	At       time.Time
+}
+
+// Journal: hồ sơ đã duyệt / đã thanh toán (và chính hồ sơ self) trong ô vuông ±deg độ quanh (lat, lng), cũ trước.
+// ctvID > 0: chỉ hồ sơ của CTV đó.
+func (r *houseRepository) Journal(ctx context.Context, lat, lng, deg float64, self, ctvID int64) ([]JournalHouse, error) {
+	rows, err := r.db.Query(ctx, `SELECT h.id, h.lat, h.lng, h.stage, h.status, COALESCE(u.name, ''), COALESCE(h.submitted_at, h.created_at)
+		FROM houses h LEFT JOIN users u ON u.id = h.ctv_id
+		WHERE h.lat BETWEEN $1::float8 - $3::float8 AND $1::float8 + $3::float8 AND h.lng BETWEEN $2::float8 - $3::float8 AND $2::float8 + $3::float8
+		  AND (h.status IN ('da_duyet', 'da_chi') OR h.id = $4::bigint) AND ($5::bigint = 0 OR h.ctv_id = $5::bigint)
+		ORDER BY 7, 1`, lat, lng, deg, self, ctvID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []JournalHouse{}
+	for rows.Next() {
+		var j JournalHouse
+		if err := rows.Scan(&j.ID, &j.Lat, &j.Lng, &j.Stage, &j.Status, &j.CTVName, &j.At); err != nil {
+			return nil, err
+		}
+		out = append(out, j)
+	}
+	return out, rows.Err()
+}

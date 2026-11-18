@@ -1128,3 +1128,70 @@ func TestRateLimit(t *testing.T) {
 		}
 	}
 }
+
+// Nhật ký ảnh công trình: chi tiết hồ sơ trả các bộ ảnh đã duyệt cùng công trình (trong bán kính chặn trùng).
+// CTV chỉ thấy hồ sơ của mình; admin thấy cả của CTV khác, kèm tên người chụp.
+func TestJournal(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	a := e.register(t, "CTV A")
+	b := e.register(t, "CTV B")
+	admin := e.staff(t, model.RoleAdmin)
+	h1 := e.newHouse(t, a, 5, 9100, 10.71)
+	h2 := e.newHouse(t, a, 5, 9200, 10.73)
+	h3 := e.newHouse(t, b, 5, 9300, 10.75)
+	h4 := e.newHouse(t, a, 5, 9400, 10.77) // đã duyệt nhưng ở xa
+	ctx := context.Background()
+	exec := func(q string, args ...any) {
+		if _, err := e.db.Exec(ctx, q, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// h1 (A, bước 1), h3 (B, bước 4) đã duyệt, cùng chỗ với h2 (đang chờ duyệt); h4 đã duyệt, cách xa
+	exec(`UPDATE houses SET lat = 10.8, lng = 106.7 WHERE id IN ($1, $2, $3)`, h1, h2, h3)
+	exec(`UPDATE houses SET status = 'da_duyet', stage = $2, submitted_at = NOW() - INTERVAL '60 days' WHERE id = $1`, h1, model.Stages[0])
+	exec(`UPDATE houses SET status = 'da_chi', stage = $2, submitted_at = NOW() - INTERVAL '20 days' WHERE id = $1`, h3, model.Stages[3])
+	exec(`UPDATE houses SET status = 'da_duyet', lat = 10.9, lng = 106.9 WHERE id = $1`, h4)
+
+	type set struct {
+		HouseID int64   `json:"house_id"`
+		Stage   string  `json:"stage"`
+		CTV     string  `json:"ctv"`
+		Photos  []int64 `json:"photos"`
+		Self    bool    `json:"self"`
+	}
+	get := func(tok string) []set {
+		var d struct {
+			Journal []set `json:"journal"`
+		}
+		r := e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/houses/%d", h2), tok, nil)
+		expectStatus(t, r, http.StatusOK)
+		decodeData(t, r, &d)
+		return d.Journal
+	}
+	ids := func(js []set) []int64 {
+		out := []int64{}
+		for _, j := range js {
+			out = append(out, j.HouseID)
+		}
+		return out
+	}
+
+	js := get(a.AccessToken)
+	if fmt.Sprint(ids(js)) != fmt.Sprint([]int64{h1, h2}) {
+		t.Fatalf("CTV: nhật ký = %v, muốn [%d %d]", ids(js), h1, h2)
+	}
+	if js[0].Stage != model.Stages[0] || len(js[0].Photos) != 5 || js[0].CTV != "" || !js[1].Self {
+		t.Fatalf("CTV: %+v", js)
+	}
+	// ảnh trong nhật ký mở được
+	expectStatus(t, e.getRaw(t, fmt.Sprintf("/api/v1/photos/%d", js[0].Photos[0]), a.AccessToken), http.StatusOK)
+
+	js = get(admin.AccessToken)
+	if fmt.Sprint(ids(js)) != fmt.Sprint([]int64{h1, h3, h2}) {
+		t.Fatalf("admin: nhật ký = %v, muốn [%d %d %d]", ids(js), h1, h3, h2)
+	}
+	if js[1].CTV != "CTV B" || js[1].Stage != model.Stages[3] {
+		t.Fatalf("admin: %+v", js[1])
+	}
+}

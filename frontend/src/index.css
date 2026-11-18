@@ -3119,3 +3119,73 @@ a {
 .hp-copy {
   font: inherit;
 }
+/* nhật ký công trình: bước bấm được, bộ ảnh theo bước */
+.hp-ms-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+button.hp-ms-item {
+  padding: 0 0 6px;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  border-radius: 6px;
+}
+button.hp-ms-item.has {
+  cursor: pointer;
+}
+button.hp-ms-item:disabled {
+  cursor: default;
+}
+button.hp-ms-item.has:hover .hp-ms-title,
+button.hp-ms-item.on .hp-ms-title {
+  text-decoration: underline;
+}
+button.hp-ms-item.on .hp-ms-dot {
+  box-shadow: 0 0 0 3px #eaf1fe;
+}
+.hp-ms-n {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 600;
+  color: #222;
+  border: 1px solid #dddddd;
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+.hp-ms-hint {
+  margin: 0;
+  font-size: 13px;
+}
+.hp-sets {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  border-top: 1px solid #ebebeb;
+  padding-top: 16px;
+}
+.hp-set {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hp-set-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+.hp-set-head a {
+  font-weight: 600;
+  text-decoration: underline;
+}
+.hp-set .photo-grid {
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 6px;
+}
