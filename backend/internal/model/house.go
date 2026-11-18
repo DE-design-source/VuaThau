@@ -174,3 +174,17 @@ type Step struct {
 	At    string `json:"at"`
 	Hint  string `json:"hint"`
 }
+
+// Video: 1 video công trình của hồ sơ (chỉ để xem thêm, không qua AI, không tính tiền).
+type Video struct {
+	ID        int64     `json:"id"`
+	HouseID   int64     `json:"house_id"`
+	SHA256    string    `json:"-"`
+	Mime      string    `json:"mime"`
+	Size      int64     `json:"size"`
+	CreatedAt time.Time `json:"created_at"`
+	Src       string    `json:"src"` // link xem có chữ ký (không cần token: thẻ <video> / trình phát không gửi được header)
+}
+
+// MaxVideos: số video tối đa mỗi hồ sơ.
+const MaxVideos = 5

@@ -123,6 +123,7 @@ type Issue struct {
 type HouseDetail struct {
 	House     *model.House  `json:"house"`
 	Photos    []model.Photo `json:"photos"`
+	Videos    []model.Video `json:"videos"`
 	Logs      []model.Log   `json:"logs"`
 	Steps     []model.Step  `json:"steps"`
 	Checklist []CheckItem   `json:"checklist"`
@@ -185,6 +186,10 @@ type HouseService interface {
 	Detail(ctx context.Context, u *model.User, id int64) (*HouseDetail, error)
 	// size: "" ảnh thu nhỏ 1568px, "card" ảnh cỡ thẻ 640px, "original" ảnh gốc
 	PhotoFile(ctx context.Context, u *model.User, pid int64, size string) ([]byte, string, error)
+	AddVideos(ctx context.Context, u *model.User, id int64, next func() (*VideoPart, error)) (*UploadResult, error)
+	DeleteVideo(ctx context.Context, u *model.User, id, vid int64) (string, error)
+	// VideoFile: đường dẫn file + kiểu của video theo link có chữ ký.
+	VideoFile(ctx context.Context, vid int64, exp, sig string) (string, string, error)
 
 	Queue(ctx context.Context) ([]model.House, error)
 	ApproveMany(ctx context.Context, by *model.User, ids []int64) (string, int, error)
@@ -230,6 +235,7 @@ type houseService struct {
 	drive    *gdrive.Client // nil: tắt
 	public   string
 	inbox    *inboxSync // nil: không lấy hồ sơ Messenger
+	mediaKey []byte     // ký link xem video
 
 	bg      sync.WaitGroup
 	aiSem   chan struct{} // giới hạn số lượt AI chạy cùng lúc
@@ -259,6 +265,8 @@ type HouseDeps struct {
 	Inbox inbox.Source
 	Auth  repository.AuthRepository
 	Sync  repository.SyncRepository
+	// MediaKey: khoá ký link xem video (trống: khoá ngẫu nhiên, link hết hiệu lực khi khởi động lại).
+	MediaKey string
 }
 
 func NewHouseService(d HouseDeps) HouseService {
@@ -267,7 +275,7 @@ func NewHouseService(d HouseDeps) HouseService {
 	}
 	s := &houseService{houses: d.Houses, photos: d.Photos, logs: d.Logs, users: d.Users, payments: d.Payments,
 		settings: d.Settings, files: d.Files, ai: d.AI, geo: d.Geo, drive: d.Drive, public: d.Public,
-		aiSem: make(chan struct{}, 4), now: time.Now}
+		aiSem: make(chan struct{}, 4), now: time.Now, mediaKey: newMediaKey(d.MediaKey)}
 	if d.Inbox != nil {
 		s.inbox = &inboxSync{src: d.Inbox, users: d.Users, auth: d.Auth, state: d.Sync}
 	}
@@ -792,6 +800,11 @@ func (s *houseService) Detail(ctx context.Context, u *model.User, id int64) (*Ho
 	d := &HouseDetail{House: h, Photos: ps, Logs: logs, Valid: valid, Pay: st.Amount(valid), QueueLeft: left,
 		Editable: u.Role == model.RoleCTV && model.Editable(h.Status), Todo: []string{}, BadFields: []string{},
 		Issues: []Issue{}, AIFields: []string{}}
+	vs, err := s.photos.Videos(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	d.Videos = s.withSrc(vs)
 	d.Steps = Steps(h, logs, m.Approved, st.PayMin)
 	if d.Journal, err = s.journal(ctx, u, h, st.DupRadiusM); err != nil {
 		return nil, err

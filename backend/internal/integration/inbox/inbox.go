@@ -27,6 +27,7 @@ type Log struct {
 	Fields    map[string]string // dia_chi, nha_thau, sdt_nha_thau, ngay_chup, toa_do, loai_cong_trinh, tien_do...
 	Contact   Contact
 	Images    []Image
+	Videos    []string // khoá file video trong kho S3
 }
 
 // Contact: người gửi (CTV) bên dezon-inbox.
@@ -48,6 +49,10 @@ type Source interface {
 	// Logs: các hồ sơ cập nhật sau mốc (updated_at, id), tăng dần, tối đa limit.
 	Logs(ctx context.Context, afterAt time.Time, afterID string, limit int) ([]Log, error)
 	Image(ctx context.Context, key string) ([]byte, error)
+	// Videos: khoá file video theo mã hồ sơ (project_logs), để kéo video cho hồ sơ đã nhập.
+	Videos(ctx context.Context, logIDs []string) (map[string][]string, error)
+	// Open: đọc dần 1 file (video), kèm kiểu file.
+	Open(ctx context.Context, key string) (io.ReadCloser, string, error)
 	Close()
 }
 
@@ -139,7 +144,59 @@ func (c *client) Logs(ctx context.Context, afterAt time.Time, afterID string, li
 		r.l.Images = imgs
 		out = append(out, r.l)
 	}
+	if len(out) > 0 {
+		ids := make([]string, len(out))
+		for i, l := range out {
+			ids[i] = l.ID
+		}
+		vs, err := c.Videos(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		for i := range out {
+			out[i].Videos = vs[out[i].ID]
+		}
+	}
 	return out, nil
+}
+
+func (c *client) Videos(ctx context.Context, logIDs []string) (map[string][]string, error) {
+	out := map[string][]string{}
+	if len(logIDs) == 0 {
+		return out, nil
+	}
+	rows, err := c.db.Query(ctx, `
+		SELECT pl.id::text, a->>'storage_key'
+		FROM project_logs pl
+		JOIN messages m ON m.id::text = ANY(pl.message_ids::text[])
+		CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(m.attachments) = 'array' THEN m.attachments ELSE '[]' END) a
+		WHERE pl.id::text = ANY($1) AND a->>'type' = 'video' AND COALESCE(a->>'storage_key', '') <> ''
+		ORDER BY pl.id, COALESCE(m.sent_at, m.created_at), m.id`, logIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, key string
+		if err := rows.Scan(&id, &key); err != nil {
+			return nil, err
+		}
+		out[id] = append(out[id], key)
+	}
+	return out, rows.Err()
+}
+
+func (c *client) Open(ctx context.Context, key string) (io.ReadCloser, string, error) {
+	obj, err := c.s3.GetObject(ctx, c.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, "", err
+	}
+	st, err := obj.Stat()
+	if err != nil {
+		_ = obj.Close()
+		return nil, "", err
+	}
+	return obj, st.ContentType, nil
 }
 
 func (c *client) images(ctx context.Context, msgIDs []string) ([]Image, error) {

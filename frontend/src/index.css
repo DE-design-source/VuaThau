@@ -2769,6 +2769,31 @@ a {
   flex-direction: column;
   gap: 12px;
 }
+/* video công trình */
+.hp-videos {
+  display: grid;
+  gap: 12px;
+}
+.hp-vgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.hp-vgrid figure {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+.hp-vgrid video {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  background: #000;
+  border-radius: 12px;
+  object-fit: contain;
+}
+.hp-vgrid figcaption {
+  font-size: 13px;
+}
 /* nhật ký công trình */
 .hp-ms {
   display: grid;
@@ -3330,4 +3355,88 @@ details.card > summary strong {
   .card > .table-wrap:first-child {
     margin-top: -14px;
   }
+}
+
+/* nhà thầu tiềm năng Dezon (trang Sale) */
+.dz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 20px;
+}
+.dz-card {
+  display: flex;
+  flex-direction: column;
+  color: var(--color-text);
+  text-decoration: none;
+  border-radius: 14px;
+}
+.dz-card:hover strong,
+.dz-card:hover .dz-go {
+  text-decoration: underline;
+}
+.dz-cover {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 3;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--color-sunken);
+}
+.dz-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+.dz-card:hover .dz-cover img {
+  transform: scale(1.03);
+}
+.dz-noimg {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  font-size: 40px;
+  font-weight: 600;
+  color: var(--color-subtle);
+}
+.dz-badge {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.15);
+}
+.dz-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 2px 0;
+  font-size: 14px;
+}
+.dz-body strong {
+  font-size: 16px;
+}
+.dz-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.dz-tags span {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-sunken);
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.dz-go {
+  margin-top: 6px;
+  font-weight: 600;
+  font-size: 13px;
 }

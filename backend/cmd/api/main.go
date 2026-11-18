@@ -97,7 +97,7 @@ func run() error {
 	houseSvc := service.NewHouseService(service.HouseDeps{
 		Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo, Payments: payRepo, Settings: settingsRepo,
 		Files: files, AI: ai.New(cfg.AIEnabled, cfg.AIModel, cfg.AIWorkspace), Geo: geo.New(cfg.GoogleMapsKey),
-		Drive: drive, Public: cfg.PublicURL,
+		Drive: drive, Public: cfg.PublicURL, MediaKey: cfg.JWTSecret,
 		Inbox: inboxSrc, Auth: authRepo, Sync: repository.NewSyncRepository(db),
 	})
 	paySvc := service.NewPaymentService(payRepo, houseRepo, photoRepo, userRepo, logRepo, settingsRepo, files)

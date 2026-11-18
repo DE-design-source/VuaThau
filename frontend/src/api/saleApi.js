@@ -14,6 +14,9 @@ const saleApi = {
 
   /** { rows: [{key, name, phone, total, provinces, last}] } */
   contractors: ({ q } = {}) => axiosClient.get('/sale/contractors', { params: cleanParams({ q }) }),
+
+  /** Nhà thầu tiềm năng trên dezon.vn: { rows: [{name, url, cover, province, projects, years, tags, featured}], at, source, stale } */
+  dezonContractors: () => axiosClient.get('/sale/dezon-contractors'),
 }
 
 export default saleApi

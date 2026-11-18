@@ -249,6 +249,11 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 	if err != nil {
 		return false, false, err
 	}
+	if len(l.Videos) > 0 { // video chỉ để xem thêm: kéo về ở mọi trạng thái
+		if _, err := s.inboxVideos(ctx, hid, l.Videos); err != nil {
+			return false, false, err
+		}
+	}
 	if !created && h.Status != model.StatusPending && h.Status != model.StatusDraft {
 		return false, false, nil // admin đã xử lý: không đụng
 	}
@@ -352,7 +357,10 @@ func (s *houseService) SyncInbox(ctx context.Context) (*SyncStatus, error) {
 	defer func() { x.runMu.Lock(); x.run = false; x.runMu.Unlock() }()
 
 	res := SyncStatus{Enabled: true, At: ptr(s.now())}
-	err := s.syncAll(ctx, &res)
+	err := s.backfillVideos(ctx)
+	if err == nil {
+		err = s.syncAll(ctx, &res)
+	}
 	if err != nil {
 		res.Error = truncate(err.Error(), 300)
 		log.Printf("Đồng bộ Messenger: %v", err)

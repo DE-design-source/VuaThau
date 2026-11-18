@@ -1,8 +1,10 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -20,6 +22,7 @@ type fakeInbox struct {
 	mu     sync.Mutex
 	logs   []inbox.Log
 	images map[string][]byte
+	videos map[string][]string // mã hồ sơ -> khoá video (kéo video cho hồ sơ đã nhập)
 }
 
 func (f *fakeInbox) Logs(_ context.Context, at time.Time, id string, limit int) ([]inbox.Log, error) {
@@ -45,6 +48,28 @@ func (f *fakeInbox) Image(_ context.Context, key string) ([]byte, error) {
 		return nil, fmt.Errorf("không có %s", key)
 	}
 	return b, nil
+}
+
+func (f *fakeInbox) Videos(_ context.Context, ids []string) (map[string][]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[string][]string{}
+	for _, id := range ids {
+		if v := f.videos[id]; len(v) > 0 {
+			out[id] = v
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeInbox) Open(_ context.Context, key string) (io.ReadCloser, string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	b, ok := f.images[key]
+	if !ok {
+		return nil, "", fmt.Errorf("không có %s", key)
+	}
+	return io.NopCloser(bytes.NewReader(b)), "video/mp4", nil
 }
 
 func (f *fakeInbox) Close() {}

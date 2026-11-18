@@ -176,6 +176,25 @@ function House({ id, d, reload }) {
             </ul>
           )}
 
+          {/* video công trình (CTV quay trên app / gửi qua Messenger): chỉ để xem thêm, không tính tiền */}
+          {(d.videos || []).length > 0 && (
+            <section className="hp-videos">
+              <h3 className="hp-h3">
+                Video công trình <span className="muted">· {d.videos.length}</span>
+              </h3>
+              <div className="hp-vgrid">
+                {d.videos.map((v, k) => (
+                  <figure key={v.id}>
+                    <video src={v.src} controls preload="metadata" playsInline />
+                    <figcaption className="muted">
+                      Video {k + 1} · {(v.size / 1048576).toFixed(1).replace('.', ',')} MB
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* nhật ký công trình: 8 giai đoạn */}
           {stages.length > 0 && <Milestones stages={stages} current={stages.indexOf(h.stage)} journal={d.journal || []} />}
 
