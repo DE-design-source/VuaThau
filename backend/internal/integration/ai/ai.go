@@ -118,11 +118,15 @@ Các ô chữ (time, address, lat/lng, tên, SĐT): chỉ ghi chữ đọc rõ t
 Hai ô dưới thì KHÔNG có chữ in sẵn: nhìn công trình trên tất cả ảnh rồi tự đánh giá, luôn điền; chỉ để 0 / "" khi không ảnh nào thấy căn nhà.
 - floors: số tầng của căn nhà, kể cả tầng trệt và tầng đang đổ/đang xây, không tính tum, mái. Nếu bảng giấy phép xây dựng ghi số tầng thì lấy số đó; không thì đếm số sàn, số dãy cửa sổ hoặc số đợt cột, giàn giáo. Mới làm móng, chưa lên tầng nào thì 1.
 - stage: chọn đúng một trong %q, theo phần tiến độ xa nhất thấy được:
-  %q: hố móng, cọc, thép móng, đà kiềng, chưa có cột tầng trệt.
-  %q: cột, dầm, sàn bê tông, cốp pha, tường gạch chưa trát, giàn giáo.
-  %q: tường đã trát hoặc sơn, ốp lát, lắp cửa, điện nước, mặt tiền đang làm.
+  %q: đất trống, dọn dẹp, rào tôn, bảng giấy phép, cắm mốc; chưa đào.
+  %q: máy ép cọc, đầu cọc bê tông, hố móng đang đào.
+  %q: thép móng, cốp pha móng, đà kiềng, hầm phân; chưa có cột tầng trệt.
+  %q: cột, dầm, sàn bê tông, cốp pha, giàn giáo; chưa xây tường bao.
+  %q: tường gạch đã xây (chưa trát), cầu thang, đổ mái.
+  %q: đục tường đi ống điện nước, chống thấm; tường chưa trát xong.
+  %q: tường đã trát hoặc sơn, ốp lát, lắp cửa, mặt tiền đang làm.
   %q: nhà xong hết, đã tháo giàn giáo, sạch sẽ hoặc có người ở.`,
-	model.Stages, model.Stages[0], model.Stages[1], model.Stages[2], model.Stages[3])
+	model.Stages, model.Stages[0], model.Stages[1], model.Stages[2], model.Stages[3], model.Stages[4], model.Stages[5], model.Stages[6], model.Stages[7])
 
 func (c *claudeReader) ReadPhotos(ctx context.Context, images [][]byte) (*Read, error) {
 	if len(images) == 0 {

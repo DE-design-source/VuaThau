@@ -35,13 +35,13 @@ const (
 
 // SyncStatus: lần đồng bộ Messenger gần nhất (trang admin).
 type SyncStatus struct {
-	Enabled  bool      `json:"enabled"`
-	Running  bool      `json:"running"`
+	Enabled  bool       `json:"enabled"`
+	Running  bool       `json:"running"`
 	At       *time.Time `json:"at"`
-	Added    int       `json:"added"`    // hồ sơ mới lần gần nhất
-	Rejected int       `json:"rejected"` // trong đó tự từ chối vì trùng công trình
-	Error    string    `json:"error"`
-	Total    int       `json:"total"` // tổng hồ sơ từ Messenger
+	Added    int        `json:"added"`    // hồ sơ mới lần gần nhất
+	Rejected int        `json:"rejected"` // trong đó tự từ chối vì trùng công trình
+	Error    string     `json:"error"`
+	Total    int        `json:"total"` // tổng hồ sơ từ Messenger
 }
 
 type inboxSync struct {
@@ -85,18 +85,33 @@ func parseCoord(s string) (*float64, *float64) {
 // stageOf: tiến độ bot ghi ("móng", "tầng 2", "hoàn thiện cơ bản"...) -> giai đoạn của hệ thống.
 func stageOf(s string) string {
 	t := strings.ToLower(s)
+	has := func(ws ...string) bool {
+		for _, w := range ws {
+			if strings.Contains(t, w) {
+				return true
+			}
+		}
+		return false
+	}
 	switch {
 	case t == "":
 		return ""
-	case strings.Contains(t, "hoàn công") || strings.Contains(t, "đã xong") || strings.Contains(t, "bàn giao"):
+	case has("hoàn công", "đã xong", "bàn giao", "nghiệm thu"):
+		return model.Stages[7]
+	case has("hoàn thiện", "sơn", "trát", "ốp", "lát"):
+		return model.Stages[6]
+	case has("điện", "nước", "chống thấm"):
+		return model.Stages[5]
+	case has("tường", "mái", "cầu thang"):
+		return model.Stages[4]
+	case has("thô", "tầng", "sàn", "cột", "dầm"):
 		return model.Stages[3]
-	case strings.Contains(t, "hoàn thiện") || strings.Contains(t, "sơn") || strings.Contains(t, "trát") || strings.Contains(t, "ốp"):
-		return model.Stages[2]
-	case strings.Contains(t, "móng") || strings.Contains(t, "cọc") || strings.Contains(t, "đà kiềng"):
-		return model.Stages[0]
-	case strings.Contains(t, "thô") || strings.Contains(t, "tầng") || strings.Contains(t, "sàn") || strings.Contains(t, "cột") ||
-		strings.Contains(t, "mái") || strings.Contains(t, "dầm"):
+	case has("cọc", "đào"):
 		return model.Stages[1]
+	case has("móng", "đà kiềng", "hầm phân"):
+		return model.Stages[2]
+	case has("mặt bằng", "giấy phép", "dọn", "định vị", "cắm mốc"):
+		return model.Stages[0]
 	}
 	return ""
 }
