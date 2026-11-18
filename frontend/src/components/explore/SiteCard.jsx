@@ -49,7 +49,7 @@ function CardImage({ id }) {
  * title / right: dòng tiêu đề và chữ bên phải; lines: các dòng chữ xám; when: dòng ngày chụp; chips: nhãn nhỏ cuối thẻ.
  * on: đang rê chuột (từ bản đồ); onHover(id|null); onLocate(): bay tới trên bản đồ.
  */
-export default function SiteCard({ p, to, badge, title, right, lines = [], when, chips = [], on, onHover, onLocate }) {
+export default function SiteCard({ p, to, badge, title, right, lines = [], when, chips = [], on, onHover, onLocate, dist }) {
   return (
     <article className={`ex-card ${on ? 'on' : ''}`} onMouseEnter={() => onHover?.(p.id)} onMouseLeave={() => onHover?.(null)}>
       <div className="ex-media">
@@ -77,6 +77,7 @@ export default function SiteCard({ p, to, badge, title, right, lines = [], when,
         ))}
         {when && <div className="ex-when">{when}</div>}
         <div className="ex-chips">
+          {dist && <span className="ex-chip ex-chip-dist">Cách {dist}</span>}
           {chips.filter(Boolean).map((c, i) => (
             <span key={i} className="ex-chip">
               {c}

@@ -174,7 +174,7 @@ type HouseService interface {
 	CTVMap(ctx context.Context, u *model.User) (*CTVMap, error)
 	Geocode(ctx context.Context, lat, lng float64) string
 	// Tìm địa điểm theo địa chỉ (ô tìm trên bản đồ).
-	SearchPlace(ctx context.Context, q string) ([]geo.Place, error)
+	SearchPlace(ctx context.Context, u *model.User, q string) (*PlaceSearch, error)
 	CheckPhoto(ctx context.Context, u *model.User, f Upload, meta string) (*CheckResult, error)
 	Create(ctx context.Context, u *model.User, files []Upload, meta string) (*UploadResult, error)
 	AddPhotos(ctx context.Context, u *model.User, id int64, files []Upload, meta string) (*UploadResult, error)
@@ -366,16 +366,39 @@ func (s *houseService) Income(ctx context.Context, u *model.User) (*Income, erro
 	return res, err
 }
 
-func (s *houseService) SearchPlace(ctx context.Context, q string) ([]geo.Place, error) {
+// PlaceSearch: kết quả ô tìm trên bản đồ: công trình trong hệ thống (tên / SĐT nhà thầu, địa chỉ) + địa điểm trên bản đồ.
+type PlaceSearch struct {
+	Sites  []repository.SiteHit `json:"sites"`
+	Places []geo.Place          `json:"places"`
+}
+
+func (s *houseService) SearchPlace(ctx context.Context, u *model.User, q string) (*PlaceSearch, error) {
+	res := &PlaceSearch{Sites: []repository.SiteHit{}, Places: []geo.Place{}}
+	if len([]rune(strings.TrimSpace(q))) < 2 {
+		return res, nil
+	}
+	ctv := int64(0)
+	if u.Role == model.RoleCTV {
+		ctv = u.ID // CTV: chỉ công trình của mình
+	}
+	sites, err := s.houses.SearchSites(ctx, q, ctv)
+	if err != nil {
+		return nil, err
+	}
+	res.Sites = sites
 	if s.geo == nil {
-		return []geo.Place{}, nil
+		return res, nil
 	}
 	ps, err := s.geo.Search(ctx, q)
 	if err != nil {
 		log.Printf("tìm địa điểm %q: %v", q, err)
+		if len(res.Sites) > 0 {
+			return res, nil // đã có công trình khớp: không báo lỗi
+		}
 		return nil, fail(ErrUnavailable, "Chưa tìm được địa điểm, thử lại sau ít giây.")
 	}
-	return ps, nil
+	res.Places = ps
+	return res, nil
 }
 
 func (s *houseService) Geocode(ctx context.Context, lat, lng float64) string {

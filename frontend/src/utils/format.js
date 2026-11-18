@@ -91,6 +91,15 @@ export const ageTip = (lastAt, staleDays = 30) =>
     ? `<b>Cần cập nhật công trình</b><br>Chụp lần cuối ${vnDate(lastAt)} (quá ${staleDays} ngày)`
     : `Chụp lần cuối ${vnDate(lastAt)}`
 
+/** Khoảng cách 2 toạ độ (mét). */
+export function distM(lat1, lng1, lat2, lng2) {
+  const R = 6371000, r = Math.PI / 180
+  const a = Math.sin(((lat2 - lat1) * r) / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(((lng2 - lng1) * r) / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(a))
+}
+/** "350 m" / "1,2 km" */
+export const distText = (m) => (m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(1).replace('.', ',')} km`)
+
 /** Thoát ký tự HTML (chữ chèn vào popup bản đồ). */
 export const esc = (s = '') => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 

@@ -10,10 +10,11 @@ import { isStale } from '@/utils/format'
 const RADII = [500, 1000, 2000, 5000]
 const km = (m) => (m >= 1000 ? `${m / 1000} km` : `${m} m`)
 
-/** getMap(): bản đồ Leaflet; points: [{lat, lng, last_at?}]; staleDays: quá bấy nhiêu ngày là cần cập nhật. */
-export default function MapSearch({ getMap, points, staleDays, handle }) {
+/** getMap(): bản đồ Leaflet; points: [{lat, lng, last_at?}]; staleDays: quá bấy nhiêu ngày là cần cập nhật.
+ *  onPlace({ name, lat, lng, radius } | null): vị trí đang chọn (trang lọc danh sách công trình quanh vị trí). */
+export default function MapSearch({ getMap, points, staleDays, handle, onPlace }) {
   const [q, setQ] = useState('')
-  const [res, setRes] = useState(null) // null: chưa tìm; []: không thấy
+  const [res, setRes] = useState(null) // null: chưa tìm; { sites, places }
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [place, setPlace] = useState(null) // {name, lat, lng}
@@ -37,6 +38,12 @@ export default function MapSearch({ getMap, points, staleDays, handle }) {
 
   useEffect(() => () => layer.current?.remove(), [])
 
+  // Báo trang: vị trí + bán kính đang chọn
+  useEffect(() => {
+    onPlace?.(place ? { ...place, radius } : null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [place, radius])
+
   const clear = () => {
     setPlace(null)
     setRes(null)
@@ -51,10 +58,11 @@ export default function MapSearch({ getMap, points, staleDays, handle }) {
     setErr('')
     setPlace(null)
     try {
-      const d = await mapApi.searchPlace(s)
-      const ps = d.places || []
-      setRes(ps)
-      if (ps.length === 1) setPlace(ps[0])
+      const d = (await mapApi.searchPlace(s))?.data || {} // axiosClient trả phong bì { success, data }
+      const sites = (d.sites || []).map((x) => ({ name: x.contractor || x.address || `Công trình #${x.id}`, sub: x.contractor ? x.address : '', lat: x.lat, lng: x.lng, site: true }))
+      const places = d.places || []
+      setRes({ sites, places })
+      if (sites.length + places.length === 1) setPlace(sites[0] || places[0])
     } catch (ex) {
       setErr(ex.message)
     } finally {
@@ -63,7 +71,7 @@ export default function MapSearch({ getMap, points, staleDays, handle }) {
   }
 
   // Thanh tìm phía trên trang gọi find(chữ) (chữ trống: xoá kết quả)
-  useImperativeHandle(handle, () => ({ find: (s) => ((s || '').trim() ? run(s) : clear()) }))
+  useImperativeHandle(handle, () => ({ find: (s) => ((s || '').trim() ? run(s) : clear()), clear }))
 
   let count = 0
   let stale = 0
@@ -121,14 +129,24 @@ export default function MapSearch({ getMap, points, staleDays, handle }) {
         {res && !place && (
           <div className="map-search-box">
             {close}
-            {res.length === 0 ? (
-              <span className="muted">Không thấy địa điểm này. Thử ghi rõ hơn: số nhà, tên đường, phường, tỉnh.</span>
+            {res.sites.length + res.places.length === 0 ? (
+              <span className="muted">Không thấy. Thử ghi rõ hơn: số nhà, tên đường, phường, tỉnh; hoặc tên / SĐT nhà thầu.</span>
             ) : (
-              res.map((p) => (
-                <button key={`${p.lat},${p.lng}`} type="button" className="map-search-hit" onClick={() => setPlace(p)}>
-                  {p.name}
-                </button>
-              ))
+              <>
+                {res.sites.length > 0 && <div className="map-search-group">Công trình trong hệ thống</div>}
+                {res.sites.map((p, i) => (
+                  <button key={`s${i}`} type="button" className="map-search-hit" onClick={() => setPlace(p)}>
+                    <b>{p.name}</b>
+                    {p.sub && <small className="d-block muted">{p.sub}</small>}
+                  </button>
+                ))}
+                {res.places.length > 0 && <div className="map-search-group">Địa điểm</div>}
+                {res.places.map((p) => (
+                  <button key={`${p.lat},${p.lng}`} type="button" className="map-search-hit" onClick={() => setPlace(p)}>
+                    {p.name}
+                  </button>
+                ))}
+              </>
             )}
           </div>
         )}
@@ -153,9 +171,9 @@ export default function MapSearch({ getMap, points, staleDays, handle }) {
                 </>
               )}
             </div>
-            {res?.length > 1 && (
+            {res && res.sites.length + res.places.length > 1 && (
               <button type="button" className="map-search-hit muted" onClick={() => setPlace(null)}>
-                Chọn kết quả khác ({res.length})
+                Chọn kết quả khác ({res.sites.length + res.places.length})
               </button>
             )}
           </div>

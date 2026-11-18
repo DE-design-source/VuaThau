@@ -51,3 +51,33 @@ func (r *houseRepository) Covers(ctx context.Context, ids []int64) (map[int64]in
 	}
 	return out, rows.Err()
 }
+
+// SiteHit: công trình khớp ô tìm trên bản đồ (tên / SĐT nhà thầu, địa chỉ).
+type SiteHit struct {
+	ID         int64   `json:"id"`
+	Contractor string  `json:"contractor"`
+	Address    string  `json:"address"`
+	Lat        float64 `json:"lat"`
+	Lng        float64 `json:"lng"`
+}
+
+// SearchSites: tìm công trình (đã gửi, không bị từ chối, có toạ độ) theo tên / SĐT nhà thầu, địa chỉ, mã.
+// ctvID > 0: chỉ công trình của CTV đó (CTV không được xem chi tiết công trình người khác).
+func (r *houseRepository) SearchSites(ctx context.Context, q string, ctvID int64) ([]SiteHit, error) {
+	where, args := SaleFilter{Q: q, CTVID: ctvID}.where()
+	rows, err := r.db.Query(ctx, `SELECT h.id, h.contractor_name, h.address, h.lat, h.lng FROM houses h WHERE `+where+
+		` AND h.lat IS NOT NULL AND h.lng IS NOT NULL ORDER BY COALESCE(h.submitted_at, h.created_at) DESC LIMIT 6`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SiteHit{}
+	for rows.Next() {
+		var s SiteHit
+		if err := rows.Scan(&s.ID, &s.Contractor, &s.Address, &s.Lat, &s.Lng); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}

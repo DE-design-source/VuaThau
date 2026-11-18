@@ -68,7 +68,25 @@ func TestSale(t *testing.T) {
 			}
 		}
 	}
+	// Ô tìm trên bản đồ: tìm công trình theo tên / SĐT nhà thầu (tra địa chỉ ngoài tắt khi test)
+	var ps service.PlaceSearch
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/geo/search?q=ABC", sale.AccessToken, nil), &ps)
+	if len(ps.Sites) != 2 || ps.Sites[0].Contractor != "Xây dựng ABC" {
+		t.Fatalf("tìm nhà thầu: %+v", ps)
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/geo/search?q=0901234567", sale.AccessToken, nil), &ps)
+	if len(ps.Sites) != 2 {
+		t.Fatalf("tìm SĐT nhà thầu: %+v", ps)
+	}
 	other := e.register(t, "CTV Khác")
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/geo/search?q=ABC", other.AccessToken, nil), &ps)
+	if len(ps.Sites) != 0 {
+		t.Fatalf("CTV khác không được thấy công trình người khác: %+v", ps)
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/geo/search?q=ABC", ctv.AccessToken, nil), &ps)
+	if len(ps.Sites) != 2 {
+		t.Fatalf("CTV tìm công trình của mình: %+v", ps)
+	}
 	decodeData(t, e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/sale/map?ctv=%d", other.User.ID), sale.AccessToken, nil), &m)
 	if len(m.Points) != 0 {
 		t.Fatalf("lọc CTV: %d điểm", len(m.Points))

@@ -81,12 +81,12 @@ func (h *HouseHandler) CTVMap(w http.ResponseWriter, r *http.Request) {
 
 // SearchPlace handles GET /api/v1/geo/search?q=: tìm địa điểm cho ô tìm trên bản đồ.
 func (h *HouseHandler) SearchPlace(w http.ResponseWriter, r *http.Request) {
-	res, err := h.svc.SearchPlace(r.Context(), r.URL.Query().Get("q"))
+	res, err := h.svc.SearchPlace(r.Context(), me(r), r.URL.Query().Get("q"))
 	if err != nil {
 		writeServiceError(w, err)
 		return
 	}
-	ok(w, map[string]any{"places": res})
+	ok(w, res)
 }
 
 // Geocode handles GET /api/v1/geocode?lat=&lng=
