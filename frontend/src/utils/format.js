@@ -80,17 +80,8 @@ export const copyGmap = (lat, lng, toast) =>
     () => {},
   )
 
-/** Màu công trình theo lần chụp gần nhất: chưa quá staleDays ngày vàng nhạt, quá thì xanh lá (cần cập nhật). */
-export const AGE_FRESH = '#FCE38A'
-export const AGE_FRESH_LINE = '#B7791F'
-export const AGE_STALE = '#22C55E' // xanh lá tươi (giống app)
+/** Công trình quá staleDays ngày chưa chụp lại (cần cập nhật). */
 export const isStale = (lastAt, staleDays = 30) => !!lastAt && Date.now() - new Date(lastAt).getTime() > staleDays * 864e5
-/** Chữ hiện khi rê chuột vào 1 công trình. */
-export const ageTip = (lastAt, staleDays = 30) =>
-  isStale(lastAt, staleDays)
-    ? `<b>Cần cập nhật công trình</b><br>Chụp lần cuối ${vnDate(lastAt)} (quá ${staleDays} ngày)`
-    : `Chụp lần cuối ${vnDate(lastAt)}`
-
 /** Khoảng cách 2 toạ độ (mét). */
 export function distM(lat1, lng1, lat2, lng2) {
   const R = 6371000, r = Math.PI / 180

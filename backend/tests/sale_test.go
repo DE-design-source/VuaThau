@@ -149,7 +149,7 @@ func TestSale(t *testing.T) {
 	// Sale không vào được dữ liệu có CTV / tiền
 	for _, p := range []string{
 		fmt.Sprintf("/api/v1/houses/%d", h1), fmt.Sprintf("/api/v1/houses/%d/state", h1), "/api/v1/houses", "/api/v1/map",
-		"/api/v1/ctvs", "/api/v1/batches", "/api/v1/batches/1", "/api/v1/reports", "/api/v1/users", "/api/v1/users/1",
+		"/api/v1/ctvs", "/api/v1/batches", "/api/v1/batches/1", "/api/v1/reports",
 		"/api/v1/admin/queue", "/api/v1/accounting", "/api/v1/ctv/home", "/api/v1/staff",
 	} {
 		expectStatus(t, e.do(t, http.MethodGet, p, sale.AccessToken, nil), http.StatusForbidden)

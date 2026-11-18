@@ -14,7 +14,6 @@ import (
 	"vuathau/backend/internal/middleware"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/response"
-	"vuathau/backend/internal/websocket"
 )
 
 type HealthCheck func(ctx context.Context) error
@@ -23,11 +22,9 @@ type Deps struct {
 	Config         *config.Config
 	AuthHandler    *handler.AuthHandler
 	UserHandler    *handler.UserHandler
-	MessageHandler *handler.MessageHandler
 	HouseHandler   *handler.HouseHandler
 	PaymentHandler *handler.PaymentHandler
 	UserLookup     middleware.UserLookup
-	Hub            *websocket.Hub
 	HealthChecks   map[string]HealthCheck // e.g. "postgres", "redis"
 	Tiles          *handler.TileHandler   // nền bản đồ qua máy chủ; nil: tạo mới theo DATA_DIR
 }
@@ -35,7 +32,6 @@ type Deps struct {
 func New(d Deps) http.Handler {
 	mux := http.NewServeMux()
 	auth := middleware.Auth(d.Config.JWTSecret)
-	protected := func(fn http.HandlerFunc) http.Handler { return auth(fn) }
 	// role: đăng nhập + nạp người dùng (chặn token cũ, tài khoản khoá) + đúng vai trò (trống = mọi vai trò)
 	role := func(fn http.HandlerFunc, roles ...string) http.Handler {
 		return auth(middleware.Session(d.UserLookup, roles...)(fn))
@@ -130,18 +126,6 @@ func New(d Deps) http.Handler {
 	mux.Handle("PUT /api/v1/batches/{id}", role(p.SetRef, ketoan))
 	mux.Handle("POST /api/v1/batches/{id}/cancel", role(p.Cancel, ketoan))
 	mux.Handle("POST /api/v1/batches/{id}/receipt", role(p.UploadReceipt, ketoan))
-
-	// Scaffold: người dùng, tin nhắn, WebSocket
-	mux.Handle("GET /api/v1/users", role(u.List, ctv, admin, ketoan))
-	mux.Handle("GET /api/v1/users/{id}", role(u.GetByID, ctv, admin, ketoan))
-	mux.Handle("POST /api/v1/messages", protected(d.MessageHandler.Send))
-	mux.Handle("GET /api/v1/messages/{userID}", protected(d.MessageHandler.Conversation))
-
-	// WebSocket: ws://host/ws?token=<jwt>
-	mux.Handle("GET /ws", protected(func(w http.ResponseWriter, r *http.Request) {
-		uid, _ := middleware.UserIDFromContext(r.Context())
-		d.Hub.ServeWS(w, r, uid)
-	}))
 
 	// API lạ: envelope JSON. Còn lại: web React (nếu STATIC_DIR) hoặc 404.
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {

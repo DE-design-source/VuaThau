@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	gws "github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 
@@ -35,7 +34,6 @@ import (
 	"vuathau/backend/internal/router"
 	"vuathau/backend/internal/service"
 	"vuathau/backend/internal/storage"
-	"vuathau/backend/internal/websocket"
 )
 
 const (
@@ -51,7 +49,6 @@ const (
 type testEnv struct {
 	t     *testing.T
 	srv   *httptest.Server
-	hub   *websocket.Hub
 	db    *pgxpool.Pool
 	house service.HouseService
 	data  string // DATA_DIR của máy chủ test
@@ -85,7 +82,7 @@ func withCORSOrigins(origins ...string) envOption {
 	return func(s *envSettings) { s.cfg.CORSAllowedOrigins = origins }
 }
 
-// newTestEnv dựng service, handler, hub, router thật trên 1 CSDL Postgres riêng và chạy bằng httptest.
+// newTestEnv dựng service, handler, router thật trên 1 CSDL Postgres riêng và chạy bằng httptest.
 // AI, Google Drive, tra địa chỉ: tắt (không gọi dịch vụ ngoài khi test).
 func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 	t.Helper()
@@ -115,7 +112,6 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hub := websocket.NewHub(cfg.CORSAllowedOrigins)
 
 	authRepo := repository.NewAuthRepository(db)
 	userRepo := repository.NewUserRepository(db)
@@ -127,7 +123,6 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 
 	authSvc := service.NewAuthService(authRepo, noGoogle{}, cfg.JWTSecret, cfg.JWTExpiry)
 	userSvc := service.NewUserService(userRepo, authRepo, houseRepo, photoRepo, payRepo, logRepo, settingsRepo)
-	msgSvc := service.NewMessageService(repository.NewMessageRepository(db), hub)
 	houseSvc := service.NewHouseService(service.HouseDeps{Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo,
 		Payments: payRepo, Settings: settingsRepo, Files: files, Public: "http://test",
 		Inbox: settings.inbox, Auth: authRepo, Sync: repository.NewSyncRepository(db)})
@@ -137,21 +132,18 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 		Config:         cfg,
 		AuthHandler:    handler.NewAuthHandler(authSvc),
 		UserHandler:    handler.NewUserHandler(userSvc, authSvc),
-		MessageHandler: handler.NewMessageHandler(msgSvc),
 		HouseHandler:   handler.NewHouseHandler(houseSvc),
 		PaymentHandler: handler.NewPaymentHandler(paySvc, ""),
 		UserLookup:     userRepo.GetByID,
-		Hub:            hub,
 		HealthChecks:   settings.healthChecks,
 	}
 
 	srv := httptest.NewServer(router.New(deps))
 	t.Cleanup(func() {
-		hub.Close()
 		srv.Close()
 		houseSvc.Wait()
 	})
-	return &testEnv{t: t, srv: srv, hub: hub, db: db, house: houseSvc, data: cfg.DataDir}
+	return &testEnv{t: t, srv: srv, db: db, house: houseSvc, data: cfg.DataDir}
 }
 
 type noGoogle struct{}
@@ -451,8 +443,6 @@ func TestAuthFlow(t *testing.T) {
 			t.Fatalf("unexpected /me: %s", r.Raw)
 		}
 	}
-	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/users/999999", login.AccessToken, nil), http.StatusNotFound)
-	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/users/abc", login.AccessToken, nil), http.StatusBadRequest)
 }
 
 func TestUserPrivacy(t *testing.T) {
@@ -460,19 +450,9 @@ func TestUserPrivacy(t *testing.T) {
 	e := newTestEnv(t)
 	a := e.register(t, "Alice")
 	b := e.register(t, "Bob")
-
-	r := e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/users/%d", b.User.ID), a.AccessToken, nil)
-	expectStatus(t, r, http.StatusOK)
-	var u model.User
-	decodeData(t, r, &u)
-	if u.Bank != "" {
-		t.Fatalf("other user's bank leaked: %s", r.Raw)
-	}
-	r = e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/users/%d", a.User.ID), a.AccessToken, nil)
-	decodeData(t, r, &u)
-	if u.Bank == "" {
-		t.Fatalf("own bank should be visible: %s", r.Raw)
-	}
+	// không còn API liệt kê / xem người dùng: CTV không lấy được SĐT, ngân hàng của CTV khác
+	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/users", a.AccessToken, nil), http.StatusNotFound)
+	expectStatus(t, e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/users/%d", b.User.ID), a.AccessToken, nil), http.StatusNotFound)
 }
 
 func TestRegisterValidation(t *testing.T) {
@@ -547,10 +527,6 @@ func TestProtectedRoutesRequireToken(t *testing.T) {
 	e := newTestEnv(t)
 	routes := []struct{ method, path string }{
 		{http.MethodGet, "/api/v1/me"},
-		{http.MethodGet, "/api/v1/users"},
-		{http.MethodGet, "/api/v1/users/1"},
-		{http.MethodPost, "/api/v1/messages"},
-		{http.MethodGet, "/api/v1/messages/1"},
 		{http.MethodGet, "/api/v1/ctv/home"},
 		{http.MethodPost, "/api/v1/houses"},
 		{http.MethodGet, "/api/v1/houses/1"},
@@ -962,180 +938,6 @@ func TestAdminAddCTV(t *testing.T) {
 	expectStatus(t, r, http.StatusCreated)
 	if !strings.Contains(string(r.Raw), "Vietcombank · 0123456789 · NGUYEN VAN C") {
 		t.Fatalf("bank: %s", r.Raw)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// 4. Messages (scaffold)
-// ---------------------------------------------------------------------------
-
-func TestMessages(t *testing.T) {
-	t.Parallel()
-	e := newTestEnv(t)
-	a := e.register(t, "Alice")
-	b := e.register(t, "Bob")
-	c := e.register(t, "Carol")
-
-	send := func(tok string, to int64, content string) apiResp {
-		return e.do(t, http.MethodPost, "/api/v1/messages", tok, map[string]any{"receiver_id": to, "content": content})
-	}
-	expectStatus(t, send(a.AccessToken, b.User.ID, "hi bob"), http.StatusCreated)
-	expectStatus(t, send(b.AccessToken, a.User.ID, "hi alice"), http.StatusCreated)
-	expectStatus(t, send(a.AccessToken, b.User.ID, "how are you"), http.StatusCreated)
-
-	r := e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/messages/%d", b.User.ID), a.AccessToken, nil)
-	expectStatus(t, r, http.StatusOK)
-	var conv []model.Message
-	decodeData(t, r, &conv)
-	if len(conv) != 3 || conv[0].Content != "how are you" {
-		t.Fatalf("conversation: %s", r.Raw)
-	}
-	r = e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/messages/%d?limit=1&offset=1", b.User.ID), a.AccessToken, nil)
-	decodeData(t, r, &conv)
-	if len(conv) != 1 || conv[0].Content != "hi alice" {
-		t.Fatalf("paged conversation: %s", r.Raw)
-	}
-	r = e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/messages/%d", c.User.ID), b.AccessToken, nil)
-	decodeData(t, r, &conv)
-	if len(conv) != 0 {
-		t.Fatalf("unrelated conversation not empty: %s", r.Raw)
-	}
-
-	t.Run("validation", func(t *testing.T) {
-		expectStatus(t, send(a.AccessToken, a.User.ID, "self"), http.StatusBadRequest)
-		expectStatus(t, send(a.AccessToken, b.User.ID, "   "), http.StatusBadRequest)
-		expectStatus(t, send(a.AccessToken, 999999, "ghost"), http.StatusNotFound)
-		expectStatus(t, e.do(t, http.MethodPost, "/api/v1/messages", a.AccessToken, `{"receiver_id":`), http.StatusBadRequest)
-		expectStatus(t, e.do(t, http.MethodGet, "/api/v1/messages/abc", a.AccessToken, nil), http.StatusBadRequest)
-	})
-}
-
-// ---------------------------------------------------------------------------
-// 5. WebSocket (scaffold)
-// ---------------------------------------------------------------------------
-
-func (e *testEnv) wsURL(tok string) string {
-	u := "ws" + strings.TrimPrefix(e.srv.URL, "http") + "/ws"
-	if tok != "" {
-		u += "?token=" + tok
-	}
-	return u
-}
-
-func dialWS(url, origin string) (*gws.Conn, *http.Response, error) {
-	h := http.Header{}
-	if origin != "" {
-		h.Set("Origin", origin)
-	}
-	d := gws.Dialer{HandshakeTimeout: 3 * time.Second}
-	return d.Dial(url, h)
-}
-
-type wsEvent struct {
-	Type string          `json:"type"`
-	Data json.RawMessage `json:"data"`
-}
-
-func TestWebSocketReceivesNewMessage(t *testing.T) {
-	t.Parallel()
-	e := newTestEnv(t)
-	a := e.register(t, "Alice")
-	b := e.register(t, "Bob")
-
-	conn, res, err := dialWS(e.wsURL(b.AccessToken), allowedOrig)
-	if err != nil {
-		status := 0
-		if res != nil {
-			status = res.StatusCode
-		}
-		t.Fatalf("dial: %v (status %d)", err, status)
-	}
-	defer conn.Close()
-
-	events := make(chan wsEvent, 64)
-	go func() {
-		defer close(events)
-		_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
-		for {
-			var ev wsEvent
-			if err := conn.ReadJSON(&ev); err != nil {
-				return
-			}
-			events <- ev
-		}
-	}()
-
-	waitFor := func(what string, match func(wsEvent) bool) wsEvent {
-		t.Helper()
-		for ev := range events {
-			if match(ev) {
-				return ev
-			}
-		}
-		t.Fatalf("websocket closed or timed out before %s event", what)
-		return wsEvent{}
-	}
-
-	var synced atomic.Bool
-	syncDone := make(chan struct{})
-	go func() {
-		defer close(syncDone)
-		for !synced.Load() {
-			e.hub.SendToUser(b.User.ID, map[string]string{"type": "test:sync"})
-			time.Sleep(20 * time.Millisecond)
-		}
-	}()
-	waitFor("test:sync", func(ev wsEvent) bool { return ev.Type == "test:sync" })
-	synced.Store(true)
-	<-syncDone
-
-	r := e.do(t, http.MethodPost, "/api/v1/messages", a.AccessToken, map[string]any{
-		"receiver_id": b.User.ID, "content": "real-time hello",
-	})
-	expectStatus(t, r, http.StatusCreated)
-
-	ev := waitFor("message:new", func(ev wsEvent) bool { return ev.Type == "message:new" })
-	var msg model.Message
-	if err := json.Unmarshal(ev.Data, &msg); err != nil {
-		t.Fatalf("decode event data: %v (%s)", err, ev.Data)
-	}
-	if msg.Content != "real-time hello" || msg.SenderID != a.User.ID || msg.ReceiverID != b.User.ID || msg.ID == 0 {
-		t.Fatalf("unexpected event payload: %+v", msg)
-	}
-}
-
-func TestWebSocketHandshakeRejected(t *testing.T) {
-	t.Parallel()
-	e := newTestEnv(t)
-	b := e.register(t, "Bob")
-
-	cases := []struct {
-		name, tok, origin string
-		want              int
-	}{
-		{"missing token", "", allowedOrig, http.StatusUnauthorized},
-		{"garbage token", "garbage", allowedOrig, http.StatusUnauthorized},
-		{"disallowed origin", b.AccessToken, "http://evil.example", http.StatusForbidden},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			conn, res, err := dialWS(e.wsURL(tc.tok), tc.origin)
-			if err == nil {
-				conn.Close()
-				t.Fatal("handshake succeeded, want failure")
-			}
-			if !errors.Is(err, gws.ErrBadHandshake) {
-				t.Fatalf("err = %v, want ErrBadHandshake", err)
-			}
-			got := 0
-			if res != nil {
-				got = res.StatusCode
-			}
-			if got != tc.want {
-				t.Fatalf("status = %d, want %d", got, tc.want)
-			}
-		})
 	}
 }
 
