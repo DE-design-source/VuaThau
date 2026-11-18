@@ -134,6 +134,7 @@ type HouseDetail struct {
 	Pay       int64         `json:"pay"`
 	Editable  bool          `json:"editable"`
 	QueueLeft int           `json:"queue_left"`
+	Journal   []JournalSet  `json:"journal"` // nhật ký ảnh công trình: bộ ảnh đã duyệt cùng công trình, theo giai đoạn
 }
 
 type ReviewResult struct {
@@ -792,6 +793,9 @@ func (s *houseService) Detail(ctx context.Context, u *model.User, id int64) (*Ho
 		Editable: u.Role == model.RoleCTV && model.Editable(h.Status), Todo: []string{}, BadFields: []string{},
 		Issues: []Issue{}, AIFields: []string{}}
 	d.Steps = Steps(h, logs, m.Approved, st.PayMin)
+	if d.Journal, err = s.journal(ctx, u, h, st.DupRadiusM); err != nil {
+		return nil, err
+	}
 	d.Checklist = Checklist(h, valid, st.MinPhotos)
 	for _, it := range d.Checklist {
 		if it.OK {

@@ -81,6 +81,7 @@ type HouseRepository interface {
 	Contractors(ctx context.Context, q string) ([]Contractor, error)
 	OtherSites(ctx context.Context, ctvID int64, since time.Time) ([]OtherSite, error)
 	SiteDates(ctx context.Context) ([]SiteDate, error)
+	Journal(ctx context.Context, lat, lng, deg float64, self, ctvID int64) ([]JournalHouse, error)
 	Covers(ctx context.Context, ids []int64) (map[int64]int64, error)
 	SearchSites(ctx context.Context, q string, ctvID int64) ([]SiteHit, error)
 	CountSource(ctx context.Context, source string) (int, error)

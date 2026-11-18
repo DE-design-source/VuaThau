@@ -177,7 +177,7 @@ function House({ id, d, reload }) {
           )}
 
           {/* nhật ký công trình: 8 giai đoạn */}
-          {stages.length > 0 && <Milestones stages={stages} current={stages.indexOf(h.stage)} />}
+          {stages.length > 0 && <Milestones stages={stages} current={stages.indexOf(h.stage)} journal={d.journal || []} />}
 
           {/* tiền + chuyển khoản + tiến trình */}
           <div className="hp-card">
@@ -297,27 +297,68 @@ function House({ id, d, reload }) {
   )
 }
 
-/** Nhật ký công trình: 8 giai đoạn, đã qua (đặc), đang thi công (viền xanh), chưa tới (xám). */
-function Milestones({ stages, current }) {
+/** Nhật ký công trình: 8 giai đoạn, đã qua (đặc), đang thi công (viền xanh), chưa tới (xám).
+ *  Bước có bộ ảnh đã duyệt (cùng công trình) bấm được: hiện các bộ ảnh của bước đó bên dưới. */
+function Milestones({ stages, current, journal }) {
+  const [pick, setPick] = useState(null)
+  const byStage = (s) => journal.filter((j) => j.stage === s)
+  const sets = pick === null ? [] : byStage(stages[pick])
+  const other = journal.filter((j) => !stages.includes(j.stage)) // hồ sơ chưa ghi giai đoạn
   return (
     <div className="hp-card">
-      <h3 className="hp-h3">Xem ảnh nhật ký công trình</h3>
+      <div className="hp-ms-head">
+        <h3 className="hp-h3">Xem ảnh nhật ký công trình</h3>
+        <small className="muted">{journal.length > 1 ? `${journal.length} bộ ảnh của công trình` : ''}</small>
+      </div>
       <div className="hp-ms" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))` }}>
         {stages.map((s, i) => {
           const done = i < current
           const cur = i === current
+          const n = byStage(s).length
           return (
-            <div key={s} className={`hp-ms-item ${done ? 'done' : ''} ${cur ? 'cur' : ''} ${i > current ? 'todo' : ''}`} title={STAGE_DESC[s] || ''}>
+            <button
+              type="button"
+              key={s}
+              disabled={!n}
+              aria-pressed={pick === i}
+              onClick={() => setPick(pick === i ? null : i)}
+              className={`hp-ms-item ${done ? 'done' : ''} ${cur ? 'cur' : ''} ${i > current ? 'todo' : ''} ${n ? 'has' : ''} ${pick === i ? 'on' : ''}`}
+              title={(STAGE_DESC[s] || '') + (n ? ` · bấm xem ${n} bộ ảnh` : '')}
+            >
               <div className="hp-ms-track">
                 <span className="hp-ms-dot">{done ? '✓' : ''}</span>
                 {i < stages.length - 1 && <span className="hp-ms-line" />}
               </div>
               <div className="hp-ms-title">{s}</div>
               {cur && <span className="hp-ms-now">Đang thi công</span>}
-            </div>
+              {n > 0 && <span className="hp-ms-n">{n} bộ ảnh</span>}
+            </button>
           )
         })}
       </div>
+      {pick === null ? (
+        <p className="muted hp-ms-hint">
+          {journal.some((j) => stages.includes(j.stage)) ? 'Bấm vào 1 bước có ảnh để xem lại bộ ảnh đã duyệt của bước đó.' : 'Công trình chưa có bộ ảnh nào đã duyệt.'}
+          {other.length > 0 && ` ${other.length} bộ ảnh chưa ghi giai đoạn.`}
+        </p>
+      ) : (
+        <div className="hp-sets">
+          {sets.map((j) => (
+            <div key={j.house_id} className="hp-set">
+              <div className="hp-set-head">
+                <b>{stages[pick]}</b>
+                <span className="muted">
+                  {vnTime(j.at)}
+                  {j.ctv ? ` · ${j.ctv}` : ''}
+                </span>
+                <span className="spacer" />
+                {j.self ? <span className="hp-src">Hồ sơ đang xem</span> : <Link to={`/houses/${j.house_id}`}>{hsId(j.house_id)}</Link>}
+              </div>
+              {j.photos.length ? <PhotoGrid ps={j.photos.map((id) => ({ id }))} checks={false} /> : <p className="muted">Chưa có ảnh.</p>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
