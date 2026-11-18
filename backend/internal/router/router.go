@@ -11,6 +11,7 @@ import (
 
 	"vuathau/backend/internal/config"
 	"vuathau/backend/internal/handler"
+	"vuathau/backend/internal/integration/dezon"
 	"vuathau/backend/internal/middleware"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/response"
@@ -74,6 +75,9 @@ func New(d Deps) http.Handler {
 	mux.Handle("PUT /api/v1/houses/{id}", role(h.Save, ctv))
 	mux.Handle("POST /api/v1/houses/{id}/photos", role(h.AddPhotos, ctv))
 	mux.Handle("DELETE /api/v1/houses/{id}/photos/{pid}", role(h.DeletePhoto, ctv))
+	mux.Handle("POST /api/v1/houses/{id}/videos", role(h.AddVideos, ctv))
+	mux.Handle("DELETE /api/v1/houses/{id}/videos/{vid}", role(h.DeleteVideo, ctv))
+	mux.HandleFunc("GET /api/v1/videos/{vid}", h.Video) // link có chữ ký, không cần đăng nhập
 
 	// Hồ sơ: CTV chủ hồ sơ, admin, kế toán (service kiểm quyền xem)
 	// (không cho sale: có tên CTV, tiền)
@@ -88,6 +92,8 @@ func New(d Deps) http.Handler {
 	mux.Handle("GET /api/v1/sale/projects", role(h.SaleProjects, sale, admin))
 	mux.Handle("GET /api/v1/sale/projects/{id}", role(h.SaleProject, sale, admin))
 	mux.Handle("GET /api/v1/sale/contractors", role(h.Contractors, sale, admin))
+	dz := handler.NewDezonHandler(dezon.ListURL)
+	mux.Handle("GET /api/v1/sale/dezon-contractors", role(dz.Contractors, sale, admin))
 
 	// Admin
 	mux.Handle("GET /api/v1/admin/queue", role(h.Queue, admin))

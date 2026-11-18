@@ -2,7 +2,9 @@ package handler
 
 import (
 	"io"
+	"mime/multipart"
 	"net/http"
+	"os"
 	"strconv"
 
 	"vuathau/backend/internal/middleware"
@@ -170,6 +172,89 @@ func (h *HouseHandler) DeletePhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msg(w, m)
+}
+
+// AddVideos handles POST /api/v1/houses/{id}/videos (multipart "files"): đọc dần từng video, không giữ trong RAM.
+func (h *HouseHandler) AddVideos(w http.ResponseWriter, r *http.Request) {
+	id, valid := idOr400(w, r, "id")
+	if !valid {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, int64(model.MaxVideos+1)*(service.MaxVideoBytes+1<<20))
+	mr, err := r.MultipartReader()
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Không đọc được video gửi lên.")
+		return
+	}
+	var part *multipart.Part
+	next := func() (*service.VideoPart, error) {
+		if part != nil {
+			_ = part.Close()
+		}
+		for {
+			p, err := mr.NextPart()
+			if err != nil {
+				return nil, err // io.EOF: hết
+			}
+			if p.FormName() != "files" || p.FileName() == "" {
+				_ = p.Close()
+				continue
+			}
+			part = p
+			return &service.VideoPart{Name: p.FileName(), Mime: p.Header.Get("Content-Type"), Body: p}, nil
+		}
+	}
+	res, err := h.svc.AddVideos(r.Context(), me(r), id, next)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, res)
+}
+
+// DeleteVideo handles DELETE /api/v1/houses/{id}/videos/{vid}
+func (h *HouseHandler) DeleteVideo(w http.ResponseWriter, r *http.Request) {
+	id, valid := idOr400(w, r, "id")
+	if !valid {
+		return
+	}
+	vid, valid := idOr400(w, r, "vid")
+	if !valid {
+		return
+	}
+	m, err := h.svc.DeleteVideo(r.Context(), me(r), id, vid)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	msg(w, m)
+}
+
+// Video handles GET /api/v1/videos/{vid}?e=&s= : link có chữ ký (thẻ <video> không gửi được token), hỗ trợ tua (Range).
+func (h *HouseHandler) Video(w http.ResponseWriter, r *http.Request) {
+	vid, valid := idOr400(w, r, "vid")
+	if !valid {
+		return
+	}
+	p, mime, err := h.svc.VideoFile(r.Context(), vid, r.URL.Query().Get("e"), r.URL.Query().Get("s"))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "Không tìm thấy file video.")
+		return
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "Không tìm thấy file video.")
+		return
+	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Cache-Control", "private, max-age=43200")
+	http.ServeContent(w, r, "", st.ModTime(), f)
 }
 
 type saveInput struct {

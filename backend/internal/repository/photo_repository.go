@@ -32,6 +32,14 @@ type PhotoRepository interface {
 
 	CacheGet(ctx context.Context, shas []string) (map[string]json.RawMessage, error)
 	CachePut(ctx context.Context, sha string, data json.RawMessage) error
+
+	// Video công trình
+	InsertVideo(ctx context.Context, v *model.Video) error
+	HouseOfVideo(ctx context.Context, sha string) (int64, error)
+	Videos(ctx context.Context, houseID int64) ([]model.Video, error)
+	Video(ctx context.Context, id int64) (*model.Video, error)
+	DeleteVideo(ctx context.Context, id, houseID int64) (*model.Video, error)
+	InboxHouses(ctx context.Context) (map[string]int64, error)
 }
 
 type photoRepository struct {
