@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react'
 import SiteMap from './SiteMap'
 import SiteCard from './SiteCard'
+import { distM, distText } from '@/utils/format'
 
 const PAGE = 24
 
@@ -34,6 +35,7 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
   const [more, setMore] = useState({ key: fitKey, n: PAGE })
   const shown = more.key === fitKey ? more.n : PAGE
   const [open, setOpen] = useState(false)
+  const [near, setNear] = useState(null) // { name, lat, lng, radius }: chỉ công trình quanh vị trí đã tìm
   const pop$ = useRef(null)
 
   // Bấm ra ngoài: đóng Bộ lọc
@@ -44,7 +46,10 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
     return () => document.removeEventListener('mousedown', close)
   }, [open])
 
-  const rows = [...points].sort((a, b) => new Date(b.last_at || b.at) - new Date(a.last_at || a.at))
+  const dist = near ? new Map(points.map((p) => [p.id, distM(near.lat, near.lng, p.lat, p.lng)])) : null
+  const rows = near
+    ? points.filter((p) => dist.get(p.id) <= near.radius).sort((a, b) => dist.get(a.id) - dist.get(b.id))
+    : [...points].sort((a, b) => new Date(b.last_at || b.at) - new Date(a.last_at || a.at))
 
   return (
     <div className="ex">
@@ -58,7 +63,7 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
         >
           <label className="ex-seg ex-seg-addr">
             <span>Địa chỉ</span>
-            <input value={addr} onChange={(e) => setAddr(e.target.value)} placeholder="Số nhà, đường, phường…" aria-label="Tìm địa chỉ" />
+            <input value={addr} onChange={(e) => setAddr(e.target.value)} placeholder="Địa chỉ, công ty, nhà thầu, SĐT…" aria-label="Tìm địa chỉ, công ty, nhà thầu" />
           </label>
           {selects.map((s) => (
             <label key={s.key} className="ex-seg">
@@ -96,6 +101,14 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
           <div className="ex-head">
             <h2>
               {rows.length} công trình {busy && <span className="muted ex-busy">· đang tải…</span>}
+              {near && (
+                <span className="ex-near">
+                  trong {distText(near.radius)} quanh <b>{near.name.split(',')[0]}</b>
+                  <button type="button" onClick={() => search.current?.clear()}>
+                    Bỏ lọc vị trí ✕
+                  </button>
+                </span>
+              )}
             </h2>
             <span className="ex-legend">
               <PinMark /> chưa quá {staleDays} ngày
@@ -112,11 +125,12 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
                   on={active === p.id}
                   onHover={setActive}
                   onLocate={() => setFocus({ id: p.id, n: (focus?.n || 0) + 1 })}
+                  dist={dist ? distText(dist.get(p.id)) : null}
                 />
               ))}
             </div>
           ) : (
-            <p className="muted ex-empty">Không có công trình nào theo bộ lọc.</p>
+            <p className="muted ex-empty">{near ? 'Chưa có công trình nào quanh vị trí này. Thử tăng bán kính trên bản đồ.' : 'Không có công trình nào theo bộ lọc.'}</p>
           )}
           {rows.length > shown && (
             <div className="ex-more">
@@ -141,6 +155,7 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
             focus={focus}
             fresh={fresh}
             search={search}
+            onPlace={setNear}
           />
         </aside>
       </div>

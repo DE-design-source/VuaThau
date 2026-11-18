@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -158,7 +159,9 @@ type Place struct {
 	Lng  float64 `json:"lng"`
 }
 
-// Search: tìm địa điểm theo địa chỉ (trong Việt Nam), tối đa 5 kết quả. Dùng Nominatim (xếp hàng 1 lượt/giây), lưu đệm.
+// Search: tìm địa điểm (trong Việt Nam), tối đa 6 kết quả, lưu đệm. Nguồn: Nominatim (xếp hàng 1 lượt/giây) và Photon
+// (tìm tên địa điểm / công ty, gõ gần đúng tốt hơn). Không ra thì rút gọn câu tìm rồi thử lại (xem Variants):
+// bỏ tên công ty ở đầu, bỏ "Quận 7 / Phường 5" (đơn vị cũ trước sáp nhập 2025), bỏ số nhà.
 func (g *Geocoder) Search(ctx context.Context, q string) ([]Place, error) {
 	q = strings.Join(strings.Fields(q), " ")
 	if len([]rune(q)) < 3 {
@@ -172,15 +175,86 @@ func (g *Geocoder) Search(ctx context.Context, q string) ([]Place, error) {
 	}
 	g.mu.Unlock()
 
+	var out []Place
+	var lastErr error
+	for _, v := range Variants(q) {
+		ps, err := g.nominatim(ctx, v)
+		if err != nil {
+			lastErr = err
+		}
+		if ph, err := g.photon(ctx, v); err == nil {
+			ps = mergePlaces(ps, ph)
+		}
+		if len(ps) > 0 {
+			out = ps
+			break
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+	}
+	if out == nil {
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		out = []Place{}
+	}
+	g.mu.Lock()
+	if g.search == nil || len(g.search) > cacheMax {
+		g.search = map[string][]Place{}
+	}
+	g.search[key] = out
+	g.mu.Unlock()
+	return out, nil
+}
+
+var (
+	// đầu câu là tên công ty / cửa hàng (phần trước dấu phẩy đầu tiên)
+	companyRE = regexp.MustCompile(`(?i)^(tổng công ty|công ty|cong ty|cty|tnhh|cổ phần|văn phòng|vp|chi nhánh|cửa hàng|showroom)(\s|$)`)
+	// đơn vị cũ có số (trước sáp nhập 2025): Quận 7, Q.3, Phường 5, P.12
+	oldUnitRE = regexp.MustCompile(`(?i)(^|[\s,])(quận|q\.|q|phường|p\.|p)\s*\d+`)
+	// số nhà đầu câu: 45, 12/3, 25A, số 7
+	houseNumRE = regexp.MustCompile(`(?i)^(số\s*)?[0-9][0-9a-z/\-]*\s+`)
+)
+
+// Variants: câu tìm gốc rồi các bản rút gọn dần (tối đa 4, không trùng).
+func Variants(q string) []string {
+	out := []string{}
+	add := func(s string) {
+		s = strings.Trim(strings.Join(strings.Fields(s), " "), " ,")
+		if len([]rune(s)) < 3 || len(out) >= 4 {
+			return
+		}
+		for _, o := range out {
+			if strings.EqualFold(o, s) {
+				return
+			}
+		}
+		out = append(out, s)
+	}
+	add(q)
+	parts := strings.Split(q, ",")
+	if len(parts) > 1 && companyRE.MatchString(strings.TrimSpace(parts[0])) {
+		q = strings.Join(parts[1:], ",")
+		add(q)
+	}
+	q = oldUnitRE.ReplaceAllString(q, "")
+	add(q)
+	add(houseNumRE.ReplaceAllString(strings.TrimSpace(q), ""))
+	return out
+}
+
+func (g *Geocoder) nominatim(ctx context.Context, q string) ([]Place, error) {
 	g.nomiMu.Lock()
+	defer g.nomiMu.Unlock()
 	if wait := time.Until(g.nomiLast.Add(time.Second)); wait > 0 {
 		select {
 		case <-time.After(wait):
 		case <-ctx.Done():
-			g.nomiMu.Unlock()
 			return nil, ctx.Err()
 		}
 	}
+	defer func() { g.nomiLast = time.Now() }()
 	var r []struct {
 		DisplayName string `json:"display_name"`
 		Lat         string `json:"lat"`
@@ -188,10 +262,7 @@ func (g *Geocoder) Search(ctx context.Context, q string) ([]Place, error) {
 	}
 	u := "https://nominatim.openstreetmap.org/search?" + url.Values{
 		"format": {"jsonv2"}, "accept-language": {"vi"}, "countrycodes": {"vn"}, "limit": {"5"}, "q": {q}}.Encode()
-	err := g.getJSON(ctx, u, &r)
-	g.nomiLast = time.Now()
-	g.nomiMu.Unlock()
-	if err != nil {
+	if err := g.getJSON(ctx, u, &r); err != nil {
 		return nil, err
 	}
 	out := []Place{}
@@ -206,14 +277,66 @@ func (g *Geocoder) Search(ctx context.Context, q string) ([]Place, error) {
 		p.Name = vnSuffix.ReplaceAllString(x.DisplayName, "")
 		out = append(out, p)
 	}
-	g.mu.Lock()
-	if g.search == nil {
-		g.search = map[string][]Place{}
-	}
-	if len(g.search) > cacheMax {
-		g.search = map[string][]Place{}
-	}
-	g.search[key] = out
-	g.mu.Unlock()
 	return out, nil
+}
+
+// photon: tìm bằng Photon (komoot), chỉ trong khung Việt Nam.
+func (g *Geocoder) photon(ctx context.Context, q string) ([]Place, error) {
+	var r struct {
+		Features []struct {
+			Geometry struct {
+				Coordinates []float64 `json:"coordinates"`
+			} `json:"geometry"`
+			Properties map[string]any `json:"properties"`
+		} `json:"features"`
+	}
+	u := "https://photon.komoot.io/api/?" + url.Values{"q": {q}, "limit": {"5"}, "bbox": {"102.1,8.3,109.6,23.4"}}.Encode()
+	if err := g.getJSON(ctx, u, &r); err != nil {
+		return nil, err
+	}
+	out := []Place{}
+	for _, f := range r.Features {
+		pr := f.Properties
+		str := func(k string) string { s, _ := pr[k].(string); return s }
+		if c := str("countrycode"); c != "" && !strings.EqualFold(c, "VN") {
+			continue
+		}
+		if len(f.Geometry.Coordinates) != 2 {
+			continue
+		}
+		parts := []string{}
+		seen := map[string]bool{}
+		for _, v := range []string{str("name"), strings.TrimSpace(str("housenumber") + " " + str("street")), str("district"), str("city"), str("state")} {
+			if v = strings.TrimSpace(v); v != "" && !seen[v] {
+				seen[v] = true
+				parts = append(parts, v)
+			}
+		}
+		if len(parts) == 0 {
+			continue
+		}
+		out = append(out, Place{Name: strings.Join(parts, ", "), Lat: f.Geometry.Coordinates[1], Lng: f.Geometry.Coordinates[0]})
+	}
+	return out, nil
+}
+
+// mergePlaces: gộp 2 danh sách, bỏ điểm trùng (cách nhau dưới ~20 m), tối đa 6.
+func mergePlaces(a, b []Place) []Place {
+	out := append([]Place{}, a...)
+	for _, p := range b {
+		dup := false
+		for _, o := range out {
+			if math.Abs(o.Lat-p.Lat) < 0.0002 && math.Abs(o.Lng-p.Lng) < 0.0002 {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			out = append(out, p)
+		}
+	}
+	if len(out) > 6 {
+		out = out[:6]
+	}
+	return out
 }

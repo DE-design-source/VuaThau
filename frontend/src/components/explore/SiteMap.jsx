@@ -43,7 +43,7 @@ function loadProvinces() {
  * focus: { id, n } bay tới công trình và mở thẻ. fresh: Set id mới xuất hiện (thời gian thực).
  * search: tay cầm (useRef) để thanh tìm phía trên trang gọi search.current.find(chữ).
  */
-export default function SiteMap({ points, provinces = [], selected, onProvince, fitKey, pop, staleDays = 30, active, onHover, focus, fresh, search }) {
+export default function SiteMap({ points, provinces = [], selected, onProvince, fitKey, pop, staleDays = 30, active, onHover, focus, fresh, search, onPlace }) {
   const el = useRef(null)
   const map = useRef(null)
   const pins = useRef(null)
@@ -216,7 +216,7 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
   return (
     <div className="site-map-wrap">
       <div ref={el} className="site-map" role="region" aria-label="Bản đồ công trình" />
-      <MapSearch getMap={getMap} points={points} staleDays={staleDays} handle={search} />
+      <MapSearch getMap={getMap} points={points} staleDays={staleDays} handle={search} onPlace={onPlace} />
     </div>
   )
 }
