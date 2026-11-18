@@ -22,7 +22,6 @@ import (
 	"vuathau/backend/internal/router"
 	"vuathau/backend/internal/service"
 	"vuathau/backend/internal/storage"
-	"vuathau/backend/internal/websocket"
 )
 
 func main() {
@@ -67,9 +66,6 @@ func run() error {
 		return err
 	}
 
-	hub := websocket.NewHub(cfg.CORSAllowedOrigins)
-	defer hub.Close()
-
 	// Repository -> Service -> Handler
 	authRepo := repository.NewAuthRepository(db)
 	userRepo := repository.NewUserRepository(db)
@@ -87,7 +83,6 @@ func run() error {
 
 	authSvc := service.NewAuthService(authRepo, gVerifier, cfg.JWTSecret, cfg.JWTExpiry)
 	userSvc := service.NewUserService(userRepo, authRepo, houseRepo, photoRepo, payRepo, logRepo, settingsRepo)
-	msgSvc := service.NewMessageService(repository.NewMessageRepository(db), hub)
 	// Hồ sơ Messenger từ dezon-inbox (chỉ đọc DB + kho ảnh S3)
 	var inboxSrc inbox.Source
 	if cfg.InboxDatabaseURL != "" {
@@ -125,11 +120,9 @@ func run() error {
 			Config:         cfg,
 			AuthHandler:    handler.NewAuthHandler(authSvc),
 			UserHandler:    handler.NewUserHandler(userSvc, authSvc),
-			MessageHandler: handler.NewMessageHandler(msgSvc),
 			HouseHandler:   handler.NewHouseHandler(houseSvc),
 			PaymentHandler: handler.NewPaymentHandler(paySvc, gVerifier.ClientID()),
 			UserLookup:     userRepo.GetByID,
-			Hub:            hub,
 			HealthChecks:   checks,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,

@@ -85,7 +85,5 @@ const authSlice = createSlice({
 
 export const { logout, renewToken, clearAuthError } = authSlice.actions
 export const selectAuth = (state) => state.auth
-export const selectUser = (state) => state.auth.user
 export const selectToken = (state) => state.auth.token
-export const selectRole = (state) => state.auth.user?.role
 export default authSlice.reducer

@@ -46,20 +46,3 @@ func PublicMessage(err error) string {
 	return err.Error()
 }
 
-const (
-	defaultPageSize = 20
-	maxPageSize     = 100
-)
-
-func normalizePage(limit, offset int) (int, int) {
-	if limit <= 0 {
-		limit = defaultPageSize
-	}
-	if limit > maxPageSize {
-		limit = maxPageSize
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	return limit, offset
-}

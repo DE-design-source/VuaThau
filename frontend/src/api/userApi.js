@@ -12,10 +12,6 @@ const userApi = {
 
   /** Admin: đặt lại mật khẩu -> { message } */
   setPassword: (id, password) => axiosClient.post(`/users/${id}/password`, { password }),
-
-  // Scaffold cũ (HomePage), chưa có trong API nghiệm thu.
-  list: ({ limit = 20, offset = 0 } = {}) => axiosClient.get('/users', { params: { limit, offset } }),
-  getById: (id) => axiosClient.get(`/users/${id}`),
 }
 
 export default userApi

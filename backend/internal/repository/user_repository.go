@@ -30,7 +30,6 @@ type CTVRow struct {
 
 type UserRepository interface {
 	GetByID(ctx context.Context, id int64) (*model.User, error)
-	List(ctx context.Context, limit, offset int) ([]model.User, error)
 	ByInboxContact(ctx context.Context, contact string) (*model.User, error)
 	SetInboxContact(ctx context.Context, id int64, contact string) error
 
@@ -87,10 +86,6 @@ func (r *userRepository) SetInboxContact(ctx context.Context, id int64, contact 
 		return ErrDuplicate
 	}
 	return err
-}
-
-func (r *userRepository) List(ctx context.Context, limit, offset int) ([]model.User, error) {
-	return r.many(ctx, `SELECT `+userCols+` FROM users ORDER BY id LIMIT $1 OFFSET $2`, limit, offset)
 }
 
 func (r *userRepository) many(ctx context.Context, q string, args ...any) ([]model.User, error) {

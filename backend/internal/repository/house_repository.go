@@ -25,12 +25,6 @@ type HouseFilter struct {
 	From, To *time.Time // created_at trong [From, To)
 }
 
-// GeoPoint: toạ độ 1 hồ sơ (cảnh báo nhà trùng, bản đồ).
-type GeoPoint struct {
-	ID       int64
-	Lat, Lng float64
-}
-
 // SiteCandidate: hồ sơ đã gửi duyệt, đem so để chặn chụp trùng công trình.
 type SiteCandidate struct {
 	ID              int64
@@ -74,7 +68,6 @@ type CTVSites struct {
 type HouseRepository interface {
 	SiteCandidates(ctx context.Context, exclude int64, since time.Time) ([]SiteCandidate, error)
 	MarkDuplicate(ctx context.Context, id, of int64, note string) error
-	SetDupInfo(ctx context.Context, id int64, of *int64, dup string) error
 	CreateInbox(ctx context.Context, ctvID int64, extID string, created time.Time) (int64, bool, error)
 	MapPoints(ctx context.Context, f HouseFilter) ([]MapPoint, error)
 
@@ -111,7 +104,6 @@ type HouseRepository interface {
 	ApproveMany(ctx context.Context, ids []int64) ([]int64, error)
 	SetAmount(ctx context.Context, id int64, amount int64) error
 	NextPending(ctx context.Context, after int64) (*int64, int, error)
-	Nearby(ctx context.Context, exclude int64) ([]GeoPoint, error)
 
 	SetAIState(ctx context.Context, id int64, state string) error
 	// ApplyAI điền các ô còn trống bằng giá trị AI đọc, ghi ai_state + ai_json.
@@ -386,11 +378,6 @@ func (r *houseRepository) MarkDuplicate(ctx context.Context, id, of int64, note 
 		WHERE id = $1 AND status = 'cho_duyet'`, id, of, note)
 }
 
-func (r *houseRepository) SetDupInfo(ctx context.Context, id int64, of *int64, dup string) error {
-	_, err := r.db.Exec(ctx, `UPDATE houses SET dup_of = $2, dup = $3 WHERE id = $1`, id, of, dup)
-	return err
-}
-
 // CreateInbox: hồ sơ nháp từ Messenger (ext_id = id project_logs). Đã có: trả id cũ, created = false.
 func (r *houseRepository) CreateInbox(ctx context.Context, ctvID int64, extID string, created time.Time) (int64, bool, error) {
 	var id int64
@@ -486,24 +473,6 @@ func (r *houseRepository) NextPending(ctx context.Context, after int64) (*int64,
 		return nil, 0, err
 	}
 	return &id, left, nil
-}
-
-func (r *houseRepository) Nearby(ctx context.Context, exclude int64) ([]GeoPoint, error) {
-	rows, err := r.db.Query(ctx, `SELECT id, lat, lng FROM houses WHERE id <> $1 AND lat IS NOT NULL AND lng IS NOT NULL
-		AND status <> 'tu_choi'`, exclude)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []GeoPoint{}
-	for rows.Next() {
-		var p GeoPoint
-		if err := rows.Scan(&p.ID, &p.Lat, &p.Lng); err != nil {
-			return nil, err
-		}
-		out = append(out, p)
-	}
-	return out, rows.Err()
 }
 
 func (r *houseRepository) SetAIState(ctx context.Context, id int64, state string) error {

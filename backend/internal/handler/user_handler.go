@@ -27,39 +27,6 @@ func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 	ok(w, res)
 }
 
-// GetByID handles GET /api/v1/users/{id}
-func (h *UserHandler) GetByID(w http.ResponseWriter, r *http.Request) {
-	id, valid := idOr400(w, r, "id")
-	if !valid {
-		return
-	}
-	u, err := h.svc.GetByID(r.Context(), id)
-	if err != nil {
-		writeServiceError(w, err)
-		return
-	}
-	if u.ID != uid(r) {
-		u.Email = "" // emails are private: only visible via /me
-		u.Bank = ""
-	}
-	ok(w, u)
-}
-
-// List handles GET /api/v1/users?limit=&offset=
-func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
-	users, err := h.svc.List(r.Context(), queryInt(r, "limit", 0), queryInt(r, "offset", 0))
-	if err != nil {
-		writeServiceError(w, err)
-		return
-	}
-	for i := range users {
-		if users[i].ID != uid(r) {
-			users[i].Email, users[i].Bank = "", ""
-		}
-	}
-	ok(w, users)
-}
-
 // UpdateBank handles PUT /api/v1/me/bank
 func (h *UserHandler) UpdateBank(w http.ResponseWriter, r *http.Request) {
 	var in struct {

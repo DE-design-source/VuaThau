@@ -51,8 +51,6 @@ type AddCTVInput struct {
 }
 
 type UserService interface {
-	GetByID(ctx context.Context, id int64) (*model.User, error)
-	List(ctx context.Context, limit, offset int) ([]model.User, error)
 
 	Me(ctx context.Context, u *model.User) (*MeResult, error)
 	UpdateBank(ctx context.Context, u *model.User, name, no, owner string) (*model.User, error)
@@ -83,19 +81,6 @@ func NewUserService(repo repository.UserRepository, auth repository.AuthReposito
 	photos repository.PhotoRepository, payments repository.PaymentRepository, logs repository.LogRepository,
 	settings repository.SettingsRepository) UserService {
 	return &userService{repo: repo, auth: auth, houses: houses, photos: photos, payments: payments, logs: logs, settings: settings}
-}
-
-func (s *userService) GetByID(ctx context.Context, id int64) (*model.User, error) {
-	u, err := s.repo.GetByID(ctx, id)
-	if errors.Is(err, repository.ErrNotFound) {
-		return nil, ErrNotFound
-	}
-	return u, err
-}
-
-func (s *userService) List(ctx context.Context, limit, offset int) ([]model.User, error) {
-	limit, offset = normalizePage(limit, offset)
-	return s.repo.List(ctx, limit, offset)
 }
 
 // Todo: số việc đang chờ vai trò này (CTV: nháp + trả lại; admin: chờ duyệt; kế toán: CTV đủ điều kiện).

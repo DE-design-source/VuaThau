@@ -130,8 +130,6 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-func (c *Config) IsProduction() bool { return c.AppEnv == "production" }
-
 // DriveEnabled: đủ thông tin để đẩy hồ sơ lên Google Drive.
 func (c *Config) DriveEnabled() bool {
 	return c.GDriveClientID != "" && c.GDriveClientSecret != "" && c.GDriveRefreshToken != "" && c.GDriveFolder != ""
