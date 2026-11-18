@@ -57,7 +57,8 @@
   --top-h: 48px;
   --shadow-card: 0 6px 16px rgb(0 0 0 / 0.12);
   --font-sans: 'Be Vietnam Pro', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  /* số, mã, tiền: cùng phông chữ, chữ số đều cột (thiết kế không dùng phông mono) */
+  --font-mono: var(--font-sans);
 
   color-scheme: light;
 }
@@ -2456,9 +2457,6 @@ a {
   color: #6a6a6a;
   font-weight: 600;
 }
-.kpi {
-  border-radius: 12px;
-}
 
 /* =====================================================================
    Trang 1 hồ sơ (/houses/:id) theo thiết kế 18/11/2026
@@ -3188,4 +3186,142 @@ button.hp-ms-item.on .hp-ms-dot {
 .hp-set .photo-grid {
   grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   gap: 6px;
+}
+
+/* =====================================================================
+   Thành phần dùng chung còn lại theo thiết kế 18/11/2026
+   ===================================================================== */
+.mono,
+.id,
+.table .num,
+.num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+/* hàng chỉ số: 1 khung viền #b0b0b0, ô ngăn bằng vạch mảnh, không vạch màu */
+.kpis {
+  border: 1px solid #b0b0b0;
+  border-radius: 12px;
+}
+.kpi {
+  padding: 14px 18px 16px;
+  border-right: 1px solid #dddddd;
+  border-bottom: 1px solid #dddddd;
+}
+.kpi::before {
+  display: none;
+}
+.kpi-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #222;
+}
+.kpi strong {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.kpi small {
+  color: #6a6a6a;
+  font-size: 12.5px;
+}
+/* chấm màu trạng thái trước nhãn */
+.kpi-warn .kpi-label::before,
+.kpi-wait .kpi-label::before,
+.kpi-bad .kpi-label::before,
+.kpi-ok .kpi-label::before,
+.kpi-done .kpi-label::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tone-draft);
+}
+.kpi-warn .kpi-label::before { background: var(--tone-warn); }
+.kpi-wait .kpi-label::before { background: var(--tone-wait); }
+.kpi-bad .kpi-label::before { background: var(--tone-bad); }
+.kpi-ok .kpi-label::before { background: var(--tone-ok); }
+.kpi-done .kpi-label::before { background: var(--tone-done); }
+/* nút lọc: viên tròn, đang chọn nền đen */
+.chip {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid #dddddd;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #222;
+}
+.chip:hover {
+  border-color: #222;
+}
+.chip b {
+  font: 500 12.5px var(--font-sans);
+  color: #6a6a6a;
+}
+.chip-on,
+.chip-on:hover {
+  background: #222;
+  border-color: #222;
+  color: #fff;
+}
+.chip-on b {
+  color: rgb(255 255 255 / 0.7);
+}
+/* tiêu đề trong thẻ */
+.card > h2:first-child,
+.card .row-between > h2,
+details.card > summary strong {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.card {
+  padding: 20px 24px;
+}
+/* nhãn VIP / Messenger: viên tròn */
+.vip-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #f5b70a;
+  color: #0f1e36;
+  font: 700 10.5px/17px var(--font-sans);
+  letter-spacing: 0.04em;
+}
+.src {
+  padding: 1px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: #eaf1fe;
+  color: #0b3d91;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+}
+/* bảng trong thẻ: sát mép thẻ (thẻ lề 24px) */
+.table-wrap {
+  margin: 0 -24px;
+}
+.card > .table-wrap:first-child {
+  margin-top: -20px;
+}
+/* thẻ đồng thời là vùng cuộn bảng: không lề âm */
+.card.table-wrap {
+  margin: 0;
+  padding: 0;
+}
+@media (max-width: 720px) {
+  .card {
+    padding: 14px;
+  }
+  .table-wrap {
+    margin: 0 -14px;
+  }
+  .card > .table-wrap:first-child {
+    margin-top: -14px;
+  }
 }
