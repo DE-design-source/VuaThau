@@ -44,7 +44,17 @@ export function fillCover(el, id) {
 export function stageLabel(stage) {
   const s = (stage || '').trim()
   if (!s) return 'Công trình'
-  const short = { 'Đào móng / làm móng': 'Làm móng', 'Xây phần thô': 'Phần thô', 'Đã hoàn công': 'Hoàn công' }[s]
+  // 8 giai đoạn (18/11/2026) + tên cũ (hồ sơ trước đó)
+  const short = {
+    'Chuẩn bị mặt bằng': 'Mặt bằng',
+    'Ép cọc, đào móng': 'Ép cọc',
+    'Thi công móng': 'Làm móng',
+    'Xây phần thô': 'Phần thô',
+    'Xây tường, đổ mái': 'Tường, mái',
+    'Điện nước âm tường': 'Điện nước',
+    'Đào móng / làm móng': 'Làm móng',
+    'Đã hoàn công': 'Bàn giao',
+  }[s]
   if (short) return short
   return s.length > 16 ? s.slice(0, 15) + '…' : s
 }

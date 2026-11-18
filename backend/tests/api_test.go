@@ -691,7 +691,7 @@ func TestNghiemThuFlow(t *testing.T) {
 	expectStatus(t, r, http.StatusOK)
 	var cfg service.Config
 	decodeData(t, r, &cfg)
-	if cfg.MinPhotos != 5 || cfg.Pay[5] != 35000 || cfg.Pay[6] != 50000 || len(cfg.Stages) != 4 {
+	if cfg.MinPhotos != 5 || cfg.Pay[5] != 35000 || cfg.Pay[6] != 50000 || len(cfg.Stages) != 8 {
 		t.Fatalf("config: %s", r.Raw)
 	}
 

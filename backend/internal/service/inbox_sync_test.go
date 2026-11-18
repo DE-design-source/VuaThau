@@ -28,8 +28,9 @@ func TestParseCoord(t *testing.T) {
 
 func TestStageOf(t *testing.T) {
 	for in, want := range map[string]string{
-		"Hoàn thiện cơ bản": model.Stages[2], "Đang làm móng": model.Stages[0], "Đổ sàn tầng 2": model.Stages[1],
-		"Xây thô": model.Stages[1], "Đã hoàn công": model.Stages[3], "": "", "không rõ": "",
+		"Hoàn thiện cơ bản": model.Stages[6], "Đang làm móng": model.Stages[2], "Đổ sàn tầng 2": model.Stages[3],
+		"Xây thô": model.Stages[3], "Đã hoàn công": model.Stages[7], "Ép cọc": model.Stages[1], "Đổ mái": model.Stages[4],
+		"Đi điện nước": model.Stages[5], "Dọn mặt bằng": model.Stages[0], "": "", "không rõ": "",
 	} {
 		if got := stageOf(in); got != want {
 			t.Errorf("stageOf(%q) = %q, muốn %q", in, got, want)
