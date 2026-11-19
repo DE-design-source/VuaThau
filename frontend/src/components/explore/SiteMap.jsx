@@ -30,6 +30,18 @@ function cssVar(name, fallback) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
 }
 
+// Nền bản đồ: Vietmap (Hoàng Sa, Trường Sa đúng chủ quyền; máy chủ có VIETMAP_API_KEY) nếu có, không thì nền cũ OpenFreeMap.
+let basemap = null
+function pickBasemap() {
+  basemap ??= fetch('/map-style/vn.json').then(
+    (r) => (r.ok ? { style: '/map-style/vn.json', attribution: '&copy; <a href="https://vietmap.vn" target="_blank" rel="noreferrer">VIETMAP</a>' } : null),
+    () => null,
+  )
+  return basemap.then(
+    (v) => v || { style: '/map-style.json', attribution: '&copy; OpenFreeMap &copy; OpenMapTiles &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' },
+  )
+}
+
 // Ranh giới 34 tỉnh: tải 1 lần, dùng lại khi đổi trang
 let provincesGeo = null
 function loadProvinces() {
@@ -74,7 +86,7 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
   useEffect(() => {
     const m = L.map(el.current, { zoomControl: false, minZoom: 5 }).setView(VN_CENTER, 6)
     L.control.zoom({ position: 'topright' }).addTo(m)
-    // Nền kiểu Airbnb: bản đồ vector OpenFreeMap tô lại màu (/map-style.json, cùng file với app CTV), nét ở mọi mức phóng.
+    // Nền vector: Vietmap nếu máy chủ có key (pickBasemap), không thì OpenFreeMap tô lại màu (/map-style.json, cùng file với app CTV).
     // Máy không vẽ được (không có WebGL) hoặc tải kiểu lỗi: quay về nền OSM qua máy chủ mình (/tiles).
     const osm = () =>
       L.tileLayer('/tiles/{z}/{x}/{y}.png', {
@@ -83,25 +95,26 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Ranh giới: OCHA/HDX',
       }).addTo(m)
     let vec = null
+    let gone = false
     const fallback = () => {
       if (!vec) return
       m.removeLayer(vec)
       vec = null
       osm()
     }
-    try {
-      vec = maplibreGL({
-        style: '/map-style.json',
-        attribution: '&copy; OpenFreeMap &copy; OpenMapTiles &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Ranh giới: OCHA/HDX',
-      }).addTo(m)
-      const gl = vec.getMaplibreMap()
-      let loaded = false
-      gl.once('load', () => (loaded = true))
-      gl.on('error', (e) => !loaded && /style|Failed to fetch|404/i.test(String(e?.error?.message || e?.error)) && fallback())
-    } catch {
-      fallback()
-      if (!vec) osm()
-    }
+    pickBasemap().then((b) => {
+      if (gone) return
+      try {
+        vec = maplibreGL({ style: b.style, attribution: `${b.attribution} · Ranh giới: OCHA/HDX` }).addTo(m)
+        const gl = vec.getMaplibreMap()
+        let loaded = false
+        gl.once('load', () => (loaded = true))
+        gl.on('error', (e) => !loaded && /style|Failed to fetch|404/i.test(String(e?.error?.message || e?.error)) && fallback())
+      } catch {
+        fallback()
+        if (!vec) osm()
+      }
+    })
     const pane = m.createPane('areas')
     pane.style.zIndex = 350
     const zoom = () => {
@@ -126,6 +139,7 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
     const node = el.current
     node.addEventListener('click', onClick)
     return () => {
+      gone = true
       node.removeEventListener('click', onClick)
       m.remove()
     }

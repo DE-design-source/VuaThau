@@ -46,6 +46,8 @@ type Config struct {
 
 	// Tra địa chỉ từ GPS: có key Google thì dùng Google Geocoding, không thì OpenStreetMap.
 	GoogleMapsKey string
+	// Nền bản đồ Vietmap (Hoàng Sa, Trường Sa đúng chủ quyền) cho web: /map-style/vn.json. Trống: nền cũ.
+	VietmapKey string
 
 	// Đăng nhập / đăng ký bằng Google trong app: OAuth client loại Web (id đầu tiên gửi cho app).
 	GoogleClientIDs []string
@@ -88,6 +90,7 @@ func Load() (*Config, error) {
 		AIModel:            getEnv("AI_MODEL", "claude-opus-5-5"),
 		AIWorkspace:        getEnv("ANTHROPIC_WORKSPACE_ID", ""),
 		GoogleMapsKey:      getEnv("GOOGLE_MAPS_API_KEY", ""),
+		VietmapKey:         getEnv("VIETMAP_API_KEY", ""),
 		GoogleClientIDs:    splitCSV(getEnv("GOOGLE_CLIENT_IDS", "")),
 		GDriveClientID:     getEnv("GDRIVE_CLIENT_ID", ""),
 		GDriveClientSecret: getEnv("GDRIVE_CLIENT_SECRET", ""),

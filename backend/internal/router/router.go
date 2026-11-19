@@ -159,9 +159,10 @@ func New(d Deps) http.Handler {
 		tl = handler.NewTileHandler(d.Config.DataDir)
 	}
 	tiles.HandleFunc("GET /tiles/{z}/{x}/{file}", tl.Serve)
+	tiles.HandleFunc("GET /map-style/vn.json", handler.NewBasemapHandler(d.Config.VietmapKey).Style)
 	limited := hd
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/tiles/") {
+		if strings.HasPrefix(r.URL.Path, "/tiles/") || r.URL.Path == "/map-style/vn.json" {
 			tiles.ServeHTTP(w, r)
 			return
 		}
