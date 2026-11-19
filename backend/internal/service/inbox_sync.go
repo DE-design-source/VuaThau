@@ -250,8 +250,9 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 	if err != nil {
 		return false, false, err
 	}
-	if len(l.Videos) > 0 { // video chỉ để xem thêm: kéo về ở mọi trạng thái
-		if _, err := s.inboxVideos(ctx, hid, l.Videos); err != nil {
+	newVideos := 0
+	if len(l.Videos) > 0 { // video kéo về ở mọi trạng thái; hồ sơ đang chờ duyệt có thêm video thì tính lại tiền (thưởng video)
+		if newVideos, err = s.inboxVideos(ctx, hid, l.Videos); err != nil {
 			return false, false, err
 		}
 	}
@@ -300,6 +301,11 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 		}
 		s.note(ctx, sys, ActInbox, hid, truncate(note, MaxReasonLen))
 	} else if ok == 0 {
+		if newVideos > 0 && h.Status == model.StatusPending {
+			if err := s.repriceInbox(ctx, h, 0); err != nil {
+				return false, false, err
+			}
+		}
 		return false, false, nil // không có ảnh mới
 	}
 	if !created { // hồ sơ đang chờ duyệt có thêm ảnh: cập nhật số tiền theo ảnh đạt, giữ trạng thái
@@ -340,7 +346,11 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 	if hit != nil && !hit.Block {
 		warn = truncate(hit.Warn, MaxReasonLen)
 	}
-	if err := s.houses.Submit(ctx, hid, st.AmountFor(valid, model.ScopeOut), lat, lng, warn, s.drive != nil); err != nil {
+	amount, err := s.priceOf(ctx, st, hid, valid, model.ScopeOut)
+	if err != nil {
+		return false, false, err
+	}
+	if err := s.houses.Submit(ctx, hid, amount, lat, lng, warn, s.drive != nil); err != nil {
 		return false, false, err
 	}
 	s.assignProvince(ctx, hid)
@@ -417,13 +427,20 @@ func (s *houseService) repriceInbox(ctx context.Context, h *model.House, added i
 	if err != nil {
 		return err
 	}
-	amount := st.AmountFor(FillProblems(ps, s.now()), h.EffScope())
+	amount, err := s.priceOf(ctx, st, h.ID, FillProblems(ps, s.now()), h.EffScope())
+	if err != nil {
+		return err
+	}
 	if amount != h.Amount {
 		if err := s.houses.SetAmount(ctx, h.ID, amount); err != nil {
 			return err
 		}
 	}
-	s.note(ctx, &model.User{}, ActInbox, h.ID, fmt.Sprintf("Messenger: thêm %d ảnh, tiền %s → %s", added, Money(h.Amount), Money(amount)))
+	what := fmt.Sprintf("thêm %d ảnh", added)
+	if added == 0 {
+		what = "thêm video"
+	}
+	s.note(ctx, &model.User{}, ActInbox, h.ID, fmt.Sprintf("Messenger: %s, tiền %s → %s", what, Money(h.Amount), Money(amount)))
 	return nil
 }
 

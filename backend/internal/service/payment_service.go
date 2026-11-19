@@ -100,6 +100,8 @@ type Config struct {
 	Provinces []province.Province `json:"provinces"`
 	// Chức năng / loại CTV (admin sửa ở Cấu hình)
 	CTVKinds []string `json:"ctv_kinds"`
+	// Thưởng hồ sơ có video (app hiện cho CTV)
+	VideoBonus int64 `json:"video_bonus"`
 }
 
 type PaymentService interface {
@@ -165,7 +167,7 @@ func (s *paymentService) Config(ctx context.Context, googleClientID string) (*Co
 	}
 	return &Config{Statuses: model.Statuses, StatusOrder: model.StatusOrder, MinPhotos: st.MinPhotos, MaxPhotos: model.MaxPhotos,
 		PayMin: st.PayMin, Pay: pay, Stages: model.Stages, Banks: Banks, Reasons: Reasons, GoogleClientID: googleClientID, Provinces: province.All(),
-		CTVKinds: kinds}, nil
+		CTVKinds: kinds, VideoBonus: st.VideoBonus}, nil
 }
 
 func (s *paymentService) Settings(ctx context.Context) (model.Settings, error) {
@@ -197,6 +199,8 @@ func (s *paymentService) SaveSettings(ctx context.Context, by *model.User, n mod
 		return "", old, fail(ErrInvalidInput, "Chưa lưu: tiền 1 hồ sơ phải từ 0 đến 10.000.000đ.")
 	case n.PriceOut < 0 || n.PriceOut > n.PriceMore:
 		return "", old, fail(ErrInvalidInput, "Chưa lưu: tiền hồ sơ chỉ chụp ngoài phải từ 0 đến tiền hồ sơ đủ ảnh cao nhất (%d).", n.PriceMore)
+	case n.VideoBonus < 0 || n.VideoBonus > 1_000_000:
+		return "", old, fail(ErrInvalidInput, "Chưa lưu: thưởng video phải từ 0 đến 1.000.000đ.")
 	case n.PayMin < 1 || n.PayMin > 100:
 		return "", old, fail(ErrInvalidInput, "Chưa lưu: số hồ sơ để được thanh toán phải từ 1 đến 100.")
 	}
@@ -219,6 +223,7 @@ func (s *paymentService) SaveSettings(ctx context.Context, by *model.User, n mod
 	add("Số ngày chặn chụp trùng", int64(old.DupDays), int64(n.DupDays))
 	add("Bán kính cùng công trình (m)", int64(old.DupRadiusM), int64(n.DupRadiusM))
 	add("Tiền tối đa hồ sơ chỉ chụp ngoài", old.PriceOut, n.PriceOut)
+	add("Thưởng hồ sơ có video", old.VideoBonus, n.VideoBonus)
 	_ = s.logs.Add(ctx, by.ID, ActSettings, nil, nil, strings.Join(diff, "; "))
 	return "Đã lưu cấu hình. Giá mới áp dụng cho hồ sơ gửi duyệt từ bây giờ, hồ sơ đã gửi giữ giá cũ.", n, nil
 }

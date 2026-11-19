@@ -76,10 +76,21 @@ type Settings struct {
 	DupRadiusM int `json:"dup_radius_m"`
 	// Hồ sơ chỉ chụp bên ngoài công trình: tiền tối đa (chụp cả trong lẫn ngoài thì theo PriceMin / PriceMore)
 	PriceOut int64 `json:"price_out"`
+	// Hồ sơ có ít nhất 1 video công trình (và đủ ảnh để được trả tiền): cộng thêm
+	VideoBonus int64 `json:"video_bonus"`
 }
 
 // DefaultSettings: giá trị khi bảng settings trống.
-var DefaultSettings = Settings{PriceMin: 35000, PriceMore: 50000, MinPhotos: 5, PayMin: 5, DupDays: 30, DupRadiusM: 50, PriceOut: 35000}
+var DefaultSettings = Settings{PriceMin: 35000, PriceMore: 50000, MinPhotos: 5, PayMin: 5, DupDays: 30, DupRadiusM: 50, PriceOut: 35000,
+	VideoBonus: 10000}
+
+// WithVideo: tiền hồ sơ cộng thưởng video (chỉ khi hồ sơ được trả tiền và có video).
+func (s Settings) WithVideo(amount int64, videos int) int64 {
+	if amount > 0 && videos > 0 {
+		return amount + s.VideoBonus
+	}
+	return amount
+}
 
 // AmountFor: tiền 1 hồ sơ theo số ảnh hợp lệ và loại chụp (chỉ ngoài: không quá PriceOut).
 func (s Settings) AmountFor(valid int, scope string) int64 {

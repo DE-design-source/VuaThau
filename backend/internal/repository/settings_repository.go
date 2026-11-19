@@ -52,6 +52,8 @@ func (r *settingsRepository) Get(ctx context.Context) (model.Settings, error) {
 			s.DupRadiusM = int(v)
 		case "price_out":
 			s.PriceOut = v
+		case "video_bonus":
+			s.VideoBonus = v
 		}
 	}
 	return s, rows.Err()
@@ -60,8 +62,9 @@ func (r *settingsRepository) Get(ctx context.Context) (model.Settings, error) {
 func (r *settingsRepository) Save(ctx context.Context, s model.Settings) error {
 	_, err := r.db.Exec(ctx, `INSERT INTO settings (k, v) VALUES
 		('price_min', $1), ('price_more', $2), ('min_photos', $3), ('pay_min', $4), ('dup_days', $5), ('dup_radius_m', $6),
-		('price_out', $7)
-		ON CONFLICT (k) DO UPDATE SET v = EXCLUDED.v`, s.PriceMin, s.PriceMore, s.MinPhotos, s.PayMin, s.DupDays, s.DupRadiusM, s.PriceOut)
+		('price_out', $7), ('video_bonus', $8)
+		ON CONFLICT (k) DO UPDATE SET v = EXCLUDED.v`, s.PriceMin, s.PriceMore, s.MinPhotos, s.PayMin, s.DupDays, s.DupRadiusM, s.PriceOut,
+		s.VideoBonus)
 	return err
 }
 

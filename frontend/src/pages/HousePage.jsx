@@ -153,6 +153,7 @@ function House({ id, d, reload }) {
               <div className="hp-price">
                 <b>{money(amount)}</b>
                 <span>tiền hồ sơ</span>
+                {(d.videos || []).length > 0 && d.video_bonus > 0 && amount > 0 && <small className="muted">gồm thưởng video {money(d.video_bonus)}</small>}
               </div>
               <div className="hp-box hp-box-2">
                 <div>

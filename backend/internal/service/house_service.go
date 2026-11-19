@@ -137,7 +137,8 @@ type HouseDetail struct {
 	AIFields  []string      `json:"ai_fields"`
 	Valid     int           `json:"valid"`
 	Pay       int64         `json:"pay"`
-	PayScope  map[string]int64 `json:"pay_scope"` // tiền theo từng loại chụp (nút chọn ở trang duyệt)
+	PayScope   map[string]int64 `json:"pay_scope"`   // tiền theo từng loại chụp (nút chọn ở trang duyệt), đã gồm thưởng video
+	VideoBonus int64            `json:"video_bonus"` // thưởng hồ sơ có video (Cấu hình)
 	Editable  bool          `json:"editable"`
 	QueueLeft int           `json:"queue_left"`
 	Journal   []JournalSet  `json:"journal"` // nhật ký ảnh công trình: bộ ảnh đã duyệt cùng công trình, theo giai đoạn
@@ -502,6 +503,15 @@ func (s *houseService) CheckPhoto(ctx context.Context, u *model.User, f Upload, 
 	return &CheckResult{Problems: PhotoProblems(&p, s.now()), AI: aiOK}, nil
 }
 
+// priceOf: tiền 1 hồ sơ: theo số ảnh đạt + loại chụp, cộng thưởng nếu có video.
+func (s *houseService) priceOf(ctx context.Context, st model.Settings, hid int64, valid int, scope string) (int64, error) {
+	vs, err := s.photos.Videos(ctx, hid)
+	if err != nil {
+		return 0, err
+	}
+	return st.WithVideo(st.AmountFor(valid, scope), len(vs)), nil
+}
+
 // CheckAIWait: lúc CTV vừa chụp, chờ AI đọc ảnh tối đa chừng này rồi trả lời trước ("AI xem lại khi tải lên");
 // AI vẫn đọc tiếp ở nền và lưu kết quả theo sha256, lúc nộp hồ sơ dùng lại không đọc lần nữa.
 const CheckAIWait = 10 * time.Second
@@ -802,7 +812,10 @@ func (s *houseService) Save(ctx context.Context, u *model.User, id int64, f mode
 	if hit != nil {
 		dup = truncate(hit.Warn, MaxReasonLen)
 	}
-	amount := st.AmountFor(valid, h.EffScope())
+	amount, err := s.priceOf(ctx, st, id, valid, h.EffScope())
+	if err != nil {
+		return "", false, err
+	}
 	if err := s.houses.Submit(ctx, id, amount, lat, lng, dup, s.drive != nil); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return "", false, fail(ErrConflict, "Hồ sơ vừa đổi trạng thái, tải lại trang nhé.")
@@ -858,14 +871,18 @@ func (s *houseService) Detail(ctx context.Context, u *model.User, id int64) (*Ho
 	if len(ps) > 0 {
 		h.CoverID = ptr(ps[0].ID)
 	}
-	d := &HouseDetail{House: h, Photos: ps, Logs: logs, Valid: valid, Pay: st.AmountFor(valid, h.EffScope()), QueueLeft: left,
-		PayScope: map[string]int64{model.ScopeOut: st.AmountFor(valid, model.ScopeOut), model.ScopeBoth: st.AmountFor(valid, model.ScopeBoth)},
-		Editable: u.Role == model.RoleCTV && model.Editable(h.Status), Todo: []string{}, BadFields: []string{},
-		Issues: []Issue{}, AIFields: []string{}}
 	vs, err := s.photos.Videos(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	d := &HouseDetail{House: h, Photos: ps, Logs: logs, Valid: valid, Pay: st.WithVideo(st.AmountFor(valid, h.EffScope()), len(vs)), QueueLeft: left,
+		PayScope: map[string]int64{
+			model.ScopeOut:  st.WithVideo(st.AmountFor(valid, model.ScopeOut), len(vs)),
+			model.ScopeBoth: st.WithVideo(st.AmountFor(valid, model.ScopeBoth), len(vs)),
+		},
+		VideoBonus: st.VideoBonus,
+		Editable:   u.Role == model.RoleCTV && model.Editable(h.Status), Todo: []string{}, BadFields: []string{},
+		Issues: []Issue{}, AIFields: []string{}}
 	d.Videos = s.withSrc(vs)
 	d.Steps = Steps(h, logs, m.Approved, st.PayMin)
 	if d.Journal, err = s.journal(ctx, u, h, st.DupRadiusM); err != nil {
@@ -1281,7 +1298,10 @@ func (s *houseService) SetScope(ctx context.Context, by *model.User, id int64, s
 	if err != nil {
 		return "", err
 	}
-	amount := st.AmountFor(FillProblems(ps, s.now()), scope)
+	amount, err := s.priceOf(ctx, st, id, FillProblems(ps, s.now()), scope)
+	if err != nil {
+		return "", err
+	}
 	if err := s.houses.SetScope(ctx, id, scope, amount); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return "", fail(ErrConflict, "Hồ sơ vừa đổi trạng thái, tải lại trang nhé.")

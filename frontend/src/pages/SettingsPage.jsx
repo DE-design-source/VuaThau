@@ -60,6 +60,7 @@ function Form({ vals, reload }) {
     ['min_photos', 'Số ảnh đạt tối thiểu của 1 hồ sơ', '1 đến 20'],
     ['price_min', `Tiền 1 hồ sơ đủ ${n} ảnh đạt`, 'đồng'],
     ['price_more', `Tiền 1 hồ sơ từ ${n + 1} ảnh đạt`, 'đồng'],
+    ['video_bonus', 'Thưởng hồ sơ có video công trình', 'đồng, cộng thêm khi hồ sơ có ít nhất 1 video và đủ ảnh để được trả tiền'],
     ['price_out', 'Tiền tối đa hồ sơ chỉ chụp bên ngoài', 'đồng. Admin chọn "Chỉ chụp ngoài" / "Trong + ngoài" khi duyệt; hồ sơ Messenger mặc định chỉ ngoài'],
     ['pay_min', 'Số hồ sơ đã duyệt để được thanh toán', '1 đến 100'],
     ['dup_days', 'Chặn chụp trùng: số ngày 1 công trình chỉ nhận 1 hồ sơ', '1 đến 365 ngày'],
