@@ -45,6 +45,7 @@ type MapPoint struct {
 	CTVName    string    `json:"ctv_name"`
 	Address    string    `json:"address"`
 	Contractor string    `json:"contractor"`
+	Stage      string    `json:"stage"` // giai đoạn thi công (nhãn trên thẻ)
 	Source     string    `json:"source"`
 	Province   string    `json:"province"`
 	At         time.Time `json:"at"`
@@ -394,7 +395,7 @@ func (r *houseRepository) CreateInbox(ctx context.Context, ctvID int64, extID st
 // MapPoints: hồ sơ có toạ độ (đã gửi duyệt) cho bản đồ.
 func (r *houseRepository) MapPoints(ctx context.Context, f HouseFilter) ([]MapPoint, error) {
 	where, args := f.where(false)
-	rows, err := r.db.Query(ctx, `SELECT h.id, h.lat, h.lng, h.status, h.ctv_id, u.name, h.address, h.contractor_name, h.source,
+	rows, err := r.db.Query(ctx, `SELECT h.id, h.lat, h.lng, h.status, h.ctv_id, u.name, h.address, h.contractor_name, h.stage, h.source,
 		COALESCE(h.submitted_at, h.created_at), COALESCE(h.province, '') `+houseFrom+`WHERE `+where+` AND h.lat IS NOT NULL AND h.lng IS NOT NULL
 		AND h.status <> 'nhap' ORDER BY h.id DESC LIMIT 20000`, args...)
 	if err != nil {
@@ -404,7 +405,7 @@ func (r *houseRepository) MapPoints(ctx context.Context, f HouseFilter) ([]MapPo
 	out := []MapPoint{}
 	for rows.Next() {
 		var p MapPoint
-		if err := rows.Scan(&p.ID, &p.Lat, &p.Lng, &p.Status, &p.CTVID, &p.CTVName, &p.Address, &p.Contractor, &p.Source, &p.At, &p.Province); err != nil {
+		if err := rows.Scan(&p.ID, &p.Lat, &p.Lng, &p.Status, &p.CTVID, &p.CTVName, &p.Address, &p.Contractor, &p.Stage, &p.Source, &p.At, &p.Province); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
