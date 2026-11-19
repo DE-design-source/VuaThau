@@ -6,10 +6,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"vuathau/backend/internal/model"
+	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/repository"
 )
 
@@ -23,13 +25,14 @@ type MeResult struct {
 
 // CTVDetail: 1 CTV cho admin / kế toán.
 type CTVDetail struct {
-	User        *model.User        `json:"user"`
-	Bank        model.Bank         `json:"bank"`
-	Money       model.Money        `json:"money"`
-	Rows        []model.House      `json:"rows"`
-	Counts      map[string]int     `json:"counts"`
-	Pays        []model.Payout     `json:"pays"`
-	Adjustments []model.Adjustment `json:"adjustments"`
+	User        *model.User            `json:"user"`
+	Bank        model.Bank             `json:"bank"`
+	Money       model.Money            `json:"money"`
+	Rows        []model.House          `json:"rows"`
+	Counts      map[string]int         `json:"counts"`
+	Pays        []model.Payout         `json:"pays"`
+	Adjustments []model.Adjustment     `json:"adjustments"`
+	Profile     *repository.CTVProfile `json:"profile"`
 }
 
 type AddStaffInput struct {
@@ -51,7 +54,6 @@ type AddCTVInput struct {
 }
 
 type UserService interface {
-
 	Me(ctx context.Context, u *model.User) (*MeResult, error)
 	UpdateBank(ctx context.Context, u *model.User, name, no, owner string) (*model.User, error)
 	ChangePassword(ctx context.Context, u *model.User, old, new string) (*model.User, error)
@@ -63,8 +65,30 @@ type UserService interface {
 	SetLocked(ctx context.Context, by *model.User, id int64, locked bool) (string, error)
 	ResetPassword(ctx context.Context, by *model.User, id int64, pw string) (string, error)
 
-	ListCTVs(ctx context.Context, q string, page int) ([]repository.CTVRow, int, int, error)
+	ListCTVs(ctx context.Context, f repository.CTVFilter, page int) ([]repository.CTVRow, int, int, error)
+	CTVFacets(ctx context.Context) (*CTVFacets, error)
 	CTV(ctx context.Context, id int64) (*CTVDetail, error)
+	SetCTVProfile(ctx context.Context, by *model.User, id int64, in CTVProfileInput) (string, error)
+	SaveKinds(ctx context.Context, by *model.User, kinds []string) ([]string, string, error)
+}
+
+// CTVFacets: lựa chọn của các ô lọc trang Cộng tác viên, kèm số CTV mỗi lựa chọn.
+type CTVFacets struct {
+	Regions []Facet `json:"regions"` // tỉnh có CTV (theo tên); value "-" = chưa rõ khu vực
+	Kinds   []Facet `json:"kinds"`   // danh sách chức năng + loại cũ CTV còn mang
+}
+
+type Facet struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
+// CTVProfileInput: admin sửa khu vực (mã tỉnh, '' = tự tính), chức năng, ghi chú của 1 CTV.
+type CTVProfileInput struct {
+	Region string `json:"region"`
+	Kind   string `json:"kind"`
+	Note   string `json:"note"`
 }
 
 type userService struct {
@@ -289,10 +313,121 @@ func (s *userService) ResetPassword(ctx context.Context, by *model.User, id int6
 
 func pages(found int) int { return max(1, (found+PageSize-1)/PageSize) }
 
-func (s *userService) ListCTVs(ctx context.Context, q string, page int) ([]repository.CTVRow, int, int, error) {
+func (s *userService) ListCTVs(ctx context.Context, f repository.CTVFilter, page int) ([]repository.CTVRow, int, int, error) {
 	page = max(1, page)
-	rows, found, err := s.repo.ListCTVs(ctx, strings.TrimSpace(q), PageSize, (page-1)*PageSize)
+	f.Q = strings.TrimSpace(f.Q)
+	if f.Bank != "co" && f.Bank != "chua" {
+		f.Bank = ""
+	}
+	rows, found, err := s.repo.ListCTVs(ctx, f, PageSize, (page-1)*PageSize)
 	return rows, found, page, err
+}
+
+func (s *userService) CTVFacets(ctx context.Context) (*CTVFacets, error) {
+	regions, kinds, err := s.repo.CTVFacets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	res := &CTVFacets{Regions: []Facet{}, Kinds: []Facet{}}
+	for code, n := range regions {
+		if code == "" {
+			continue
+		}
+		label := code
+		if p := province.ByCode(code); p != nil {
+			label = p.Name
+		}
+		res.Regions = append(res.Regions, Facet{Value: code, Label: label, Count: n})
+	}
+	slices.SortFunc(res.Regions, func(a, b Facet) int { return strings.Compare(a.Label, b.Label) })
+	if n := regions[""]; n > 0 {
+		res.Regions = append(res.Regions, Facet{Value: "-", Label: "Chưa rõ khu vực", Count: n})
+	}
+	list, err := s.settings.Kinds(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, k := range list {
+		res.Kinds = append(res.Kinds, Facet{Value: k, Label: k, Count: kinds[k]})
+	}
+	for k, n := range kinds { // loại đã bỏ khỏi danh sách nhưng còn CTV mang
+		if !slices.Contains(list, k) {
+			res.Kinds = append(res.Kinds, Facet{Value: k, Label: k, Count: n})
+		}
+	}
+	return res, nil
+}
+
+func (s *userService) SetCTVProfile(ctx context.Context, by *model.User, id int64, in CTVProfileInput) (string, error) {
+	u, err := s.repo.GetByID(ctx, id)
+	if errors.Is(err, repository.ErrNotFound) || (err == nil && u.Role != model.RoleCTV) {
+		return "", fail(ErrNotFound, "Không tìm thấy cộng tác viên.")
+	}
+	if err != nil {
+		return "", err
+	}
+	old, err := s.repo.Profile(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	in.Region, in.Kind, in.Note = strings.TrimSpace(in.Region), strings.TrimSpace(in.Kind), strings.TrimSpace(in.Note)
+	if in.Region != "" && province.ByCode(in.Region) == nil {
+		return "", fail(ErrInvalidInput, "Khu vực không hợp lệ.")
+	}
+	if in.Kind == "" {
+		in.Kind = old.Kind
+	}
+	if in.Kind != old.Kind {
+		kinds, err := s.settings.Kinds(ctx)
+		if err != nil {
+			return "", err
+		}
+		if !slices.Contains(kinds, in.Kind) {
+			return "", fail(ErrInvalidInput, "Chức năng không có trong danh sách (sửa danh sách ở Cấu hình).")
+		}
+	}
+	if utf8.RuneCountInString(in.Note) > 1000 {
+		return "", fail(ErrInvalidInput, "Ghi chú dài quá 1000 ký tự.")
+	}
+	if err := s.repo.SetProfile(ctx, id, in.Region, in.Kind, in.Note); err != nil {
+		return "", err
+	}
+	_ = s.logs.Add(ctx, by.ID, ActCTVProfile, nil, nil, fmt.Sprintf("%s (%s): khu vực %s, chức năng %s", u.Name, u.Username,
+		regionText(in.Region), in.Kind))
+	return fmt.Sprintf("Đã lưu thông tin %s.", u.Name), nil
+}
+
+func regionText(code string) string {
+	if p := province.ByCode(code); p != nil {
+		return p.Name
+	}
+	return "tự tính"
+}
+
+// SaveKinds: admin sửa danh sách chức năng CTV (bỏ trùng, bỏ ô trống, tối đa 20 loại, mỗi loại tối đa 40 ký tự).
+func (s *userService) SaveKinds(ctx context.Context, by *model.User, in []string) ([]string, string, error) {
+	kinds := []string{}
+	for _, k := range in {
+		k = strings.Join(strings.Fields(k), " ")
+		if k == "" || slices.Contains(kinds, k) {
+			continue
+		}
+		if utf8.RuneCountInString(k) > 40 {
+			return nil, "", fail(ErrInvalidInput, "Tên chức năng dài quá 40 ký tự: %s", k)
+		}
+		kinds = append(kinds, k)
+	}
+	if len(kinds) == 0 {
+		return nil, "", fail(ErrInvalidInput, "Cần ít nhất 1 chức năng.")
+	}
+	if len(kinds) > 20 {
+		return nil, "", fail(ErrInvalidInput, "Tối đa 20 chức năng.")
+	}
+	if err := s.settings.SaveKinds(ctx, kinds); err != nil {
+		return nil, "", err
+	}
+	_ = s.logs.Add(ctx, by.ID, ActSettings, nil, nil, "Chức năng CTV: "+strings.Join(kinds, ", "))
+	return kinds, "Đã lưu danh sách chức năng.", nil
 }
 
 func (s *userService) CTV(ctx context.Context, id int64) (*CTVDetail, error) {
@@ -319,6 +454,9 @@ func (s *userService) CTV(ctx context.Context, id int64) (*CTVDetail, error) {
 	if d.Pays, err = s.payments.Payouts(ctx, id); err != nil {
 		return nil, err
 	}
-	d.Adjustments, err = s.payments.Adjustments(ctx, id, false)
+	if d.Adjustments, err = s.payments.Adjustments(ctx, id, false); err != nil {
+		return nil, err
+	}
+	d.Profile, err = s.repo.Profile(ctx, id)
 	return d, err
 }

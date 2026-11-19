@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import usePage from '@/hooks/usePage'
 import useAct from '@/hooks/useAct'
-import { reloadCfg } from '@/hooks/useCfg'
+import useCfg, { reloadCfg } from '@/hooks/useCfg'
 import configApi from '@/api/configApi'
 import mapApi from '@/api/mapApi'
 import { Button, PageHead, PageState, Pill } from '@/components/ui'
@@ -68,6 +68,7 @@ function Form({ vals, reload }) {
     <section className="stack">
       <PageHead title="Cấu hình" sub="Giá mới áp dụng cho hồ sơ gửi duyệt từ lúc lưu; hồ sơ đã gửi giữ giá cũ. App CTV tự cập nhật." />
       <InboxBox />
+      <KindsBox />
       <form
         className="card stack narrow"
         onSubmit={(e) => {
@@ -88,5 +89,31 @@ function Form({ vals, reload }) {
         </Button>
       </form>
     </section>
+  )
+}
+
+/** Danh sách chức năng CTV (cột Chức năng, ô lọc ở trang Cộng tác viên): mỗi dòng 1 chức năng. */
+function KindsBox() {
+  const cfg = useCfg()
+  const [act, busy] = useAct(reloadCfg)
+  const [v, setV] = useState(null) // null: chưa sửa, hiện theo cấu hình
+  if (!cfg) return null
+  const text = v ?? (cfg.ctv_kinds || ['CTV']).join('\n')
+  const list = text.split('\n').map((x) => x.trim()).filter(Boolean)
+  return (
+    <form
+      className="card stack narrow"
+      onSubmit={(e) => {
+        e.preventDefault()
+        act('kinds', () => configApi.saveKinds(list)).then((j) => j && setV(null))
+      }}
+    >
+      <h2>Chức năng cộng tác viên</h2>
+      <p className="muted">Mỗi dòng 1 chức năng, dùng cho cột Chức năng và ô lọc ở trang Cộng tác viên. CTV mới mặc định là "CTV", nên giữ dòng này.</p>
+      <textarea className="input" rows={Math.max(3, list.length + 1)} value={text} onChange={(e) => setV(e.target.value)} />
+      <Button type="submit" loading={busy === 'kinds'} disabled={v === null || !list.length}>
+        Lưu danh sách chức năng
+      </Button>
+    </form>
   )
 }

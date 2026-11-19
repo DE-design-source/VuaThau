@@ -1,4 +1,5 @@
-// Danh sách cộng tác viên (/ctvs): tìm theo tên, SĐT, email; số hồ sơ, chờ duyệt, đã duyệt, đã trả, còn nợ.
+// Danh sách cộng tác viên (/ctvs): tìm theo tên, SĐT, email, ghi chú; lọc theo khu vực, chức năng, tài khoản ngân hàng.
+// Cột: SĐT, khu vực (admin chọn hoặc tỉnh chụp nhiều nhất), chức năng, số tài khoản, số hồ sơ, tiền, ghi chú.
 // Admin: tạo tài khoản CTV (đăng nhập app bằng SĐT + mật khẩu admin đặt).
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -8,7 +9,7 @@ import useAuth from '@/hooks/useAuth'
 import useCfg from '@/hooks/useCfg'
 import ctvApi from '@/api/ctvApi'
 import { Button, Empty, Icon, PageHead, PageState, Pager, Pill } from '@/components/ui'
-import { money, vnDate } from '@/utils/format'
+import { bankParts, money, vnDate } from '@/utils/format'
 
 const APP_URL = 'https://map.vuathau.com.vn/tai-app'
 const EMPTY = { name: '', phone: '', password: '', bank_name: '', bank_no: '', bank_owner: '' }
@@ -125,25 +126,41 @@ function AddCtv({ reload, onClose }) {
   )
 }
 
+const BANK_OPTS = [
+  { value: '', label: 'Tất cả' },
+  { value: 'co', label: 'Đã có' },
+  { value: 'chua', label: 'Chưa có' },
+]
+const PHONE_RE = /^\+?\d[\d\s.]{7,}$/
+
 export default function CtvListPage() {
   const [sp, setSp] = useSearchParams()
-  const cur = { q: sp.get('q') || '', page: sp.get('page') || '' }
-  const { data: d, err, busy, reload } = usePage(() => ctvApi.list(cur), [cur.q, cur.page])
+  const cur = { q: sp.get('q') || '', region: sp.get('region') || '', kind: sp.get('kind') || '', bank: sp.get('bank') || '', page: sp.get('page') || '' }
+  const { data: d, err, busy, reload } = usePage(() => ctvApi.list(cur), [cur.q, cur.region, cur.kind, cur.bank, cur.page])
   const [q, setQ] = useState(cur.q)
   const { role } = useAuth()
+  const cfg = useCfg()
   const [adding, setAdding] = useState(false)
   if (!d) return <PageState err={err} retry={reload} />
   const rows = d.rows || []
-  const go = ({ q: nq = cur.q, page }) => {
-    const next = {}
-    if (nq) next.q = nq
-    if (page > 1) next.page = String(page)
-    setSp(next)
+  const facets = d.facets || {}
+  const provName = Object.fromEntries((cfg?.provinces || []).map((p) => [p.code, p.name]))
+  // đổi bộ lọc: về trang 1
+  const go = (patch) => {
+    const next = { ...cur, page: '', ...patch }
+    setSp(Object.fromEntries(Object.entries(next).filter(([k, v]) => v && !(k === 'page' && Number(v) <= 1))))
   }
+  const opts = (list = [], all = 'Tất cả') => [{ value: '', label: all }, ...list.map((x) => ({ value: x.value, label: `${x.label} (${x.count})` }))]
+  const selects = [
+    { key: 'region', label: 'Khu vực', options: opts(facets.regions, 'Mọi khu vực') },
+    { key: 'kind', label: 'Chức năng', options: opts(facets.kinds, 'Mọi chức năng') },
+    { key: 'bank', label: 'Tài khoản NH', options: BANK_OPTS },
+  ]
+  const filtered = Boolean(cur.q || cur.region || cur.kind || cur.bank)
 
   return (
     <section className="stack">
-      <PageHead title="Cộng tác viên" sub={`${d.found} người. CTV tự đăng ký trên app, hoặc admin tạo tài khoản ở đây.`}>
+      <PageHead title="Cộng tác viên" sub={`${d.found} người${filtered ? ' theo bộ lọc' : ''}. CTV tự đăng ký trên app, hoặc admin tạo tài khoản ở đây.`}>
         {role === 'admin' && !adding && (
           <Button onClick={() => setAdding(true)}>
             <Icon name="plus" size={16} /> Tạo tài khoản CTV
@@ -152,61 +169,117 @@ export default function CtvListPage() {
       </PageHead>
       {adding && <AddCtv reload={reload} onClose={() => setAdding(false)} />}
       <form
-        className="card filters"
+        className="card filters ctv-filters"
         onSubmit={(e) => {
           e.preventDefault()
           go({ q })
         }}
       >
-        <input className="input" placeholder="Tìm tên, SĐT, email" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="input" placeholder="Tìm tên, SĐT, email, ghi chú" value={q} onChange={(e) => setQ(e.target.value)} />
+        {selects.map((x) => (
+          <label key={x.key} className="ctv-sel">
+            <span>{x.label}</span>
+            <select className="input" value={cur[x.key]} onChange={(e) => go({ [x.key]: e.target.value })} aria-label={x.label}>
+              {x.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
         <Button type="submit" loading={busy}>
           Tìm
         </Button>
+        {filtered && (
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={() => {
+              setQ('')
+              setSp({})
+            }}
+          >
+            Bỏ lọc
+          </Button>
+        )}
       </form>
       <div className="card">
         {rows.length ? (
           <div className="table-wrap">
-            <table className="table">
+            <table className="table ctv-table">
               <thead>
                 <tr>
                   <th>CTV</th>
+                  <th>Số điện thoại</th>
+                  <th>Khu vực</th>
+                  <th>Chức năng</th>
+                  <th>Số tài khoản</th>
                   <th className="num">Hồ sơ</th>
                   <th className="num">Chờ duyệt</th>
                   <th className="num">Đã duyệt</th>
                   <th className="num">Đã trả</th>
                   <th className="num">Còn nợ</th>
                   <th>Nộp gần nhất</th>
+                  <th>Ghi chú</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id}>
-                    <td>
-                      <Link to={`/ctvs/${r.id}`}>
-                        <strong className="ctv-name">{r.name}</strong>
-                      </Link>{' '}
-                      {r.locked === 1 && <Pill tone="bad">Đã khoá</Pill>}
-                      {r.locked === 2 && <Pill>Đã xoá</Pill>}
-                      <small className="muted d-block">
-                        {r.username}
-                        {r.email ? ` · ${r.email}` : ''}
-                      </small>
-                    </td>
-                    <td className="num">{r.houses}</td>
-                    <td className="num">{r.waiting}</td>
-                    <td className="num">{r.approved}</td>
-                    <td className="num">{money(r.paid)}</td>
-                    <td className="num">{money(r.owed)}</td>
-                    <td className="muted">{vnDate(r.last_at) || '—'}</td>
-                  </tr>
-                ))}
+                {rows.map((r) => {
+                  const b = bankParts(r.bank)
+                  return (
+                    <tr key={r.id}>
+                      <td>
+                        <Link to={`/ctvs/${r.id}`}>
+                          <strong className="ctv-name">{r.name}</strong>
+                        </Link>{' '}
+                        {r.locked === 1 && <Pill tone="bad">Đã khoá</Pill>}
+                        {r.locked === 2 && <Pill>Đã xoá</Pill>}
+                        {r.email && <small className="muted d-block">{r.email}</small>}
+                      </td>
+                      <td className="nowrap">{PHONE_RE.test(r.username) ? r.username : <span className="muted">{r.username}</span>}</td>
+                      <td className="nowrap">
+                        {r.region ? (
+                          <span title={r.region_auto ? 'Tự tính: tỉnh CTV chụp nhiều công trình nhất' : 'Admin chọn'}>
+                            {provName[r.region] || r.region}
+                            {r.region_auto && <small className="muted d-block">tự tính</small>}
+                          </span>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                      <td className="nowrap">{r.kind || '—'}</td>
+                      <td className="nowrap">
+                        {b.no ? (
+                          <>
+                            {b.no}
+                            <small className="muted d-block">{b.name}</small>
+                          </>
+                        ) : r.bank ? (
+                          <small>{r.bank}</small>
+                        ) : (
+                          <span className="muted">Chưa có</span>
+                        )}
+                      </td>
+                      <td className="num">{r.houses}</td>
+                      <td className="num">{r.waiting}</td>
+                      <td className="num">{r.approved}</td>
+                      <td className="num">{money(r.paid)}</td>
+                      <td className="num">{money(r.owed)}</td>
+                      <td className="muted nowrap">{vnDate(r.last_at) || '—'}</td>
+                      <td className="ctv-note" title={r.note || ''}>
+                        {r.note || <span className="muted">—</span>}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
         ) : (
-          <Empty title="Không tìm thấy cộng tác viên" />
+          <Empty title="Không tìm thấy cộng tác viên" text={filtered ? 'Thử bỏ bớt bộ lọc.' : undefined} />
         )}
-        <Pager page={d.page} pages={d.pages} onGo={(p) => go({ page: p })} />
+        <Pager page={d.page} pages={d.pages} onGo={(p) => go({ page: String(p) })} />
       </div>
     </section>
   )

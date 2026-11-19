@@ -1,14 +1,17 @@
 import axiosClient, { cleanParams } from './axiosClient'
 
 const ctvApi = {
-  /** { rows, found, page, pages } */
-  list: ({ q, page } = {}) => axiosClient.get('/ctvs', { params: cleanParams({ q, page }) }),
+  /** Lọc: q, region (mã tỉnh, "-" = chưa rõ), kind (chức năng), bank ("co" | "chua") -> { rows, found, page, pages, facets } */
+  list: ({ q, region, kind, bank, page } = {}) => axiosClient.get('/ctvs', { params: cleanParams({ q, region, kind, bank, page }) }),
+
+  /** Admin: khu vực (mã tỉnh, '' = tự tính), chức năng, ghi chú -> { message } */
+  setProfile: (id, { region, kind, note }) => axiosClient.put(`/ctvs/${id}/profile`, { region, kind, note }),
 
   /** Admin tạo tài khoản CTV (đăng nhập app bằng SĐT) -> { message, user } */
   add: ({ name, phone, password, bank_name, bank_no, bank_owner }) =>
     axiosClient.post('/ctvs', { name, phone, password, bank_name, bank_no, bank_owner }),
 
-  /** { user, bank, money, rows, counts, pays, adjustments } */
+  /** { user, bank, money, rows, counts, pays, adjustments, profile: { region, region_auto, kind, note } } */
   get: (id) => axiosClient.get(`/ctvs/${id}`),
 
   /** Thưởng (> 0) / trừ (< 0) -> { message } */

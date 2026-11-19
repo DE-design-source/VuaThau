@@ -9,6 +9,9 @@ const configApi = {
 
   /** Admin: cùng dạng -> { message, settings } */
   saveSettings: (s) => axiosClient.put('/settings', s),
+
+  /** Admin: danh sách chức năng CTV -> { message, kinds } */
+  saveKinds: (kinds) => axiosClient.put('/ctv-kinds', { kinds }),
 }
 
 export default configApi

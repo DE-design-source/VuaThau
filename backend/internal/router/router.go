@@ -123,6 +123,8 @@ func New(d Deps) http.Handler {
 	mux.Handle("POST /api/v1/ctvs", role(u.AddCTV, admin))
 	mux.Handle("GET /api/v1/map", role(h.Map, admin, ketoan))
 	mux.Handle("GET /api/v1/ctvs/{id}", role(u.CTV, admin, ketoan))
+	mux.Handle("PUT /api/v1/ctvs/{id}/profile", role(u.CTVProfile, admin))
+	mux.Handle("PUT /api/v1/ctv-kinds", role(u.CTVKinds, admin))
 	mux.Handle("POST /api/v1/ctvs/{id}/adjustments", role(p.AddAdjustment, admin, ketoan))
 	mux.Handle("DELETE /api/v1/adjustments/{id}", role(p.DeleteAdjustment, admin, ketoan))
 	mux.Handle("GET /api/v1/batches", role(p.Batches, admin, ketoan))

@@ -3578,3 +3578,38 @@ details.card > summary strong {
   font-weight: 600;
   font-size: 13px;
 }
+
+/* ---------- Trang Cộng tác viên: ô lọc + cột mới (19/11/2026) ---------- */
+.ctv-filters > .input {
+  flex: 2 1 240px;
+}
+.ctv-sel {
+  flex: 1 1 170px;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ctv-sel > span {
+  padding-left: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.ctv-filters {
+  align-items: flex-end;
+}
+.nowrap {
+  white-space: nowrap;
+}
+.ctv-note {
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ctv-profile textarea {
+  resize: vertical;
+}

@@ -1,9 +1,11 @@
-// 1 cộng tác viên (/ctvs/:id): tiền, hồ sơ, các lần nhận tiền, thưởng/trừ; admin khoá / đặt lại mật khẩu.
+// 1 cộng tác viên (/ctvs/:id): tiền, hồ sơ, các lần nhận tiền, thưởng/trừ; admin khoá / đặt lại mật khẩu;
+// khu vực, chức năng, ghi chú (admin sửa, kế toán chỉ xem).
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import usePage from '@/hooks/usePage'
 import useAct from '@/hooks/useAct'
 import useAuth from '@/hooks/useAuth'
+import useCfg from '@/hooks/useCfg'
 import ctvApi from '@/api/ctvApi'
 import userApi from '@/api/userApi'
 import { Button, HouseTable, Kpi, PageHead, PageState, Pill } from '@/components/ui'
@@ -41,6 +43,8 @@ export default function CtvPage() {
         <Kpi label="Chờ thanh toán" value={money(m.owed)} sub={`${m.approved} hồ sơ đã duyệt`} tone="ok" />
         <Kpi label="Đang chờ duyệt" value={money(m.reviewing)} tone="wait" />
       </div>
+
+      <Profile key={JSON.stringify(d.profile)} id={ctv.id} p={d.profile || {}} editable={admin && !deleted} act={act} busy={busy} />
 
       <div className="grid-2">
         <div className="card stack">
@@ -102,5 +106,76 @@ export default function CtvPage() {
         <HouseTable rows={d.rows || []} showCtv={false} />
       </div>
     </section>
+  )
+}
+
+/** Khu vực (để trống = tự tính theo tỉnh CTV chụp nhiều nhất), chức năng, ghi chú nội bộ. */
+function Profile({ id, p, editable, act, busy }) {
+  const cfg = useCfg()
+  const provinces = [...(cfg?.provinces || [])].sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+  const name = Object.fromEntries(provinces.map((x) => [x.code, x.name]))
+  const kinds = cfg?.ctv_kinds || ['CTV']
+  const init = { region: p.region || '', kind: p.kind || 'CTV', note: p.note || '' }
+  const [f, setF] = useState(init)
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
+  const dirty = Object.keys(init).some((k) => f[k] !== init[k])
+  const auto = p.region_auto ? `Tự tính: ${name[p.region_auto] || p.region_auto}` : 'Tự tính (chưa có công trình)'
+  return (
+    <form
+      className="card stack ctv-profile"
+      onSubmit={(e) => {
+        e.preventDefault()
+        act('profile', () => ctvApi.setProfile(id, f))
+      }}
+    >
+      <h2>Khu vực, chức năng, ghi chú</h2>
+      <div className="grid-2 tight">
+        <label className="field">
+          <span>Khu vực</span>
+          {editable ? (
+            <select className="input" value={f.region} onChange={set('region')}>
+              <option value="">{auto}</option>
+              {provinces.map((x) => (
+                <option key={x.code} value={x.code}>
+                  {x.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input className="input" readOnly value={p.region ? name[p.region] || p.region : auto} />
+          )}
+          <small className="muted">Để "Tự tính" thì lấy tỉnh CTV chụp nhiều công trình nhất.</small>
+        </label>
+        <label className="field">
+          <span>Chức năng</span>
+          {editable ? (
+            <select className="input" value={f.kind} onChange={set('kind')}>
+              {[...new Set([...kinds, f.kind])].map((k) => (
+                <option key={k}>{k}</option>
+              ))}
+            </select>
+          ) : (
+            <input className="input" readOnly value={p.kind || 'CTV'} />
+          )}
+          {editable && <small className="muted">Sửa danh sách chức năng ở Cấu hình.</small>}
+        </label>
+      </div>
+      <label className="field">
+        <span>Ghi chú khác</span>
+        <textarea className="input" rows={3} value={f.note} onChange={set('note')} readOnly={!editable} maxLength={1000} placeholder={editable ? 'Chỉ nhân viên thấy, CTV không thấy' : '—'} />
+      </label>
+      {editable && (
+        <div className="row-wrap">
+          <Button type="submit" loading={busy === 'profile'} disabled={!dirty}>
+            Lưu
+          </Button>
+          {dirty && (
+            <Button variant="ghost" type="button" onClick={() => setF(init)}>
+              Huỷ
+            </Button>
+          )}
+        </div>
+      )}
+    </form>
   )
 }

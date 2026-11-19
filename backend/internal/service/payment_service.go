@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"vuathau/backend/internal/model"
-	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/pkg/imaging"
 	"vuathau/backend/internal/pkg/xlsx"
+	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/repository"
 	"vuathau/backend/internal/storage"
 )
@@ -98,6 +98,8 @@ type Config struct {
 	GoogleClientID string                      `json:"google_client_id"`
 	// 34 tỉnh, thành từ 1/7/2025 (mã, tên, tỉnh cũ nhập vào)
 	Provinces []province.Province `json:"provinces"`
+	// Chức năng / loại CTV (admin sửa ở Cấu hình)
+	CTVKinds []string `json:"ctv_kinds"`
 }
 
 type PaymentService interface {
@@ -153,12 +155,17 @@ func (s *paymentService) Config(ctx context.Context, googleClientID string) (*Co
 	if err != nil {
 		return nil, err
 	}
+	kinds, err := s.settings.Kinds(ctx)
+	if err != nil {
+		return nil, err
+	}
 	pay := make([]int64, model.MaxPhotos+1)
 	for n := range pay {
 		pay[n] = st.Amount(n)
 	}
 	return &Config{Statuses: model.Statuses, StatusOrder: model.StatusOrder, MinPhotos: st.MinPhotos, MaxPhotos: model.MaxPhotos,
-		PayMin: st.PayMin, Pay: pay, Stages: model.Stages, Banks: Banks, Reasons: Reasons, GoogleClientID: googleClientID, Provinces: province.All()}, nil
+		PayMin: st.PayMin, Pay: pay, Stages: model.Stages, Banks: Banks, Reasons: Reasons, GoogleClientID: googleClientID, Provinces: province.All(),
+		CTVKinds: kinds}, nil
 }
 
 func (s *paymentService) Settings(ctx context.Context) (model.Settings, error) {

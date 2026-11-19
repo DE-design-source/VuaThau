@@ -5,6 +5,7 @@ import (
 
 	"vuathau/backend/internal/middleware"
 	"vuathau/backend/internal/pkg/response"
+	"vuathau/backend/internal/repository"
 	"vuathau/backend/internal/service"
 )
 
@@ -157,12 +158,54 @@ func (h *UserHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 
 // CTVs handles GET /api/v1/ctvs?q=&page=
 func (h *UserHandler) CTVs(w http.ResponseWriter, r *http.Request) {
-	rows, found, page, err := h.svc.ListCTVs(r.Context(), r.URL.Query().Get("q"), queryInt(r, "page", 1))
+	q := r.URL.Query()
+	f := repository.CTVFilter{Q: q.Get("q"), Region: q.Get("region"), Kind: q.Get("kind"), Bank: q.Get("bank")}
+	rows, found, page, err := h.svc.ListCTVs(r.Context(), f, queryInt(r, "page", 1))
 	if err != nil {
 		writeServiceError(w, err)
 		return
 	}
-	ok(w, map[string]any{"rows": rows, "found": found, "page": page, "pages": max(1, (found+service.PageSize-1)/service.PageSize)})
+	facets, err := h.svc.CTVFacets(r.Context())
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"rows": rows, "found": found, "page": page, "pages": max(1, (found+service.PageSize-1)/service.PageSize),
+		"facets": facets})
+}
+
+// CTVProfile handles PUT /api/v1/ctvs/{id}/profile (admin): khu vực, chức năng, ghi chú.
+func (h *UserHandler) CTVProfile(w http.ResponseWriter, r *http.Request) {
+	id, valid := idOr400(w, r, "id")
+	if !valid {
+		return
+	}
+	var in service.CTVProfileInput
+	if !bodyOr400(w, r, &in) {
+		return
+	}
+	m, err := h.svc.SetCTVProfile(r.Context(), me(r), id, in)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"message": m})
+}
+
+// CTVKinds handles PUT /api/v1/ctv-kinds (admin): {kinds: [...]}
+func (h *UserHandler) CTVKinds(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Kinds []string `json:"kinds"`
+	}
+	if !bodyOr400(w, r, &in) {
+		return
+	}
+	kinds, m, err := h.svc.SaveKinds(r.Context(), me(r), in.Kinds)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"message": m, "kinds": kinds})
 }
 
 // CTV handles GET /api/v1/ctvs/{id}
