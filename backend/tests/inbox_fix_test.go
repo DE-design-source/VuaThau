@@ -2,8 +2,6 @@ package tests
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 	"testing"
@@ -14,8 +12,7 @@ import (
 )
 
 // Sửa đồng bộ Messenger (góp ý 19/11/2026):
-//   - Lỗi 3: chatbot chỉ ghi ảnh biển báo gửi bổ sung, các đợt ảnh trước không thuộc hồ sơ nào -> lấy thêm ảnh lẻ
-//     (ưu tiên ảnh của hồ sơ, tối đa 20 ảnh); hồ sơ đang chờ duyệt có thêm ảnh thì tính lại tiền.
+//   - hồ sơ đang chờ duyệt có thêm ảnh thì tính lại tiền.
 //   - Lỗi 2: chatbot ghi 2 hồ sơ cho cùng 1 bộ ảnh, bản sau có địa chỉ chi tiết -> chép địa chỉ sang hồ sơ đã nhận.
 //   - Lỗi 1: hồ sơ Messenger mặc định "chỉ chụp ngoài" (tiền tối đa price_out), admin đổi loại chụp khi duyệt.
 func TestInboxFixes(t *testing.T) {
@@ -29,7 +26,6 @@ func TestInboxFixes(t *testing.T) {
 		t.Helper()
 		expectStatus(t, e.do(t, http.MethodPost, "/api/v1/admin/inbox/sync", admin.AccessToken, nil), http.StatusOK)
 	}
-	sha := func(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
 	type house struct {
 		id     int64
 		addr   string
@@ -54,21 +50,6 @@ func TestInboxFixes(t *testing.T) {
 	src.logs = append(src.logs, b)
 	src.mu.Unlock()
 
-	// --- Lỗi 3: 22 ảnh lẻ gửi trước + 1 ảnh biển báo chatbot ghi ---
-	duy := inbox.Contact{ID: "55555555-aaaa-4bbb-8ccc-000000000005", Name: "Thanh Duy"}
-	src.add(t, "sign", duy, 7100, 1, site("P. Phú Thủy, Lâm Đồng", "0912000222", "10.93°N, 108.10°E"))
-	src.mu.Lock()
-	signKey := src.logs[len(src.logs)-1].Images[0].Key
-	extra := []inbox.Image{}
-	for i := range 22 {
-		k := fmt.Sprintf("media/le-%d.jpg", i)
-		src.images[k] = photo(t, 7200+uint64(i))
-		extra = append(extra, inbox.Image{Key: k, Mime: "image/jpeg", SentAt: time.Now().Add(-time.Hour), Extra: true})
-	}
-	last := &src.logs[len(src.logs)-1]
-	last.Images = append(extra, last.Images...)
-	src.mu.Unlock()
-
 	sync()
 
 	a, okA := get("dup-a")
@@ -81,16 +62,6 @@ func TestInboxFixes(t *testing.T) {
 	// Lỗi 1: Messenger mặc định chỉ chụp ngoài: 6 ảnh vẫn chỉ 35.000đ
 	if a.scope != model.ScopeOut || a.amount != 35000 {
 		t.Fatalf("scope/amount: %+v", a)
-	}
-
-	s, ok := get("sign")
-	if !ok || s.photos != model.MaxPhotos {
-		t.Fatalf("ảnh lẻ: %+v", s)
-	}
-	var has bool
-	_ = e.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM photos WHERE house_id = $1 AND sha256 = $2)`, s.id, sha(src.images[signKey])).Scan(&has)
-	if !has {
-		t.Fatalf("ảnh biển báo của hồ sơ bị bỏ khi quá 20 ảnh")
 	}
 
 	// --- hồ sơ đang chờ duyệt có thêm ảnh: tính lại tiền, ghi lịch sử ---
@@ -112,6 +83,26 @@ func TestInboxFixes(t *testing.T) {
 	a, _ = get("dup-a")
 	if a.photos != 6 || a.amount != 35000 {
 		t.Fatalf("tính lại tiền: %+v", a)
+	}
+
+	// --- đọc lại 1 lần (resyncKey): gỡ ảnh lẻ từng gom vào hồ sơ chờ duyệt (không có trong bản ghi chatbot) ---
+	for i := range 3 {
+		if _, err := e.db.Exec(ctx, `INSERT INTO photos (house_id, sha256, dhash, mime) VALUES ($1, $2, 'ffffffffffffffff', 'image/jpeg')`,
+			a.id, fmt.Sprintf("%064d", 777+i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := e.db.Exec(ctx, `DELETE FROM sync_state WHERE k = 'inbox_resync_v3'`); err != nil {
+		t.Fatal(err)
+	}
+	sync()
+	if a, _ = get("dup-a"); a.photos != 6 || a.amount != 35000 {
+		t.Fatalf("gỡ ảnh lẻ: %+v", a)
+	}
+	var pruned int
+	_ = e.db.QueryRow(ctx, `SELECT count(*) FROM house_logs WHERE house_id = $1 AND note LIKE 'Messenger: gỡ 3 ảnh%'`, a.id).Scan(&pruned)
+	if pruned != 1 {
+		t.Fatalf("lịch sử gỡ ảnh lẻ: %d", pruned)
 	}
 
 	// --- admin đổi loại chụp: trong + ngoài = 50.000đ; kế toán không đổi được; sai loại: 400 ---

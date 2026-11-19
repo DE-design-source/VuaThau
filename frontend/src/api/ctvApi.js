@@ -11,8 +11,12 @@ const ctvApi = {
   add: ({ name, phone, password, bank_name, bank_no, bank_owner }) =>
     axiosClient.post('/ctvs', { name, phone, password, bank_name, bank_no, bank_owner }),
 
-  /** { user, bank, money, rows, counts, pays, adjustments, profile: { region, region_auto, kind, note } } */
+  /** { user, bank, money, rows, counts, pays, adjustments, profile: { region, region_auto, kind, note },
+   *  inbox: thông tin bên Messenger { name, phone, email, tags, notes, fields, labels } | null, inbox_at, login_phone } */
   get: (id) => axiosClient.get(`/ctvs/${id}`),
+
+  /** Admin đặt SĐT làm tên đăng nhập app -> { message } */
+  setLogin: (id, phone) => axiosClient.put(`/ctvs/${id}/login`, { phone }),
 
   /** Thưởng (> 0) / trừ (< 0) -> { message } */
   addAdjustment: (ctvId, { amount, reason }) => axiosClient.post(`/ctvs/${ctvId}/adjustments`, { amount, reason }),

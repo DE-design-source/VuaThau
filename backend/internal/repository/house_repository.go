@@ -49,8 +49,8 @@ type MapPoint struct {
 	Source     string    `json:"source"`
 	Province   string    `json:"province"`
 	At         time.Time `json:"at"`
-	LastAt     time.Time `json:"last_at"` // lần chụp gần nhất ở công trình này (service điền)
-	VIP        bool      `json:"vip"`     // chụp công trình này đầu tiên (service điền)
+	LastAt     time.Time `json:"last_at"`  // lần chụp gần nhất ở công trình này (service điền)
+	VIP        bool      `json:"vip"`      // chụp công trình này đầu tiên (service điền)
 	CoverID    *int64    `json:"cover_id"` // hình đại diện: ảnh đầu của lần chụp gần nhất ở công trình (service điền)
 }
 
@@ -92,6 +92,10 @@ type HouseRepository interface {
 	SiteCounts(ctx context.Context, since time.Time) ([]CTVSites, error)
 
 	Create(ctx context.Context, ctvID int64) (int64, error)
+	// Split: chuyển ảnh / video đã chọn của hồ sơ from sang 1 hồ sơ mới (cùng CTV, nguồn, ngày gửi, loại chụp),
+	// đang chờ duyệt, địa chỉ addr; toạ độ lấy trung bình ảnh chuyển sang (không có thì giữ của hồ sơ cũ).
+	// Ảnh / video không thuộc hồ sơ from bị bỏ qua. Trả mã hồ sơ mới và số ảnh, video đã chuyển.
+	Split(ctx context.Context, from int64, photoIDs, videoIDs []int64, addr string) (int64, int, int, error)
 	Delete(ctx context.Context, id int64) error
 	Get(ctx context.Context, id int64) (*model.House, error)
 	List(ctx context.Context, f HouseFilter, limit, offset int) ([]model.House, error)
@@ -412,6 +416,40 @@ func (r *houseRepository) MarkDuplicate(ctx context.Context, id, of int64, note 
 }
 
 // CreateInbox: hồ sơ nháp từ Messenger (ext_id = id project_logs). Đã có: trả id cũ, created = false.
+func (r *houseRepository) Split(ctx context.Context, from int64, photoIDs, videoIDs []int64, addr string) (int64, int, int, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var id int64
+	err = tx.QueryRow(ctx, `INSERT INTO houses (ctv_id, status, address, lat, lng, source, created_at, submitted_at, scope, scope_ai, note)
+		SELECT h.ctv_id, 'cho_duyet', $2,
+			COALESCE((SELECT avg(p.lat) FROM photos p WHERE p.house_id = h.id AND p.id = ANY($3) AND p.lat IS NOT NULL), h.lat),
+			COALESCE((SELECT avg(p.lng) FROM photos p WHERE p.house_id = h.id AND p.id = ANY($3) AND p.lng IS NOT NULL), h.lng),
+			h.source, h.created_at, h.submitted_at, h.scope, h.scope_ai, 'Tách từ hồ sơ #' || h.id
+		FROM houses h WHERE h.id = $1 AND h.status = 'cho_duyet' FOR UPDATE
+		RETURNING id`, from, addr, photoIDs).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, 0, 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	pt, err := tx.Exec(ctx, `UPDATE photos SET house_id = $1 WHERE house_id = $2 AND id = ANY($3)`, id, from, photoIDs)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	vt, err := tx.Exec(ctx, `UPDATE videos SET house_id = $1 WHERE house_id = $2 AND id = ANY($3)`, id, from, videoIDs)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE houses SET updated_at = NOW() WHERE id = $1`, from); err != nil {
+		return 0, 0, 0, err
+	}
+	return id, int(pt.RowsAffected()), int(vt.RowsAffected()), tx.Commit(ctx)
+}
+
 func (r *houseRepository) CreateInbox(ctx context.Context, ctvID int64, extID string, created time.Time) (int64, bool, error) {
 	var id int64
 	err := r.db.QueryRow(ctx, `INSERT INTO houses (ctv_id, source, ext_id, created_at) VALUES ($1, 'inbox', $2, $3)

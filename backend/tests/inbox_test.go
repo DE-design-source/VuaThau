@@ -23,6 +23,19 @@ type fakeInbox struct {
 	logs   []inbox.Log
 	images map[string][]byte
 	videos map[string][]string // mã hồ sơ -> khoá video (kéo video cho hồ sơ đã nhập)
+	people map[string]inbox.ContactInfo // contacts.id -> thông tin khách
+}
+
+func (f *fakeInbox) Contacts(_ context.Context, ids []string) (map[string]inbox.ContactInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[string]inbox.ContactInfo{}
+	for _, id := range ids {
+		if c, ok := f.people[id]; ok {
+			out[id] = c
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeInbox) Logs(_ context.Context, at time.Time, id string, limit int) ([]inbox.Log, error) {

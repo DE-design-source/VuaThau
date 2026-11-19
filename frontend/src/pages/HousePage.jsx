@@ -2,7 +2,7 @@
 //   trái: mã + trạng thái + AI verified, địa chỉ, giai đoạn; ảnh khảm (1 lớn + 4 nhỏ, xem tất cả); nhật ký công trình 8 bước;
 //         tiền hồ sơ, chuyển khoản cho CTV, tiến trình duyệt; lịch sử.
 //   phải: nút Trả lại / Từ chối / Duyệt hồ sơ (+ hồ sơ kế tiếp) hoặc Hoàn tác; thông tin công trình (sửa được); bản đồ.
-// Admin: duyệt / trả lại / từ chối, hoàn tác, sửa thông tin. Admin + kế toán: sửa tiền hồ sơ đã duyệt.
+// Admin: duyệt / trả lại / từ chối, hoàn tác, sửa thông tin, tách ảnh công trình khác (chatbot gộp nhầm) ra hồ sơ mới. Admin + kế toán: sửa tiền hồ sơ đã duyệt.
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import usePage from '@/hooks/usePage'
@@ -131,6 +131,7 @@ function House({ id, d, reload }) {
 
           {/* ảnh + video: khảm theo hàng 3 ô (ô rộng theo tỉ lệ ảnh), 2 hàng đầu; bấm nút xem tất cả */}
           {ps.length + (d.videos || []).length === 0 ? <p className="muted">Chưa có ảnh.</p> : <Mosaic ps={ps} videos={d.videos || []} />}
+          {admin && h.status === 'cho_duyet' && ps.length > 1 && <Split key={ps.length} id={id} ps={ps} videos={d.videos || []} act={act} busy={busy} />}
           {(issues.length > 0 || fieldsTodo.length > 0) && (
             <ul className="issues">
               {groupIssues(issues).map(([problem, idx]) => (
@@ -309,6 +310,78 @@ const SHOW_ROWS = 2 // số hàng khi thu gọn
 
 /** Ảnh khảm (thiết kế 19/11): hàng 3 ô cao bằng nhau, ô rộng theo tỉ lệ thật của ảnh / video (đo khi tải xong).
  *  Video đứng sau ảnh 1. Ảnh 1 có nhãn "Ảnh 1 · Đạt", ảnh khác có dấu ✓ / ✕. Bấm ảnh: xem lớn; bấm video: phát. */
+/** Tách hồ sơ: chatbot Messenger gắn ảnh nhiều công trình vào 1 hồ sơ. Admin chọn ảnh / video của công trình khác,
+ *  nhập địa chỉ -> hồ sơ mới cùng CTV (chờ duyệt), tiền 2 hồ sơ tính lại. */
+function Split({ id, ps, videos, act, busy }) {
+  const [open, setOpen] = useState(false)
+  const [pick, setPick] = useState({}) // 'p12' | 'v3' -> true
+  const [addr, setAddr] = useState('')
+  const [made, setMade] = useState(null) // mã hồ sơ vừa tách
+  const [at, setAt] = useState(null)
+  const toggle = (k) => setPick((x) => ({ ...x, [k]: !x[k] }))
+  const photos = ps.filter((p) => pick[`p${p.id}`]).map((p) => p.id)
+  const vids = videos.filter((v) => pick[`v${v.id}`]).map((v) => v.id)
+  const all = photos.length === ps.length
+  if (!open)
+    return (
+      <div className="hp-split-open">
+        <Button variant="secondary" onClick={() => setOpen(true)}>
+          Tách hồ sơ
+        </Button>
+        <small className="muted">Hồ sơ có ảnh của công trình khác (chatbot gộp nhầm)? Tách ra hồ sơ mới.</small>
+        {made && <Link to={`/houses/${made}`}>Mở hồ sơ vừa tách #{made}</Link>}
+      </div>
+    )
+  return (
+    <form
+      className="card stack hp-split"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (!window.confirm(`Tách ${photos.length} ảnh${vids.length ? `, ${vids.length} video` : ''} sang hồ sơ mới tại "${addr.trim()}"?`)) return
+        act('split', () => houseApi.split(id, { photos, videos: vids, address: addr })).then((j) => j?.new_id && setMade(j.new_id))
+      }}
+    >
+      <div className="row-between">
+        <h2>Tách hồ sơ</h2>
+        <Button variant="ghost" type="button" onClick={() => setOpen(false)}>
+          Đóng
+        </Button>
+      </div>
+      <p className="muted">Bấm chọn các ảnh{videos.length ? ' / video' : ''} của công trình khác. Bấm ⌕ ở góc ảnh để xem lớn.</p>
+      <div className="hp-split-grid">
+        {ps.map((p, i) => (
+          <label key={p.id} className={`hp-split-tile${pick[`p${p.id}`] ? ' on' : ''}`}>
+            <input type="checkbox" checked={!!pick[`p${p.id}`]} onChange={() => toggle(`p${p.id}`)} />
+            <AuthImage path={`/photos/${p.id}`} alt={`Ảnh ${i + 1}`} />
+            <span>{i + 1}</span>
+            <button type="button" className="hp-split-zoom" aria-label={`Xem lớn ảnh ${i + 1}`} onClick={(e) => (e.preventDefault(), setAt(i))}>
+              ⌕
+            </button>
+          </label>
+        ))}
+        {videos.map((v, i) => (
+          <label key={`v${v.id}`} className={`hp-split-tile${pick[`v${v.id}`] ? ' on' : ''}`}>
+            <input type="checkbox" checked={!!pick[`v${v.id}`]} onChange={() => toggle(`v${v.id}`)} />
+            <video src={v.src} preload="metadata" muted playsInline />
+            <span>Video {i + 1}</span>
+          </label>
+        ))}
+      </div>
+      <label className="field">
+        <span>Địa chỉ công trình tách ra</span>
+        <input className="input" value={addr} onChange={(e) => setAddr(e.target.value)} placeholder="VD: 6 Sơn Thủy 3, P. Ngũ Hành Sơn, Đà Nẵng" maxLength={500} />
+      </label>
+      <div className="row-wrap">
+        <Button type="submit" loading={busy === 'split'} disabled={!photos.length || all || !addr.trim()}>
+          Tách {photos.length ? `${photos.length} ảnh${vids.length ? `, ${vids.length} video` : ''}` : ''} ra hồ sơ mới
+        </Button>
+        {all && <small className="warn-text">Không tách hết ảnh: cả hồ sơ là công trình khác thì sửa địa chỉ.</small>}
+      </div>
+      <Lightbox ps={ps} at={at} setAt={setAt} />
+    </form>
+  )
+}
+
 function Mosaic({ ps, videos }) {
   const [all, setAll] = useState(false)
   const [at, setAt] = useState(null) // ảnh đang xem lớn

@@ -39,6 +39,12 @@ type CTVFilter struct {
 	Q, Region, Kind, Bank string
 }
 
+// InboxCTV: CTV có liên kết Messenger và các ô có thể điền từ Messenger.
+type InboxCTV struct {
+	ID                                 int64
+	Login, Contact, Region, Note, Bank string
+}
+
 // CTVProfile: khu vực, chức năng, ghi chú của 1 CTV (admin sửa). RegionAuto: tỉnh tự tính (gợi ý khi chưa chọn).
 type CTVProfile struct {
 	Region     string `json:"region"`
@@ -66,6 +72,16 @@ type UserRepository interface {
 	CTVFacets(ctx context.Context) (regions, kinds map[string]int, err error)
 	Profile(ctx context.Context, id int64) (*CTVProfile, error)
 	SetProfile(ctx context.Context, id int64, region, kind, note string) error
+	// InboxCTVs: CTV đã ghép với người gửi bên Messenger (để đồng bộ thông tin).
+	InboxCTVs(ctx context.Context) ([]InboxCTV, error)
+	// SetInboxInfo: lưu bản thông tin Messenger (JSON) của CTV.
+	SetInboxInfo(ctx context.Context, id int64, info []byte) error
+	// FillProfileIfEmpty: điền khu vực / ghi chú khi ô đó còn trống (không ghi đè admin).
+	FillProfileIfEmpty(ctx context.Context, id int64, region, note string) error
+	// InboxInfo: bản thông tin Messenger đã lưu (nil nếu chưa có) + lúc đồng bộ.
+	InboxInfo(ctx context.Context, id int64) ([]byte, *time.Time, error)
+	// SetLogin: đổi tên đăng nhập CTV (SĐT). Trùng người khác: ErrDuplicate.
+	SetLogin(ctx context.Context, id int64, login string) error
 	CountCTVs(ctx context.Context) (int, error)
 	CountNewCTVs(ctx context.Context, from, to time.Time) (int, error)
 }
@@ -264,6 +280,55 @@ func (r *userRepository) Profile(ctx context.Context, id int64) (*CTVProfile, er
 		return nil, err
 	}
 	return &p, nil
+}
+
+func (r *userRepository) InboxCTVs(ctx context.Context) ([]InboxCTV, error) {
+	rows, err := r.db.Query(ctx, `SELECT id, username, inbox_contact, region, note, bank FROM users
+		WHERE role = 'ctv' AND inbox_contact IS NOT NULL AND locked < 2`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []InboxCTV{}
+	for rows.Next() {
+		var c InboxCTV
+		if err := rows.Scan(&c.ID, &c.Login, &c.Contact, &c.Region, &c.Note, &c.Bank); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (r *userRepository) SetInboxInfo(ctx context.Context, id int64, info []byte) error {
+	_, err := r.db.Exec(ctx, `UPDATE users SET inbox_info = $2, inbox_at = NOW() WHERE id = $1`, id, info)
+	return err
+}
+
+func (r *userRepository) FillProfileIfEmpty(ctx context.Context, id int64, region, note string) error {
+	_, err := r.db.Exec(ctx, `UPDATE users SET
+		region = CASE WHEN region = '' THEN $2 ELSE region END,
+		note = CASE WHEN note = '' THEN $3 ELSE note END
+		WHERE id = $1`, id, region, note)
+	return err
+}
+
+func (r *userRepository) InboxInfo(ctx context.Context, id int64) ([]byte, *time.Time, error) {
+	var b []byte
+	var at *time.Time
+	err := r.db.QueryRow(ctx, `SELECT inbox_info, inbox_at FROM users WHERE id = $1`, id).Scan(&b, &at)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil, ErrNotFound
+	}
+	return b, at, err
+}
+
+func (r *userRepository) SetLogin(ctx context.Context, id int64, login string) error {
+	err := r.exec(ctx, `UPDATE users SET username = $2 WHERE id = $1 AND role = 'ctv'`, id, login)
+	if pgErrCode(err) == pgUniqueViolation {
+		return ErrDuplicate
+	}
+	return err
 }
 
 func (r *userRepository) SetProfile(ctx context.Context, id int64, region, kind, note string) error {

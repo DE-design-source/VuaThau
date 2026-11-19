@@ -23,6 +23,8 @@ const houseApi = {
 
   /** Admin: loại chụp ngoai | trong_ngoai (tiền tính lại) -> { message } */
   setScope: (id, scope) => axiosClient.put(`/houses/${id}/scope`, { scope }),
+  /** Admin tách ảnh / video công trình khác ra hồ sơ mới -> { message, new_id } */
+  split: (id, { photos, videos, address }) => axiosClient.post(`/houses/${id}/split`, { photos, videos, address }),
 
   /** Ảnh JPEG (Blob); original: ảnh gốc. */
   photo: (pid, { original = false } = {}) => getBlob(`/photos/${pid}`, original ? { original: 1 } : undefined),

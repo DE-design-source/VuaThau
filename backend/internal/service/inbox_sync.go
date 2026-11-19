@@ -17,6 +17,7 @@ import (
 
 	"vuathau/backend/internal/integration/inbox"
 	"vuathau/backend/internal/model"
+	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/repository"
 )
 
@@ -53,6 +54,7 @@ type inboxSync struct {
 	mu    sync.Mutex
 	run   bool
 	runMu sync.Mutex
+	prune bool // lượt đọc lại 1 lần (resyncKey): gỡ ảnh không thuộc bản ghi chatbot khỏi hồ sơ đang chờ duyệt
 }
 
 var (
@@ -263,11 +265,7 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 	addr := truncate(l.Fields["dia_chi"], MaxAddressLen)
 	sent := l.CreatedAt.In(VN).Format("2006-01-02 15:04") // giờ CTV gửi tin: dùng làm giờ chụp (không cho AI đọc giờ in trên ảnh)
 	files, metas := []Upload{}, []Meta{}
-	st0, err := s.settings.Get(ctx)
-	if err != nil {
-		return false, false, err
-	}
-	for i, im := range pickImages(withOrphans(l.Images, st0.MinPhotos), model.MaxPhotos) {
+	for i, im := range pickImages(l.Images, model.MaxPhotos) {
 		b, err := x.src.Image(ctx, im.Key)
 		if err != nil {
 			return false, false, fmt.Errorf("tải ảnh %s: %w", im.Key, err)
@@ -278,6 +276,11 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 	ok, _, err := s.takeFiles(ctx, hid, files, metas)
 	if err != nil {
 		return false, false, err
+	}
+	if x.prune && !created && h.Status == model.StatusPending {
+		if n, err := s.pruneInbox(ctx, h, files); err != nil || n > 0 {
+			return false, false, err
+		}
 	}
 	sys := &model.User{}
 	if created {
@@ -368,44 +371,12 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 	return true, false, nil
 }
 
-// withOrphans: chỉ dùng ảnh lẻ (chatbot không gắn vào hồ sơ nào) khi ảnh của chính hồ sơ chưa đủ min ảnh
-// (vd chatbot chỉ ghi 1 ảnh biển báo gửi bổ sung). Hồ sơ đã đủ ảnh thì bỏ ảnh lẻ: CTV hay gửi nhiều công trình liền nhau,
-// chatbot chưa ghi hồ sơ cho các công trình kia, gom vào là gộp nhầm (góp ý 19/11: 3 công trình thành 1 hồ sơ 20 ảnh).
-func withOrphans(all []inbox.Image, min int) []inbox.Image {
-	own := []inbox.Image{}
-	for _, im := range all {
-		if !im.Extra {
-			own = append(own, im)
-		}
-	}
-	if len(own) >= min {
-		return own
-	}
-	return all
-}
-
-// pickImages: tối đa max ảnh; ưu tiên ảnh chatbot đã gắn vào hồ sơ, rồi ảnh lẻ gửi trước đó (mới nhất trước);
-// trả theo thứ tự gửi.
+// pickImages: tối đa max ảnh đầu (theo thứ tự gửi).
 func pickImages(all []inbox.Image, max int) []inbox.Image {
 	if len(all) <= max {
 		return all
 	}
-	keep := map[int]bool{}
-	for i, im := range all {
-		if !im.Extra && len(keep) < max {
-			keep[i] = true
-		}
-	}
-	for i := len(all) - 1; i >= 0 && len(keep) < max; i-- {
-		keep[i] = true
-	}
-	out := make([]inbox.Image, 0, max)
-	for i, im := range all {
-		if keep[i] {
-			out = append(out, im)
-		}
-	}
-	return out
+	return all[:max]
 }
 
 var (
@@ -486,6 +457,13 @@ func (s *houseService) SyncInbox(ctx context.Context) (*SyncStatus, error) {
 	}
 	if err == nil {
 		err = s.syncAll(ctx, &res)
+	}
+	if err == nil && x.prune {
+		x.prune = false
+		err = x.state.Set(ctx, resyncKey, s.now().Format(time.RFC3339))
+	}
+	if err == nil {
+		err = s.refreshContacts(ctx)
 	}
 	if err != nil {
 		res.Error = truncate(err.Error(), 300)
@@ -578,9 +556,115 @@ func (s *houseService) StartInboxSync(every time.Duration) {
 	}()
 }
 
-// resyncKey: đã đọc lại toàn bộ hồ sơ Messenger 1 lần sau bản sửa 19/11/2026 (lấy ảnh lẻ chatbot bỏ sót,
-// gộp địa chỉ từ bản ghi trùng). Hồ sơ đã duyệt / từ chối không bị đụng; ảnh đã có bị bỏ qua (trùng file).
-const resyncKey = "inbox_resync_v2"
+// refreshContacts: lấy toàn bộ thông tin bên Messenger của các CTV đã ghép (tên, SĐT, email, nhãn, ghi chú, các ô
+// chatbot ghi nhận), lưu để hiện ở trang 1 CTV; ô của web còn trống thì điền: khu vực (tỉnh), số tài khoản, ghi chú.
+// CTV tạo từ Messenger lúc chưa có SĐT (đăng nhập "mess_..."): bên Messenger có SĐT (chưa ai dùng) thì lấy làm
+// tên đăng nhập; không có thì trang CTV báo admin nhập.
+func (s *houseService) refreshContacts(ctx context.Context) error {
+	x := s.inbox
+	list, err := x.users.InboxCTVs(ctx)
+	if err != nil || len(list) == 0 {
+		return err
+	}
+	ids := make([]string, len(list))
+	for i, u := range list {
+		ids[i] = u.Contact
+	}
+	infos, err := x.src.Contacts(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("đọc thông tin CTV dezon-inbox: %w", err)
+	}
+	for _, u := range list {
+		ci, ok := infos[u.Contact]
+		if !ok {
+			continue
+		}
+		raw, err := json.Marshal(ci)
+		if err != nil {
+			continue
+		}
+		if err := x.users.SetInboxInfo(ctx, u.ID, raw); err != nil {
+			return err
+		}
+		region, note := "", ""
+		if u.Region == "" {
+			if p := province.FromAddress(ci.Fields["khu_vuc"]); p != nil {
+				region = p.Code
+			}
+		}
+		if u.Note == "" {
+			note = truncate(ci.Notes, 1000)
+		}
+		if region != "" || note != "" {
+			if err := x.users.FillProfileIfEmpty(ctx, u.ID, region, note); err != nil {
+				return err
+			}
+		}
+		if p := normPhone(ci.Phone); strings.HasPrefix(u.Login, "mess_") && ValidPhone(p) {
+			if _, err := x.auth.FindByLogin(ctx, p); errors.Is(err, repository.ErrNotFound) {
+				if err := x.users.SetLogin(ctx, u.ID, p); err != nil && !errors.Is(err, repository.ErrDuplicate) {
+					return err
+				}
+			}
+		}
+		if u.Bank == "" {
+			if b := bankOf(ci.Fields["so_tai_khoan"]); b != "" {
+				if err := x.users.UpdateBank(ctx, u.ID, b); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// pruneInbox: gỡ khỏi hồ sơ Messenger đang chờ duyệt các ảnh không có trong bản ghi chatbot (ảnh lẻ từng gom thêm,
+// bỏ từ 19/11/2026 vì hay gộp nhầm công trình khác), tính lại tiền, ghi lịch sử. Trả số ảnh đã gỡ.
+func (s *houseService) pruneInbox(ctx context.Context, h *model.House, files []Upload) (int, error) {
+	keep := map[string]bool{}
+	for _, f := range files {
+		keep[shaOf(f.Data)] = true
+	}
+	ps, err := s.photos.ListByHouse(ctx, h.ID)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, p := range ps {
+		if keep[strings.TrimSpace(p.SHA256)] {
+			continue
+		}
+		if _, err := s.photos.Delete(ctx, p.ID, h.ID); err != nil && !errors.Is(err, repository.ErrNotFound) {
+			return n, err
+		}
+		n++
+	}
+	if n == 0 {
+		return 0, nil
+	}
+	if ps, err = s.photos.ListByHouse(ctx, h.ID); err != nil {
+		return n, err
+	}
+	st, err := s.settings.Get(ctx)
+	if err != nil {
+		return n, err
+	}
+	amount, err := s.priceOf(ctx, st, h.ID, FillProblems(ps, s.now()), h.EffScope())
+	if err != nil {
+		return n, err
+	}
+	if err := s.houses.SetAmount(ctx, h.ID, amount); err != nil {
+		return n, err
+	}
+	s.note(ctx, &model.User{}, ActInbox, h.ID, fmt.Sprintf("Messenger: gỡ %d ảnh không thuộc bản ghi chatbot (ảnh lẻ gom nhầm), còn %d ảnh, tiền %s → %s",
+		n, len(ps), Money(h.Amount), Money(amount)))
+	log.Printf("Messenger: hồ sơ #%d gỡ %d ảnh lẻ", h.ID, n)
+	return n, nil
+}
+
+// resyncKey: đọc lại toàn bộ hồ sơ Messenger 1 lần sau bản sửa 19/11/2026 (tối): bỏ ảnh lẻ (gỡ ảnh lẻ đã gom ở hồ
+// sơ đang chờ duyệt). Hồ sơ đã duyệt / từ chối không bị đụng; ảnh đã có bị bỏ qua (trùng file). Lượt trước: v2.
+const resyncKey = "inbox_resync_v3"
 
 func (s *houseService) resyncOnce(ctx context.Context) error {
 	x := s.inbox
@@ -590,6 +674,7 @@ func (s *houseService) resyncOnce(ctx context.Context) error {
 	if err := x.state.Set(ctx, syncCursorKey, ""); err != nil {
 		return err
 	}
-	log.Printf("Messenger: đọc lại toàn bộ hồ sơ (bản sửa ảnh bỏ sót)")
-	return x.state.Set(ctx, resyncKey, s.now().Format(time.RFC3339))
+	log.Printf("Messenger: đọc lại toàn bộ hồ sơ (gỡ ảnh lẻ gom nhầm)")
+	x.prune = true // đánh dấu xong khi đọc hết không lỗi
+	return nil
 }

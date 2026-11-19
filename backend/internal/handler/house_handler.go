@@ -448,6 +448,24 @@ func (h *HouseHandler) SetScope(w http.ResponseWriter, r *http.Request) {
 	msg(w, m)
 }
 
+// Split handles POST /api/v1/houses/{id}/split (admin): {photos, videos, address} -> hồ sơ mới.
+func (h *HouseHandler) Split(w http.ResponseWriter, r *http.Request) {
+	id, valid := idOr400(w, r, "id")
+	if !valid {
+		return
+	}
+	var in service.SplitInput
+	if !bodyOr400(w, r, &in) {
+		return
+	}
+	res, err := h.svc.Split(r.Context(), me(r), id, in)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, res)
+}
+
 // Overview handles GET /api/v1/houses?status=&q=&ctv=&from=&to=&page=
 func (h *HouseHandler) Overview(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()

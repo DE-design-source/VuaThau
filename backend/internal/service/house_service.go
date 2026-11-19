@@ -204,6 +204,7 @@ type HouseService interface {
 	EditInfo(ctx context.Context, by *model.User, id int64, f model.HouseFields) (string, error)
 	SetAmount(ctx context.Context, by *model.User, id int64, amount int64, reason string) (string, error)
 	SetScope(ctx context.Context, by *model.User, id int64, scope string) (string, error)
+	Split(ctx context.Context, by *model.User, id int64, in SplitInput) (*SplitResult, error)
 	Overview(ctx context.Context, q OverviewQuery) (*Overview, error)
 
 	// Bản đồ công trình + số công trình mỗi CTV đã chụp.
@@ -1369,6 +1370,100 @@ func (s *houseService) SetScope(ctx context.Context, by *model.User, id int64, s
 	label := map[string]string{model.ScopeOut: "Chỉ chụp ngoài", model.ScopeBoth: "Chụp trong + ngoài"}[scope]
 	s.note(ctx, by, ActScope, id, fmt.Sprintf("%s, tiền %s → %s", label, Money(h.Amount), Money(amount)))
 	return fmt.Sprintf("Hồ sơ #%d: %s, %s.", id, label, Money(amount)), nil
+}
+
+// SplitInput: ảnh / video của công trình khác bị gộp vào hồ sơ, và địa chỉ công trình đó.
+type SplitInput struct {
+	Photos  []int64 `json:"photos"`
+	Videos  []int64 `json:"videos"`
+	Address string  `json:"address"`
+}
+
+type SplitResult struct {
+	Message string `json:"message"`
+	NewID   int64  `json:"new_id"`
+}
+
+// Split: admin tách ảnh / video của công trình khác (chatbot Messenger gắn nhầm vào cùng hồ sơ) ra 1 hồ sơ mới
+// cùng CTV, chờ duyệt. Tính lại tiền cả 2 hồ sơ, ghi lịch sử cả 2.
+func (s *houseService) Split(ctx context.Context, by *model.User, id int64, in SplitInput) (*SplitResult, error) {
+	h, err := s.load(ctx, by, id)
+	if err != nil {
+		return nil, err
+	}
+	if h.Status != model.StatusPending {
+		return nil, fail(ErrForbidden, "Chỉ tách được hồ sơ đang chờ duyệt.")
+	}
+	addr := strings.TrimSpace(in.Address)
+	if addr == "" {
+		return nil, fail(ErrInvalidInput, "Nhập địa chỉ công trình tách ra.")
+	}
+	if len(in.Photos) == 0 {
+		return nil, fail(ErrInvalidInput, "Chọn ảnh của công trình cần tách.")
+	}
+	ps, err := s.photos.ListByHouse(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	pick := map[int64]bool{}
+	for _, p := range in.Photos {
+		pick[p] = true
+	}
+	n := 0
+	for _, p := range ps {
+		if pick[p.ID] {
+			n++
+		}
+	}
+	if n == 0 {
+		return nil, fail(ErrInvalidInput, "Ảnh đã chọn không thuộc hồ sơ này, tải lại trang nhé.")
+	}
+	if n == len(ps) {
+		return nil, fail(ErrInvalidInput, "Không tách hết ảnh: hồ sơ cũ phải còn ít nhất 1 ảnh (sửa địa chỉ nếu cả hồ sơ là công trình khác).")
+	}
+	vids := in.Videos
+	if vids == nil {
+		vids = []int64{}
+	}
+	nid, np, nv, err := s.houses.Split(ctx, id, in.Photos, vids, truncate(addr, 500))
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, fail(ErrConflict, "Hồ sơ vừa đổi trạng thái, tải lại trang nhé.")
+	}
+	if err != nil {
+		return nil, err
+	}
+	st, err := s.settings.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	amounts := map[int64]int64{}
+	for _, hid := range []int64{id, nid} {
+		ps, err := s.photos.ListByHouse(ctx, hid)
+		if err != nil {
+			return nil, err
+		}
+		x, err := s.houses.Get(ctx, hid)
+		if err != nil {
+			return nil, err
+		}
+		a, err := s.priceOf(ctx, st, hid, FillProblems(ps, s.now()), x.EffScope())
+		if err != nil {
+			return nil, err
+		}
+		if err := s.houses.SetAmount(ctx, hid, a); err != nil {
+			return nil, err
+		}
+		amounts[hid] = a
+	}
+	s.assignProvince(ctx, nid)
+	what := fmt.Sprintf("%d ảnh", np)
+	if nv > 0 {
+		what += fmt.Sprintf(", %d video", nv)
+	}
+	s.note(ctx, by, ActSplit, id, fmt.Sprintf("Tách %s sang hồ sơ #%d (%s); tiền %s → %s", what, nid, addr, Money(h.Amount), Money(amounts[id])))
+	s.note(ctx, by, ActSplit, nid, fmt.Sprintf("Tách từ hồ sơ #%d: %s, %s", id, what, Money(amounts[nid])))
+	return &SplitResult{NewID: nid, Message: fmt.Sprintf("Đã tách %s sang hồ sơ mới #%d (%s). #%d còn %s, #%d: %s.",
+		what, nid, addr, id, Money(amounts[id]), nid, Money(amounts[nid]))}, nil
 }
 
 // dayRange: "YYYY-MM-DD" -> [đầu ngày, đầu ngày hôm sau) theo giờ Việt Nam.

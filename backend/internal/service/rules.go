@@ -261,6 +261,7 @@ const (
 	ActEdit       = "Admin sửa thông tin"
 	ActAmount     = "Sửa số tiền"
 	ActScope      = "Chọn loại chụp"
+	ActSplit      = "Tách hồ sơ"
 	ActCancel     = "Huỷ phiếu chi"
 	ActUnpay      = "Huỷ thanh toán"
 	ActReceipt    = "Thêm ảnh biên lai"
@@ -275,6 +276,7 @@ const (
 	ActSettings   = "Sửa cấu hình"
 	ActSelfDel    = "CTV tự xoá tài khoản"
 	ActCTVProfile = "Sửa khu vực, chức năng CTV"
+	ActCTVLogin   = "Đặt SĐT đăng nhập CTV"
 )
 
 // Money định dạng "35.000đ".

@@ -43,7 +43,6 @@ type Image struct {
 	Key    string // khoá file trong kho S3
 	Mime   string
 	SentAt time.Time
-	Extra  bool // ảnh lẻ gửi trước hồ sơ, chatbot không gắn vào hồ sơ nào (xem orphans)
 }
 
 // Source: nơi lấy hồ sơ Messenger (test thay bằng bản giả).
@@ -55,7 +54,22 @@ type Source interface {
 	Videos(ctx context.Context, logIDs []string) (map[string][]string, error)
 	// Open: đọc dần 1 file (video), kèm kiểu file.
 	Open(ctx context.Context, key string) (io.ReadCloser, string, error)
+	// Contacts: thông tin đầy đủ của người gửi bên Messenger (theo contacts.id), để đồng bộ hồ sơ CTV.
+	Contacts(ctx context.Context, ids []string) (map[string]ContactInfo, error)
 	Close()
+}
+
+// ContactInfo: toàn bộ thông tin 1 người gửi bên dezon-inbox (khung "Thông tin khách").
+type ContactInfo struct {
+	Name      string            `json:"name"`
+	Phone     string            `json:"phone"`
+	Email     string            `json:"email"`
+	Avatar    string            `json:"avatar"`
+	Tags      []string          `json:"tags"`
+	Notes     string            `json:"notes"`
+	Fields    map[string]string `json:"fields"` // khoá -> giá trị: need, khu_vuc, so_tai_khoan, loai_hinh_doi_tac...
+	Labels    map[string]string `json:"labels"` // khoá -> nhãn hiển thị ("Nhu cầu", "Khu vực"...)
+	UpdatedAt time.Time         `json:"updated_at"`
 }
 
 type Config struct {
@@ -143,12 +157,9 @@ func (c *client) Logs(ctx context.Context, afterAt time.Time, afterID string, li
 		if err != nil {
 			return nil, err
 		}
-		// ảnh CTV gửi trước đó mà chatbot không gắn vào hồ sơ nào (bot chờ ảnh biển báo rồi chỉ ghi tin cuối)
-		extra, err := c.orphans(ctx, r.l.ConvID, r.l.CreatedAt)
-		if err != nil {
-			return nil, err
-		}
-		r.l.Images = append(extra, imgs...)
+		// Chỉ lấy ảnh chatbot gắn vào hồ sơ. (19/11: từng thử gom thêm ảnh lẻ CTV gửi trước đó, bỏ vì hay gộp nhầm
+		// ảnh của công trình khác; hồ sơ thiếu / gộp thì admin dùng nút Tách hồ sơ.)
+		r.l.Images = imgs
 		out = append(out, r.l)
 	}
 	if len(out) > 0 {
@@ -193,6 +204,44 @@ func (c *client) Videos(ctx context.Context, logIDs []string) (map[string][]stri
 	return out, rows.Err()
 }
 
+func (c *client) Contacts(ctx context.Context, ids []string) (map[string]ContactInfo, error) {
+	out := map[string]ContactInfo{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := c.db.Query(ctx, `
+		SELECT id::text, display_name, COALESCE(phone, ''), COALESCE(email, ''), COALESCE(avatar_url, ''), tags,
+			COALESCE(notes, ''), COALESCE(profile_fields, '{}'::jsonb), updated_at
+		FROM contacts WHERE id::text = ANY($1)`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var ci ContactInfo
+		var raw []byte
+		if err := rows.Scan(&id, &ci.Name, &ci.Phone, &ci.Email, &ci.Avatar, &ci.Tags, &ci.Notes, &raw, &ci.UpdatedAt); err != nil {
+			return nil, err
+		}
+		ci.Fields, ci.Labels = map[string]string{}, map[string]string{}
+		var obj map[string]struct{ Label, Value string }
+		if json.Unmarshal(raw, &obj) == nil {
+			for k, v := range obj {
+				if s := strings.TrimSpace(v.Value); s != "" {
+					ci.Fields[k] = s
+					ci.Labels[k] = strings.TrimSpace(v.Label)
+				}
+			}
+		}
+		if ci.Tags == nil {
+			ci.Tags = []string{}
+		}
+		out[id] = ci
+	}
+	return out, rows.Err()
+}
+
 func (c *client) Open(ctx context.Context, key string) (io.ReadCloser, string, error) {
 	obj, err := c.s3.GetObject(ctx, c.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
@@ -220,32 +269,6 @@ func (c *client) images(ctx context.Context, msgIDs []string) ([]Image, error) {
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Image, error) {
 		var im Image
-		err := r.Scan(&im.Key, &im.Mime, &im.SentAt)
-		return im, err
-	})
-}
-
-// OrphanWindow: ảnh lẻ (không thuộc hồ sơ nào) gửi trong khoảng này trước hồ sơ được tính là của hồ sơ đó.
-const OrphanWindow = 48 * time.Hour
-
-// orphans: ảnh CTV gửi trong hội thoại, sau hồ sơ trước đó (tối đa OrphanWindow) và trước hồ sơ này,
-// mà chưa thuộc hồ sơ nào của chatbot.
-func (c *client) orphans(ctx context.Context, convID string, before time.Time) ([]Image, error) {
-	rows, err := c.db.Query(ctx, `
-		SELECT a->>'storage_key', COALESCE(a->>'mime', 'image/jpeg'), m.sent_at
-		FROM messages m
-		CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(m.attachments) = 'array' THEN m.attachments ELSE '[]' END) a
-		WHERE m.conversation_id::text = $1 AND m.sender_type = 'customer' AND m.sent_at < $2
-			AND m.sent_at >= GREATEST($2 - $3::interval,
-				COALESCE((SELECT max(p.created_at) FROM project_logs p WHERE p.conversation_id::text = $1 AND p.created_at < $2), '-infinity'))
-			AND a->>'type' = 'image' AND COALESCE(a->>'storage_key', '') <> ''
-			AND NOT EXISTS (SELECT 1 FROM project_logs p WHERE m.id::text = ANY(p.message_ids::text[]))
-		ORDER BY m.sent_at, m.id`, convID, before, fmt.Sprintf("%d hours", int(OrphanWindow.Hours())))
-	if err != nil {
-		return nil, err
-	}
-	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Image, error) {
-		im := Image{Extra: true}
 		err := r.Scan(&im.Key, &im.Mime, &im.SentAt)
 		return im, err
 	})

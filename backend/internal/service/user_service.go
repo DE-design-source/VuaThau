@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"vuathau/backend/internal/model"
@@ -33,6 +35,12 @@ type CTVDetail struct {
 	Pays        []model.Payout         `json:"pays"`
 	Adjustments []model.Adjustment     `json:"adjustments"`
 	Profile     *repository.CTVProfile `json:"profile"`
+	// Inbox: thông tin CTV bên Messenger (tên, SĐT, email, nhãn, ghi chú, nhu cầu, khu vực, số tài khoản...); null nếu
+	// CTV không đến từ Messenger. InboxAt: lần đồng bộ gần nhất.
+	Inbox   json.RawMessage `json:"inbox"`
+	InboxAt *time.Time      `json:"inbox_at"`
+	// LoginPhone: tên đăng nhập đã là SĐT (CTV tạo từ Messenger chưa có SĐT: false, admin cần nhập)
+	LoginPhone bool `json:"login_phone"`
 }
 
 type AddStaffInput struct {
@@ -69,6 +77,7 @@ type UserService interface {
 	CTVFacets(ctx context.Context) (*CTVFacets, error)
 	CTV(ctx context.Context, id int64) (*CTVDetail, error)
 	SetCTVProfile(ctx context.Context, by *model.User, id int64, in CTVProfileInput) (string, error)
+	SetCTVLogin(ctx context.Context, by *model.User, id int64, phone string) (string, error)
 	SaveKinds(ctx context.Context, by *model.User, kinds []string) ([]string, string, error)
 }
 
@@ -84,7 +93,7 @@ type Facet struct {
 	Count int    `json:"count"`
 }
 
-// CTVProfileInput: admin sửa khu vực (mã tỉnh, '' = tự tính), chức năng, ghi chú của 1 CTV.
+// CTVProfileInput: admin sửa khu vực (mã tỉnh, ” = tự tính), chức năng, ghi chú của 1 CTV.
 type CTVProfileInput struct {
 	Region string `json:"region"`
 	Kind   string `json:"kind"`
@@ -397,6 +406,38 @@ func (s *userService) SetCTVProfile(ctx context.Context, by *model.User, id int6
 	return fmt.Sprintf("Đã lưu thông tin %s.", u.Name), nil
 }
 
+// SetCTVLogin: admin đặt SĐT làm tên đăng nhập app cho CTV (CTV tạo từ Messenger chưa có SĐT, hoặc đổi số).
+// Mật khẩu vẫn do admin đặt riêng (Đặt lại mật khẩu).
+func (s *userService) SetCTVLogin(ctx context.Context, by *model.User, id int64, phone string) (string, error) {
+	u, err := s.repo.GetByID(ctx, id)
+	if errors.Is(err, repository.ErrNotFound) || (err == nil && u.Role != model.RoleCTV) {
+		return "", fail(ErrNotFound, "Không tìm thấy cộng tác viên.")
+	}
+	if err != nil {
+		return "", err
+	}
+	p := normPhone(phone)
+	if !ValidPhone(p) {
+		return "", fail(ErrInvalidInput, "SĐT 10-11 số, bắt đầu bằng 0 hoặc +84.")
+	}
+	if p == u.Username {
+		return "SĐT không đổi.", nil
+	}
+	if other, err := s.auth.FindByLogin(ctx, p); err == nil && other.ID != id {
+		return "", fail(ErrConflict, "SĐT %s đã là tài khoản của %s.", p, other.Name)
+	} else if err != nil && !errors.Is(err, repository.ErrNotFound) {
+		return "", err
+	}
+	if err := s.repo.SetLogin(ctx, id, p); err != nil {
+		if errors.Is(err, repository.ErrDuplicate) {
+			return "", fail(ErrConflict, "SĐT %s đã có người dùng.", p)
+		}
+		return "", err
+	}
+	_ = s.logs.Add(ctx, by.ID, ActCTVLogin, nil, nil, fmt.Sprintf("%s: %s -> %s", u.Name, u.Username, p))
+	return fmt.Sprintf("Đã đặt SĐT đăng nhập cho %s: %s. Đặt mật khẩu rồi gửi cho CTV.", u.Name, p), nil
+}
+
 func regionText(code string) string {
 	if p := province.ByCode(code); p != nil {
 		return p.Name
@@ -457,6 +498,16 @@ func (s *userService) CTV(ctx context.Context, id int64) (*CTVDetail, error) {
 	if d.Adjustments, err = s.payments.Adjustments(ctx, id, false); err != nil {
 		return nil, err
 	}
-	d.Profile, err = s.repo.Profile(ctx, id)
-	return d, err
+	if d.Profile, err = s.repo.Profile(ctx, id); err != nil {
+		return nil, err
+	}
+	info, at, err := s.repo.InboxInfo(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if len(info) > 0 {
+		d.Inbox, d.InboxAt = info, at
+	}
+	d.LoginPhone = ValidPhone(u.Username)
+	return d, nil
 }

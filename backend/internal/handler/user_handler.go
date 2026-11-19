@@ -192,6 +192,26 @@ func (h *UserHandler) CTVProfile(w http.ResponseWriter, r *http.Request) {
 	ok(w, map[string]any{"message": m})
 }
 
+// CTVLogin handles PUT /api/v1/ctvs/{id}/login (admin): {phone} -> SĐT làm tên đăng nhập app.
+func (h *UserHandler) CTVLogin(w http.ResponseWriter, r *http.Request) {
+	id, valid := idOr400(w, r, "id")
+	if !valid {
+		return
+	}
+	var in struct {
+		Phone string `json:"phone"`
+	}
+	if !bodyOr400(w, r, &in) {
+		return
+	}
+	m, err := h.svc.SetCTVLogin(r.Context(), me(r), id, in.Phone)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"message": m})
+}
+
 // CTVKinds handles PUT /api/v1/ctv-kinds (admin): {kinds: [...]}
 func (h *UserHandler) CTVKinds(w http.ResponseWriter, r *http.Request) {
 	var in struct {
