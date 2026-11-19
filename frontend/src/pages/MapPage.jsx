@@ -123,7 +123,7 @@ export default function MapPage() {
       staleDays={days}
       busy={busy}
       fresh={fresh}
-      dezon={dz.data?.rows}
+      dezon={cur.ctv || cur.status || cur.from || cur.to ? undefined : dz.data?.rows} // Dezon không thuộc bộ lọc CTV / trạng thái / ngày
       fitKey={`${cur.ctv}|${cur.status}|${cur.from}|${cur.to}|${cur.province}`}
       selectedProvince={cur.province}
       onProvince={(code) => set({ province: code === cur.province ? '' : code })}

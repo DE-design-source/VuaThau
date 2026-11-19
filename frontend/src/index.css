@@ -2266,57 +2266,6 @@ details summary {
 .zoom-far .site-pin.on {
   transform: scale(1);
 }
-/* ---------- Nhãn mã hồ sơ trên bản đồ (thiết kế 19/11) ---------- */
-.site-tag {
-  position: absolute;
-  left: 0;
-  bottom: 4px;
-  transform: translateX(-50%);
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: #f5b70a;
-  color: #0f1e36;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.2;
-  white-space: nowrap;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, transform 0.15s;
-}
-.site-tag.stale {
-  background: #008a05;
-  color: #fff;
-}
-.site-tag.new {
-  background: #dc2626;
-  color: #fff;
-}
-.site-tag:hover,
-.site-tag.on {
-  background: #222;
-  color: #fff;
-  transform: translateX(-50%) scale(1.08);
-  z-index: 1;
-}
-/* phóng xa: nhãn thu thành chấm */
-.zoom-far .site-tag {
-  bottom: -6px;
-  width: 12px;
-  height: 12px;
-  padding: 0;
-  font-size: 0;
-  border: 2px solid #fff;
-}
-.zoom-far .site-tag:hover,
-.zoom-far .site-tag.on {
-  bottom: 4px;
-  width: auto;
-  height: auto;
-  padding: 4px 10px;
-  font-size: 12px;
-  border: 0;
-}
 /* ghim nhỏ trong chú thích */
 .pin-mark {
   color: #f5b301;
@@ -3664,4 +3613,26 @@ details.card > summary strong {
 }
 .hp-seg button:not(.on):not(:disabled):hover {
   background: var(--color-sunken);
+}
+
+/* Bản đồ: màn hình laptop (MacBook 14", ~1512px) chỉ 2 cột thẻ để bản đồ rộng hơn; màn lớn 3 cột */
+@media (min-width: 1101px) and (max-width: 1680px) {
+  .ex-body {
+    grid-template-columns: minmax(0, 480px) minmax(360px, 1fr);
+  }
+  .ex-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Chú thích + thẻ Dezon (góp ý 19/11: ghim giọt nước chung cho mọi công trình) */
+.pin-mark.stale {
+  color: #22c55e;
+}
+.ex-key .pin-mark {
+  margin: 0;
+}
+.ex-badge.dz {
+  background: #1a56db;
+  color: #fff;
 }

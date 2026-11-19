@@ -185,7 +185,7 @@ function House({ id, d, reload }) {
                   <div>{h.ctv_phone || '—'}</div>
                 </div>
               </div>
-              {bank.no && bank.no.replace(/D/g, '') !== (h.ctv_phone || '').replace(/D/g, '') && <small className="muted">Số tài khoản: {bank.no}</small>}
+              {bank.no && bank.no.replace(/\D/g, '') !== (h.ctv_phone || '').replace(/\D/g, '') &&<small className="muted">Số tài khoản: {bank.no}</small>}
             </div>
             <hr />
             <div className="stack-sm">

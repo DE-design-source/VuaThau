@@ -1,7 +1,7 @@
-// Bản đồ công trình (thiết kế 19/11): mỗi hồ sơ là 1 nhãn viên thuốc ghi mã (HS-00121), đáy nhãn chỉ đúng vị trí:
-// vàng: chụp chưa quá hạn; xanh lá: cần cập nhật; đỏ: mới xuất hiện (thời gian thực); đen: đang chọn / rê chuột.
-// Phóng xa (< cấp 12): nhãn thu thành chấm cho đỡ chồng. Bấm nhãn: thẻ có hình đại diện.
-// Công trình nhà thầu đăng trên dezon.vn: ghim giọt nước xanh dương (lớp riêng, prop dezon), giai đoạn hiện khi phóng gần.
+// Bản đồ công trình (góp ý 19/11): mọi công trình là ghim giọt nước, màu theo việc cần làm:
+// vàng: CTV đã chụp, chưa tới lúc chụp lại; xanh lá: cần chụp (quá hạn); xanh dương: công trình Dezon chưa CTV nào chụp;
+// đỏ: hồ sơ mới xuất hiện (thời gian thực); navy: đang chọn / rê chuột. Mã hồ sơ / nhà thầu hiện dưới ghim khi phóng gần
+// hoặc rê chuột. Ghim hồ sơ có khoá = id, ghim Dezon khoá = "dz" + id (trùng khoá thẻ trong danh sách).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import L from 'leaflet'
@@ -188,12 +188,12 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
     marks.current = new Map()
     const latlngs = []
     for (const p of points) {
-      const cls = ['site-tag', isStale(p.last_at || p.at, staleDays) ? 'stale' : '', fresh?.has(p.id) ? 'new' : ''].join(' ')
+      const cls = ['site-pin', isStale(p.last_at || p.at, staleDays) ? 'stale' : '', fresh?.has(p.id) ? 'new' : ''].join(' ')
       const icon = L.divIcon({
         className: 'site-pin-icon',
-        html: `<span class="${cls}" title="${esc(stageLabel(p.stage))}">${hsId(p.id)}</span>`,
+        html: `<span class="${cls}" title="${esc(stageLabel(p.stage))}">${PIN}<span class="site-pin-label">${hsId(p.id)}</span></span>`,
         iconSize: null,
-        popupAnchor: [0, -30],
+        popupAnchor: [0, -38],
       })
       const mk = L.marker([p.lat, p.lng], { icon, riseOnHover: true, keyboard: false })
       if (pop) {
@@ -218,6 +218,7 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
     const g = dzPins.current
     if (!g) return
     g.clearLayers()
+    for (const k of [...marks.current.keys()]) if (String(k).startsWith('dz')) marks.current.delete(k)
     const name = Object.fromEntries(provinces.map((p) => [p.code, p.name]))
     for (const p of dezon) {
       const icon = L.divIcon({
@@ -226,17 +227,21 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
         iconSize: null,
         popupAnchor: [0, -38],
       })
-      L.marker([p.lat, p.lng], { icon, riseOnHover: true, keyboard: false, zIndexOffset: -500 })
+      const key = `dz${p.id}`
+      const mk = L.marker([p.lat, p.lng], { icon, riseOnHover: true, keyboard: false, zIndexOffset: -500 })
         .bindPopup(dezonTip(p, { prov: name[p.province] }), { className: 'site-pop', minWidth: 260, maxWidth: 260, autoPanPadding: [24, 24] })
         .addTo(g)
+      mk.on('mouseover', () => hover.current?.(key))
+      mk.on('mouseout', () => hover.current?.(null))
+      marks.current.set(key, mk)
     }
-  }, [dezon, provinces])
+  }, [dezon, provinces, points])
 
   // Rê chuột ở danh sách: nhãn tương ứng đậm lên, nổi lên trên
   useEffect(() => {
     for (const [id, mk] of marks.current) {
       const on = id === active
-      mk.getElement()?.querySelector('.site-tag')?.classList.toggle('on', on)
+      mk.getElement()?.querySelector('.site-pin')?.classList.toggle('on', on)
       mk.setZIndexOffset(on ? 1000 : 0)
     }
   }, [active, points])

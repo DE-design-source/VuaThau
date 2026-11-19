@@ -1,18 +1,20 @@
 // Khung trang Bản đồ kiểu Airbnb (admin + sale):
 //   trên: thanh tìm dạng viên thuốc (Địa chỉ | các ô lọc | nút tìm tròn) + nút Bộ lọc;
 //   trái: "N công trình" + lưới thẻ ảnh (3 cột trên màn rộng); phải: bản đồ bo góc đứng yên khi cuộn, nhãn mã hồ sơ.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import SiteMap from './SiteMap'
 import SiteCard from './SiteCard'
 import { distM, distText } from '@/utils/format'
+import { dezonCard } from '@/utils/siteTip'
 
 const PAGE = 24
-const NONE = [] // tắt lớp Dezon: mảng cố định để bản đồ không vẽ lại mỗi lần render
+const NONE = []
+const SAME_SITE_M = 60 // công trình Dezon cách hồ sơ CTV dưới chừng này: coi là đã có CTV chụp, không hiện riêng
 
-/** Ghim nhỏ trong chú thích (cùng hình với ghim trên bản đồ). */
-function PinMark({ dz }) {
+/** Ghim nhỏ trong chú thích (cùng hình với ghim trên bản đồ): '' vàng, 'stale' xanh lá, 'dz' xanh dương. */
+function PinMark({ kind = '' }) {
   return (
-    <svg className={`pin-mark ${dz ? 'dz' : ''}`} viewBox="0 0 32 42" width="14" height="19" aria-hidden="true">
+    <svg className={`pin-mark ${kind}`} viewBox="0 0 32 42" width="14" height="19" aria-hidden="true">
       <path d="M16 1.5C8.3 1.5 2 7.7 2 15.4 2 25.8 16 40.5 16 40.5S30 25.8 30 15.4C30 7.7 23.7 1.5 16 1.5z" fill="currentColor" />
       <circle cx="16" cy="15.4" r="6.2" fill="#fff" />
     </svg>
@@ -26,25 +28,11 @@ function PinMark({ dz }) {
  * pop(p): HTML thẻ khi bấm nhãn; card(p): props cho SiteCard (xem cardProps trong utils/siteTip)
  * fresh: Set id mới (thời gian thực); filterPanel: nội dung nút Bộ lọc; filterCount: số bộ lọc đang bật
  * footer: phần cuối danh sách (số liệu...); busy: đang tải
- * dezon: công trình nhà thầu đăng trên dezon.vn (lớp ghim xanh dương, bật / tắt ở chú thích; không vào danh sách thẻ)
+ * dezon: công trình nhà thầu đăng trên dezon.vn: dùng chung với hồ sơ CTV (ghim xanh dương + thẻ trong danh sách),
+ *   trừ công trình đã có CTV chụp (cách hồ sơ CTV dưới SAME_SITE_M). Truyền [] khi đang lọc theo CTV / trạng thái.
  */
 export default function Explorer({ points, provinces, staleDays = 30, selects = [], selectedProvince, onProvince, fitKey, pop, card, fresh, filterPanel, filterCount = 0, footer, busy, dezon = NONE }) {
   const [addr, setAddr] = useState('')
-  const [showDz, setShowDz] = useState(() => {
-    try {
-      return localStorage.getItem('map.dezon') !== '0'
-    } catch {
-      return true
-    }
-  })
-  const toggleDz = (on) => {
-    setShowDz(on)
-    try {
-      localStorage.setItem('map.dezon', on ? '1' : '0')
-    } catch {
-      /* trình duyệt chặn lưu: chỉ nhớ trong phiên */
-    }
-  }
   const search = useRef(null) // MapSearch: search.current.find(chữ)
   const [active, setActive] = useState(null)
   const [focus, setFocus] = useState(null)
@@ -63,10 +51,21 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
     return () => document.removeEventListener('mousedown', close)
   }, [open])
 
-  const dist = near ? new Map(points.map((p) => [p.id, distM(near.lat, near.lng, p.lat, p.lng)])) : null
+  // Dezon chưa có CTV chụp (không trùng chỗ hồ sơ nào)
+  const dz = useMemo(
+    () => (dezon || NONE).filter((d) => d.lat != null && !points.some((p) => distM(d.lat, d.lng, p.lat, p.lng) < SAME_SITE_M)),
+    [dezon, points],
+  )
+  // 1 danh sách chung: hồ sơ CTV (khoá = id) + Dezon (khoá = "dz" + id), mới nhất trước
+  const items = [
+    ...points.map((p) => ({ key: p.id, p, at: p.last_at || p.at })),
+    ...dz.map((d) => ({ key: `dz${d.id}`, d, p: d, at: d.posted_at })),
+  ]
+  const dist = near ? new Map(items.map((it) => [it.key, distM(near.lat, near.lng, it.p.lat, it.p.lng)])) : null
   const rows = near
-    ? points.filter((p) => dist.get(p.id) <= near.radius).sort((a, b) => dist.get(a.id) - dist.get(b.id))
-    : [...points].sort((a, b) => new Date(b.last_at || b.at) - new Date(a.last_at || a.at))
+    ? items.filter((it) => dist.get(it.key) <= near.radius).sort((a, b) => dist.get(a.key) - dist.get(b.key))
+    : items.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
+  const provName = Object.fromEntries((provinces || []).map((p) => [p.code, p.name]))
 
   return (
     <div className="ex">
@@ -128,31 +127,30 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
               )}
             </h2>
             <span className="ex-legend">
-              <span className="ex-key">
-                <i /> Chưa quá {staleDays} ngày
+              <span className="ex-key" title={`CTV đã chụp trong ${staleDays} ngày`}>
+                <PinMark /> Chưa tới lúc chụp
               </span>
-              <span className="ex-key stale">
-                <i /> Cần cập nhật
+              <span className="ex-key" title={`CTV chụp đã quá ${staleDays} ngày`}>
+                <PinMark kind="stale" /> Cần chụp
               </span>
-              {dezon.length > 0 && (
-                <label className="ex-dz" title="Công trình nhà thầu đăng trên dezon.vn (không phải hồ sơ CTV)">
-                  <input type="checkbox" checked={showDz} onChange={(e) => toggleDz(e.target.checked)} />
-                  <PinMark dz /> Dezon ({dezon.length})
-                </label>
+              {dz.length > 0 && (
+                <span className="ex-key" title="Công trình nhà thầu đăng trên dezon.vn, chưa CTV nào chụp">
+                  <PinMark kind="dz" /> Dezon ({dz.length})
+                </span>
               )}
             </span>
           </div>
           {rows.length ? (
             <div className="ex-grid">
-              {rows.slice(0, shown).map((p) => (
+              {rows.slice(0, shown).map((it) => (
                 <SiteCard
-                  key={p.id}
-                  p={p}
-                  {...card(p)}
-                  on={active === p.id}
+                  key={it.key}
+                  p={it.p}
+                  {...(it.d ? dezonCard(it.d, { prov: provName[it.d.province] }) : card(it.p))}
+                  on={active === it.key}
                   onHover={setActive}
-                  onLocate={() => setFocus({ id: p.id, n: (focus?.n || 0) + 1 })}
-                  dist={dist ? distText(dist.get(p.id)) : null}
+                  onLocate={() => setFocus({ id: it.key, n: (focus?.n || 0) + 1 })}
+                  dist={dist ? distText(dist.get(it.key)) : null}
                 />
               ))}
             </div>
@@ -183,7 +181,7 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
             fresh={fresh}
             search={search}
             onPlace={setNear}
-            dezon={showDz ? dezon : NONE}
+            dezon={dz}
           />
         </aside>
       </div>

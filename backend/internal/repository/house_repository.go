@@ -217,7 +217,8 @@ func (r *houseRepository) List(ctx context.Context, f HouseFilter, limit, offset
 	where, args := f.where(false)
 	args = append(args, limit, offset)
 	rows, err := r.db.Query(ctx, `SELECT `+houseCols+houseFrom+`WHERE `+where+
-		fmt.Sprintf(` ORDER BY h.id DESC LIMIT $%d OFFSET $%d`, len(args)-1, len(args)), args...)
+		// mới nhất trước theo ngày CTV gửi (cột "Ngày tạo"); hồ sơ Messenger nhập muộn nằm đúng ngày của nó
+		fmt.Sprintf(` ORDER BY h.created_at DESC, h.id DESC LIMIT $%d OFFSET $%d`, len(args)-1, len(args)), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -496,8 +497,12 @@ func (r *houseRepository) NextPending(ctx context.Context, after int64) (*int64,
 	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM houses WHERE status = 'cho_duyet'`).Scan(&left); err != nil {
 		return nil, 0, err
 	}
+	// hồ sơ kế tiếp theo đúng thứ tự hàng chờ (ngày tạo cũ -> mới, gửi trước duyệt trước), hết thì vòng lại đầu
 	var id int64
-	err := r.db.QueryRow(ctx, `SELECT id FROM houses WHERE status = 'cho_duyet' ORDER BY id <= $1, id LIMIT 1`, after).Scan(&id)
+	err := r.db.QueryRow(ctx, `
+		WITH c AS (SELECT COALESCE((SELECT created_at FROM houses WHERE id = $1), '-infinity'::timestamptz) AS ca)
+		SELECT h.id FROM houses h, c WHERE h.status = 'cho_duyet' AND h.id <> $1
+		ORDER BY (h.created_at, h.id) > (c.ca, $1) DESC, h.created_at, h.id LIMIT 1`, after).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, left, nil
 	}

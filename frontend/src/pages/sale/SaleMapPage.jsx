@@ -31,7 +31,7 @@ export default function SaleMapPage() {
       provinces={provinces}
       staleDays={stale}
       busy={busy}
-      dezon={dz.data?.rows}
+      dezon={cur.ctv ? undefined : dz.data?.rows} // Dezon không thuộc bộ lọc CTV
       fitKey={`${cur.province}|${cur.ctv}`}
       selectedProvince={cur.province}
       onProvince={(code) => set({ province: code === cur.province ? '' : code })}

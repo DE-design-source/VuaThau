@@ -47,23 +47,45 @@ function CardImage({ id }) {
  * p: công trình; to: link trang chi tiết; tag: nhãn trên ảnh (giai đoạn); street / area: địa chỉ tách 2 dòng;
  * contractor; ctv: tên CTV; date: ngày chụp lần cuối; stale: quá hạn cần cập nhật; dist: khoảng cách (lọc quanh vị trí).
  * on: đang rê chuột (từ bản đồ); onHover(id|null); onLocate(): bay tới trên bản đồ.
+ * Khác: xem SiteCard bên dưới (id, img, href, dz, source cho thẻ Dezon).
  */
-export default function SiteCard({ p, to, tag, street, area, contractor, ctv, date, stale, dist, on, onHover, onLocate }) {
-  const ini = (ctv || '').trim().split(/s+/).pop()?.[0]?.toUpperCase()
+
+// Link trong app (to) hoặc ra trang ngoài (href, mở tab mới: công trình Dezon)
+function Go({ to, href, className, label, children }) {
+  return href ? (
+    <a href={href} target="_blank" rel="noreferrer" className={className} aria-label={label}>
+      {children}
+    </a>
+  ) : (
+    <Link to={to} className={className} aria-label={label}>
+      {children}
+    </Link>
+  )
+}
+
+/** id: khoá thẻ (trùng khoá ghim trên bản đồ); img: ảnh công khai (Dezon) thay cho ảnh hồ sơ cần đăng nhập; dz: thẻ Dezon. */
+export default function SiteCard({ p, id = p.id, to, href, img, dz, tag, street, area, contractor, ctv, source, date, stale, dist, on, onHover, onLocate }) {
+  const ini = (ctv || '').trim().split(/\s+/).pop()?.[0]?.toUpperCase()
   return (
-    <article className={`ex-card ${on ? 'on' : ''}`} onMouseEnter={() => onHover?.(p.id)} onMouseLeave={() => onHover?.(null)}>
+    <article className={`ex-card ${on ? 'on' : ''}`} onMouseEnter={() => onHover?.(id)} onMouseLeave={() => onHover?.(null)}>
       <div className="ex-media">
-        <Link to={to} aria-label={street}>
-          <CardImage id={p.cover_id} />
-        </Link>
-        {tag && <span className="ex-badge">{tag}</span>}
+        <Go to={to} href={href} label={street}>
+          {img ? (
+            <div className="ex-img">
+              <img src={img} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(e) => (e.currentTarget.style.visibility = 'hidden')} />
+            </div>
+          ) : (
+            <CardImage id={p.cover_id} />
+          )}
+        </Go>
+        {tag && <span className={`ex-badge ${dz ? 'dz' : ''}`}>{tag}</span>}
         <button type="button" className="ex-gmap" onClick={onLocate} title="Xem trên bản đồ" aria-label="Xem trên bản đồ">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
             <path d="M8 1a5 5 0 0 0-5 5c0 3.6 5 9 5 9s5-5.4 5-9a5 5 0 0 0-5-5zm0 7a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" fill="currentColor" />
           </svg>
         </button>
       </div>
-      <Link to={to} className="ex-info">
+      <Go to={to} href={href} className="ex-info">
         <div className="ex-title">{street}</div>
         {(area || dist) && (
           <div className="ex-line">
@@ -72,9 +94,11 @@ export default function SiteCard({ p, to, tag, street, area, contractor, ctv, da
           </div>
         )}
         {contractor && <div className="ex-line ex-ct">{contractor}</div>}
-      </Link>
+      </Go>
       <div className="ex-foot">
-        {ctv ? (
+        {source ? (
+          <span className="ex-ctv">{source}</span>
+        ) : ctv ? (
           <span className="ex-ctv">
             <i>{ini || '?'}</i>
             <span>

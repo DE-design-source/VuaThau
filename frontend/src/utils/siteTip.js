@@ -101,3 +101,20 @@ export function stageLabel(stage) {
   if (short) return short
   return s.length > 16 ? s.slice(0, 15) + '…' : s
 }
+
+/** Props SiteCard của 1 công trình Dezon (nhà thầu đăng trên dezon.vn, chưa CTV nào chụp). */
+export function dezonCard(p, { prov = '' } = {}) {
+  const [street, area] = splitAddr(p.title, prov)
+  return {
+    id: `dz${p.id}`,
+    href: p.url || undefined,
+    img: p.cover || undefined,
+    dz: true,
+    tag: 'Dezon · chưa ai chụp',
+    street,
+    area,
+    contractor: p.contractor,
+    source: 'Nhà thầu đăng trên Dezon',
+    date: vnDate(p.posted_at),
+  }
+}
