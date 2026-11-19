@@ -629,6 +629,15 @@ func (s *houseService) pruneInbox(ctx context.Context, h *model.House, files []U
 	if err != nil {
 		return 0, err
 	}
+	own := 0
+	for _, p := range ps {
+		if keep[strings.TrimSpace(p.SHA256)] {
+			own++
+		}
+	}
+	if own == 0 || own == len(ps) {
+		return 0, nil // hồ sơ toàn ảnh lẻ (ảnh chatbot ghi đã nằm ở hồ sơ khác): không gỡ, để admin xem
+	}
 	n := 0
 	for _, p := range ps {
 		if keep[strings.TrimSpace(p.SHA256)] {

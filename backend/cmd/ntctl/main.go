@@ -30,7 +30,8 @@ func usage() {
   ntctl migrate [-dir migrations]
   ntctl adduser <đăng nhập> "<Họ tên>" admin|ketoan|sale <mật khẩu>
   ntctl import-legacy -db <nghiemthu.db> [-src <thư mục có anh/ và bienlai/>]
-  ntctl reprice [-note "lý do"] <mã hồ sơ> ...     tính lại tiền hồ sơ chờ duyệt (ảnh đạt, loại chụp, video)`)
+  ntctl reprice [-note "lý do"] <mã hồ sơ> ...     tính lại tiền hồ sơ chờ duyệt (ảnh đạt, loại chụp, video)
+  ntctl attach -house <mã> [-note "lý do"] <sha256> ...   gắn lại ảnh có sẵn trong DATA_DIR/anh vào hồ sơ`)
 	os.Exit(2)
 }
 
@@ -79,6 +80,15 @@ func main() {
 			usage()
 		}
 		reprice(ctx, pool, *note, fs.Args())
+	case "attach":
+		fs := flag.NewFlagSet("attach", flag.ExitOnError)
+		house := fs.Int64("house", 0, "mã hồ sơ")
+		note := fs.String("note", "", "lý do ghi vào lịch sử hồ sơ")
+		_ = fs.Parse(os.Args[2:])
+		if *house == 0 || fs.NArg() == 0 {
+			usage()
+		}
+		attach(ctx, pool, env("DATA_DIR", "./data"), *house, *note, fs.Args())
 	case "import-legacy":
 		fs := flag.NewFlagSet("import-legacy", flag.ExitOnError)
 		db := fs.String("db", "", "file SQLite của bản cũ (data/nghiemthu.db)")
