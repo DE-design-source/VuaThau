@@ -14,6 +14,7 @@ import (
 	"vuathau/backend/internal/database"
 	"vuathau/backend/internal/handler"
 	"vuathau/backend/internal/integration/ai"
+	"vuathau/backend/internal/integration/dezon"
 	"vuathau/backend/internal/integration/gdrive"
 	"vuathau/backend/internal/integration/inbox"
 	"vuathau/backend/internal/integration/geo"
@@ -94,9 +95,10 @@ func run() error {
 			defer inboxSrc.Close()
 		}
 	}
+	geocoder := geo.New(cfg.GoogleMapsKey)
 	houseSvc := service.NewHouseService(service.HouseDeps{
 		Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo, Payments: payRepo, Settings: settingsRepo,
-		Files: files, AI: ai.New(cfg.AIEnabled, cfg.AIModel, cfg.AIWorkspace), Geo: geo.New(cfg.GoogleMapsKey),
+		Files: files, AI: ai.New(cfg.AIEnabled, cfg.AIModel, cfg.AIWorkspace), Geo: geocoder,
 		Drive: drive, Public: cfg.PublicURL, MediaKey: cfg.JWTSecret,
 		Inbox: inboxSrc, Auth: authRepo, Sync: repository.NewSyncRepository(db),
 	})
@@ -106,6 +108,10 @@ func run() error {
 	log.Printf("Hồ sơ Messenger (dezon-inbox): %v, mỗi %s", inboxSrc != nil, cfg.InboxSyncEvery)
 	go houseSvc.RunDriveSync() // đẩy các hồ sơ còn chờ từ lần chạy trước
 	houseSvc.StartInboxSync(cfg.InboxSyncEvery)
+	// Công trình nhà thầu mới đăng trên dezon.vn -> lớp ghim Dezon trên bản đồ (tra toạ độ: Google nếu có key)
+	dezonRepo := repository.NewDezonRepository(db)
+	log.Printf("Công trình Dezon: tra toạ độ bằng %s, mỗi 6h", map[bool]string{true: "Google", false: "OpenStreetMap"}[geocoder.Google()])
+	service.NewDezonSync(dezonRepo, geocoder, dezon.ProjectsURL).Start(6 * time.Hour)
 	go func() { // gán tỉnh mới (34 tỉnh) cho hồ sơ cũ
 		if n, err := houseSvc.BackfillProvinces(context.Background()); err != nil {
 			log.Printf("gán tỉnh: %v", err)
@@ -122,6 +128,7 @@ func run() error {
 			UserHandler:    handler.NewUserHandler(userSvc, authSvc),
 			HouseHandler:   handler.NewHouseHandler(houseSvc),
 			PaymentHandler: handler.NewPaymentHandler(paySvc, gVerifier.ClientID()),
+			Dezon:          handler.NewDezonHandler(dezon.ListURL, dezonRepo),
 			UserLookup:     userRepo.GetByID,
 			HealthChecks:   checks,
 		}),

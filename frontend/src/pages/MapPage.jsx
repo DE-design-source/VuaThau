@@ -6,6 +6,7 @@ import { useSearchParams } from 'react-router-dom'
 import usePage from '@/hooks/usePage'
 import useCfg from '@/hooks/useCfg'
 import mapApi from '@/api/mapApi'
+import dezonApi from '@/api/dezonApi'
 import Explorer from '@/components/explore/Explorer'
 import { siteTip, stageLabel } from '@/utils/siteTip'
 import { Button, Kpi, PageState, Pill } from '@/components/ui'
@@ -23,6 +24,7 @@ export default function MapPage() {
     province: sp.get('province') || '',
   }
   const { data: d, err, busy, reload } = usePage(() => mapApi.get(cur), [cur.ctv, cur.status, cur.from, cur.to, cur.province])
+  const dz = usePage(() => dezonApi.projects({ province: cur.province }), [cur.province]) // lỗi: bỏ qua, chỉ thiếu lớp Dezon
   const cfg = useCfg()
   // Cập nhật theo thời gian thực: tự tải lại mỗi LIVE_MS, đánh dấu công trình mới xuất hiện
   const [live, setLive] = useState(false)
@@ -121,6 +123,7 @@ export default function MapPage() {
       staleDays={days}
       busy={busy}
       fresh={fresh}
+      dezon={dz.data?.rows}
       fitKey={`${cur.ctv}|${cur.status}|${cur.from}|${cur.to}|${cur.province}`}
       selectedProvince={cur.province}
       onProvince={(code) => set({ province: code === cur.province ? '' : code })}

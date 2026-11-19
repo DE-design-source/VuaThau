@@ -24,6 +24,25 @@ export function siteTip(p, { staleDays = 30, prov = '', status = '' } = {}) {
   )
 }
 
+/** Thẻ của 1 công trình Dezon (nhà thầu đăng trên dezon.vn). Ảnh là link công khai của dezon.vn. */
+export function dezonTip(p, { prov = '' } = {}) {
+  const row = (label, v) => (v ? `<div class="site-tip-row"><span>${label}</span>${esc(v)}</div>` : '')
+  const link = (href, text) => (href ? `<a href="${esc(href)}" target="_blank" rel="noreferrer">${text}</a>` : '')
+  return (
+    `<div class="site-tip">` +
+    (p.cover ? `<div class="site-tip-img"><img src="${esc(p.cover)}" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.parentNode.remove()"></div>` : '') +
+    `<div class="site-tip-body">` +
+    `<div class="site-tip-top"><span class="dz-tag">Dezon</span>${p.geo_level === 'khu_vuc' ? ' · vị trí gần đúng (theo phường, xã)' : ''}</div>` +
+    `<b class="site-tip-addr">${esc(p.title)}</b>` +
+    row('Tỉnh', prov) +
+    row('Nhà thầu', p.contractor) +
+    (p.posted_at ? `<div class="site-tip-when">đăng trên dezon.vn ${esc(vnDate(p.posted_at))}</div>` : '') +
+    `</div></div>` +
+    `<div class="site-pop-actions">${link(p.url, 'Xem trên Dezon')}${link(p.contractor_url, 'Nhà thầu')}` +
+    `<a href="https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}" target="_blank" rel="noreferrer">Google Maps</a></div>`
+  )
+}
+
 // Ảnh đại diện đã tải (id ảnh -> URL blob), dùng lại khi rê chuột lần sau
 const covers = new Map()
 

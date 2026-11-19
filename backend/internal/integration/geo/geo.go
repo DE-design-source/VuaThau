@@ -113,6 +113,46 @@ func (g *Geocoder) google(ctx context.Context, ll string) (string, error) {
 	return vnSuffix.ReplaceAllString(r.Results[0].FormattedAddress, ""), nil
 }
 
+// Google: đang dùng Google Geocoding (có GOOGLE_MAPS_API_KEY).
+func (g *Geocoder) Google() bool { return g.googleKey != "" }
+
+// googleSearch: tìm địa chỉ bằng Google Geocoding, chỉ trong Việt Nam, tối đa 6 kết quả.
+func (g *Geocoder) googleSearch(ctx context.Context, q string) ([]Place, error) {
+	var r struct {
+		Status       string `json:"status"`
+		ErrorMessage string `json:"error_message"`
+		Results      []struct {
+			FormattedAddress string   `json:"formatted_address"`
+			Types            []string `json:"types"`
+			Geometry         struct {
+				Location struct {
+					Lat float64 `json:"lat"`
+					Lng float64 `json:"lng"`
+				} `json:"location"`
+			} `json:"geometry"`
+		} `json:"results"`
+	}
+	u := "https://maps.googleapis.com/maps/api/geocode/json?" + url.Values{
+		"address": {q}, "components": {"country:VN"}, "language": {"vi"}, "region": {"vn"}, "key": {g.googleKey}}.Encode()
+	if err := g.getJSON(ctx, u, &r); err != nil {
+		return nil, err
+	}
+	if r.Status != "OK" && r.Status != "ZERO_RESULTS" {
+		return nil, fmt.Errorf("Google Geocoding: %s %s", r.Status, r.ErrorMessage)
+	}
+	out := []Place{}
+	for _, x := range r.Results {
+		wide := false // Google không hiểu địa chỉ thì trả tâm cả nước / cả tỉnh: bỏ
+		for _, t := range x.Types {
+			wide = wide || t == "country" || t == "administrative_area_level_1"
+		}
+		if !wide {
+			out = append(out, Place{Name: vnSuffix.ReplaceAllString(x.FormattedAddress, ""), Lat: x.Geometry.Location.Lat, Lng: x.Geometry.Location.Lng})
+		}
+	}
+	return mergePlaces(out, nil), nil
+}
+
 func (g *Geocoder) osm(ctx context.Context, ll string) (string, error) {
 	// Nominatim cho tối đa 1 lượt/giây: xếp hàng toàn máy chủ
 	g.nomiMu.Lock()
@@ -178,6 +218,18 @@ func (g *Geocoder) Search(ctx context.Context, q string) ([]Place, error) {
 	var out []Place
 	var lastErr error
 	for _, v := range Variants(q) {
+		if g.googleKey != "" {
+			// Có key: chỉ dùng Google (OSM lệch vài km ở VN); Google lỗi (hết hạn mức...) thì mới thử OSM
+			ps, err := g.googleSearch(ctx, v)
+			if err == nil {
+				if len(ps) > 0 {
+					out = ps
+					break
+				}
+				continue
+			}
+			lastErr = err
+		}
 		ps, err := g.nominatim(ctx, v)
 		if err != nil {
 			lastErr = err

@@ -1,5 +1,6 @@
 // Bản đồ công trình: mỗi công trình là 1 ghim định vị (giọt nước, lỗ tròn trắng giữa):
-// vàng: chụp chưa quá hạn; xanh lá: cần cập nhật; đỏ: mới xuất hiện (thời gian thực); navy: đang chọn / rê chuột.
+// vàng: chụp chưa quá hạn; xanh lá: cần cập nhật; đỏ: mới xuất hiện (thời gian thực); navy: đang chọn / rê chuột;
+// xanh dương: công trình nhà thầu đăng trên dezon.vn (lớp riêng, prop dezon).
 // Giai đoạn thi công: nhãn nhỏ dưới ghim khi phóng gần (>= cấp 15) hoặc khi rê chuột. Bấm ghim: thẻ có hình đại diện.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -8,7 +9,7 @@ import 'leaflet/dist/leaflet.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { maplibreGL } from '@maplibre/maplibre-gl-leaflet'
 import MapSearch from '@/components/MapSearch'
-import { fillCover, stageLabel } from '@/utils/siteTip'
+import { dezonTip, fillCover, stageLabel } from '@/utils/siteTip'
 import { esc, isStale } from '@/utils/format'
 
 const VN_CENTER = [16.0, 106.2]
@@ -43,10 +44,11 @@ function loadProvinces() {
  * focus: { id, n } bay tới công trình và mở thẻ. fresh: Set id mới xuất hiện (thời gian thực).
  * search: tay cầm (useRef) để thanh tìm phía trên trang gọi search.current.find(chữ).
  */
-export default function SiteMap({ points, provinces = [], selected, onProvince, fitKey, pop, staleDays = 30, active, onHover, focus, fresh, search, onPlace }) {
+export default function SiteMap({ points, provinces = [], selected, onProvince, fitKey, pop, staleDays = 30, active, onHover, focus, fresh, search, onPlace, dezon = [] }) {
   const el = useRef(null)
   const map = useRef(null)
   const pins = useRef(null)
+  const dzPins = useRef(null) // lớp công trình Dezon (nằm dưới ghim hồ sơ)
   const marks = useRef(new Map()) // id công trình -> marker
   const areas = useRef(null)
   const fitted = useRef(null)
@@ -110,6 +112,7 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
     m.on('zoomend', zoom)
     zoom()
     areas.current = L.layerGroup().addTo(m)
+    dzPins.current = L.layerGroup().addTo(m)
     pins.current = L.layerGroup().addTo(m)
     map.current = m
     // Link trong thẻ: chuyển trang trong app (không tải lại cả trang)
@@ -195,6 +198,25 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
     else m.fitBounds(VN_BOUNDS)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey, points, fresh?.size])
+
+  // Công trình Dezon: ghim xanh dương, nằm dưới ghim hồ sơ; không tính vào canh khung bản đồ
+  useEffect(() => {
+    const g = dzPins.current
+    if (!g) return
+    g.clearLayers()
+    const name = Object.fromEntries(provinces.map((p) => [p.code, p.name]))
+    for (const p of dezon) {
+      const icon = L.divIcon({
+        className: 'site-pin-icon',
+        html: `<span class="site-pin dz">${PIN}<span class="site-pin-label">${esc(p.contractor || 'Dezon')}</span></span>`,
+        iconSize: null,
+        popupAnchor: [0, -38],
+      })
+      L.marker([p.lat, p.lng], { icon, riseOnHover: true, keyboard: false, zIndexOffset: -500 })
+        .bindPopup(dezonTip(p, { prov: name[p.province] }), { className: 'site-pop', minWidth: 260, maxWidth: 260, autoPanPadding: [24, 24] })
+        .addTo(g)
+    }
+  }, [dezon, provinces])
 
   // Rê chuột ở danh sách: nhãn tương ứng đậm lên, nổi lên trên
   useEffect(() => {

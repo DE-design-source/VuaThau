@@ -2182,6 +2182,10 @@ details summary {
 .site-pin.new {
   color: #dc2626;
 }
+/* công trình nhà thầu đăng trên dezon.vn (lớp riêng) */
+.site-pin.dz {
+  color: #1a56db;
+}
 .site-pin:hover,
 .site-pin.on {
   color: #0b1f3a;
@@ -2226,6 +2230,29 @@ details summary {
   color: #f5b301;
   vertical-align: -3px;
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.3));
+}
+.pin-mark.dz {
+  color: #1a56db;
+}
+.ex-dz {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+.ex-dz input {
+  margin: 0;
+  accent-color: #1a56db;
+}
+.dz-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #1a56db;
+  color: #fff;
+  font: 700 10.5px/17px var(--font-sans);
+  letter-spacing: 0.04em;
 }
 .pin-mark.stale {
   color: #22c55e;

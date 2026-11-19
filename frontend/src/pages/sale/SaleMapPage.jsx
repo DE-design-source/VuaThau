@@ -3,6 +3,7 @@
 import { useSearchParams } from 'react-router-dom'
 import usePage from '@/hooks/usePage'
 import saleApi from '@/api/saleApi'
+import dezonApi from '@/api/dezonApi'
 import { Kpi, PageState } from '@/components/ui'
 import Explorer from '@/components/explore/Explorer'
 import { siteTip, stageLabel } from '@/utils/siteTip'
@@ -12,6 +13,7 @@ export default function SaleMapPage() {
   const [sp, setSp] = useSearchParams()
   const cur = { province: sp.get('province') || '', ctv: sp.get('ctv') || '' }
   const { data: d, err, busy, reload } = usePage(() => saleApi.map(cur), [cur.province, cur.ctv])
+  const dz = usePage(() => dezonApi.projects({ province: cur.province }), [cur.province]) // lỗi: bỏ qua, chỉ thiếu lớp Dezon
   if (!d) return <PageState err={err} retry={reload} />
   const points = d.points || []
   const provinces = d.provinces || []
@@ -30,6 +32,7 @@ export default function SaleMapPage() {
       provinces={provinces}
       staleDays={stale}
       busy={busy}
+      dezon={dz.data?.rows}
       fitKey={`${cur.province}|${cur.ctv}`}
       selectedProvince={cur.province}
       onProvince={(code) => set({ province: code === cur.province ? '' : code })}

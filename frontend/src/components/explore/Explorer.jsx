@@ -7,11 +7,12 @@ import SiteCard from './SiteCard'
 import { distM, distText } from '@/utils/format'
 
 const PAGE = 24
+const NONE = [] // tắt lớp Dezon: mảng cố định để bản đồ không vẽ lại mỗi lần render
 
 /** Ghim nhỏ trong chú thích (cùng hình với ghim trên bản đồ). */
-function PinMark({ stale }) {
+function PinMark({ stale, dz }) {
   return (
-    <svg className={`pin-mark ${stale ? 'stale' : ''}`} viewBox="0 0 32 42" width="14" height="19" aria-hidden="true">
+    <svg className={`pin-mark ${stale ? 'stale' : ''} ${dz ? 'dz' : ''}`} viewBox="0 0 32 42" width="14" height="19" aria-hidden="true">
       <path d="M16 1.5C8.3 1.5 2 7.7 2 15.4 2 25.8 16 40.5 16 40.5S30 25.8 30 15.4C30 7.7 23.7 1.5 16 1.5z" fill="currentColor" />
       <circle cx="16" cy="15.4" r="6.2" fill="#fff" />
     </svg>
@@ -25,9 +26,25 @@ function PinMark({ stale }) {
  * pop(p): HTML thẻ khi bấm nhãn; card(p): props cho SiteCard (to, badge, title, right, lines, when, chips)
  * fresh: Set id mới (thời gian thực); filterPanel: nội dung nút Bộ lọc; filterCount: số bộ lọc đang bật
  * footer: phần cuối danh sách (số liệu...); busy: đang tải
+ * dezon: công trình nhà thầu đăng trên dezon.vn (lớp ghim xanh dương, bật / tắt ở chú thích; không vào danh sách thẻ)
  */
-export default function Explorer({ points, provinces, staleDays = 30, selects = [], selectedProvince, onProvince, fitKey, pop, card, fresh, filterPanel, filterCount = 0, footer, busy }) {
+export default function Explorer({ points, provinces, staleDays = 30, selects = [], selectedProvince, onProvince, fitKey, pop, card, fresh, filterPanel, filterCount = 0, footer, busy, dezon = NONE }) {
   const [addr, setAddr] = useState('')
+  const [showDz, setShowDz] = useState(() => {
+    try {
+      return localStorage.getItem('map.dezon') !== '0'
+    } catch {
+      return true
+    }
+  })
+  const toggleDz = (on) => {
+    setShowDz(on)
+    try {
+      localStorage.setItem('map.dezon', on ? '1' : '0')
+    } catch {
+      /* trình duyệt chặn lưu: chỉ nhớ trong phiên */
+    }
+  }
   const search = useRef(null) // MapSearch: search.current.find(chữ)
   const [active, setActive] = useState(null)
   const [focus, setFocus] = useState(null)
@@ -113,6 +130,12 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
             <span className="ex-legend">
               <PinMark /> chưa quá {staleDays} ngày
               <PinMark stale /> cần cập nhật
+              {dezon.length > 0 && (
+                <label className="ex-dz" title="Công trình nhà thầu đăng trên dezon.vn (không phải hồ sơ CTV)">
+                  <input type="checkbox" checked={showDz} onChange={(e) => toggleDz(e.target.checked)} />
+                  <PinMark dz /> Dezon ({dezon.length})
+                </label>
+              )}
             </span>
           </div>
           {rows.length ? (
@@ -156,6 +179,7 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
             fresh={fresh}
             search={search}
             onPlace={setNear}
+            dezon={showDz ? dezon : NONE}
           />
         </aside>
       </div>

@@ -28,6 +28,7 @@ type Deps struct {
 	UserLookup     middleware.UserLookup
 	HealthChecks   map[string]HealthCheck // e.g. "postgres", "redis"
 	Tiles          *handler.TileHandler   // nền bản đồ qua máy chủ; nil: tạo mới theo DATA_DIR
+	Dezon          *handler.DezonHandler  // dữ liệu dezon.vn; nil: chỉ nhà thầu tiềm năng, không có công trình
 }
 
 func New(d Deps) http.Handler {
@@ -92,8 +93,13 @@ func New(d Deps) http.Handler {
 	mux.Handle("GET /api/v1/sale/projects", role(h.SaleProjects, sale, admin))
 	mux.Handle("GET /api/v1/sale/projects/{id}", role(h.SaleProject, sale, admin))
 	mux.Handle("GET /api/v1/sale/contractors", role(h.Contractors, sale, admin))
-	dz := handler.NewDezonHandler(dezon.ListURL)
+	dz := d.Dezon
+	if dz == nil {
+		dz = handler.NewDezonHandler(dezon.ListURL, nil)
+	}
 	mux.Handle("GET /api/v1/sale/dezon-contractors", role(dz.Contractors, sale, admin))
+	// Công trình nhà thầu đăng trên dezon.vn: lớp ghim riêng trên bản đồ admin / kế toán / sale
+	mux.Handle("GET /api/v1/dezon/projects", role(dz.Projects, sale, admin, ketoan))
 
 	// Admin
 	mux.Handle("GET /api/v1/admin/queue", role(h.Queue, admin))
