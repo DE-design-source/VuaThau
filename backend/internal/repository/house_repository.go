@@ -101,6 +101,8 @@ type HouseRepository interface {
 
 	UpdateFields(ctx context.Context, id int64, f model.HouseFields) error
 	FillAddressIfEmpty(ctx context.Context, id int64, addr string) error
+	// FillContractorIfEmpty: tên / SĐT nhà thầu app quét trên bảng hiệu, chỉ điền ô còn trống.
+	FillContractorIfEmpty(ctx context.Context, id int64, name, phone string) error
 	Submit(ctx context.Context, id int64, amount int64, lat, lng *float64, dup string, queueDrive bool) error
 	SetStatus(ctx context.Context, id int64, from []string, to, note string) (bool, error)
 	ApproveMany(ctx context.Context, ids []int64) ([]int64, error)
@@ -283,6 +285,14 @@ func (r *houseRepository) exec(ctx context.Context, q string, args ...any) error
 func (r *houseRepository) UpdateFields(ctx context.Context, id int64, f model.HouseFields) error {
 	return r.exec(ctx, `UPDATE houses SET address = $2, floors = $3, stage = $4, contractor_name = $5, contractor_phone = $6
 		WHERE id = $1`, id, f.Address, f.Floors, f.Stage, f.ContractorName, f.ContractorPhone)
+}
+
+func (r *houseRepository) FillContractorIfEmpty(ctx context.Context, id int64, name, phone string) error {
+	_, err := r.db.Exec(ctx, `UPDATE houses SET
+		contractor_name = CASE WHEN contractor_name = '' THEN $2 ELSE contractor_name END,
+		contractor_phone = CASE WHEN contractor_phone = '' THEN $3 ELSE contractor_phone END
+		WHERE id = $1`, id, name, phone)
+	return err
 }
 
 func (r *houseRepository) FillAddressIfEmpty(ctx context.Context, id int64, addr string) error {

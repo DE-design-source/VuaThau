@@ -38,10 +38,13 @@ type Meta struct {
 	Lat  *float64 `json:"lat"`
 	Lng  *float64 `json:"lng"`
 	Addr string   `json:"addr"`
+	// nhà thầu app quét trên bảng hiệu (CTV bấm Dùng / chụp trúng bảng hiệu); điền khi hồ sơ chưa có
+	CtName  string `json:"ct_name"`
+	CtPhone string `json:"ct_phone"`
 }
 
 func (m Meta) clean() Meta {
-	out := Meta{Addr: truncate(m.Addr, MaxAddressLen)}
+	out := Meta{Addr: truncate(m.Addr, MaxAddressLen), CtName: truncate(strings.TrimSpace(m.CtName), 200), CtPhone: validOrEmpty(CleanPhone(m.CtPhone))}
 	if minuteRE.MatchString(m.T) {
 		out.T = m.T
 	}
@@ -578,7 +581,7 @@ func (s *houseService) takeFiles(ctx context.Context, houseID int64, files []Upl
 	room := max(0, model.MaxPhotos-have)
 	msgs := []string{}
 	ok := 0
-	addr := ""
+	addr, ctName, ctPhone := "", "", ""
 	for k, f := range files {
 		if k >= room {
 			msgs = append(msgs, fmt.Sprintf("Mỗi hồ sơ tối đa %d ảnh, đã bỏ bớt ảnh thừa.", model.MaxPhotos))
@@ -601,12 +604,19 @@ func (s *houseService) takeFiles(ctx context.Context, houseID int64, files []Upl
 			continue
 		}
 		ok++
+		c := m.clean()
 		if addr == "" {
-			addr = m.clean().Addr
+			addr = c.Addr
+		}
+		if ctName == "" && ctPhone == "" && (c.CtName != "" || c.CtPhone != "") {
+			ctName, ctPhone = c.CtName, c.CtPhone
 		}
 	}
 	if ok > 0 && addr != "" { // chụp bằng camera app: điền sẵn địa chỉ cho CTV
 		_ = s.houses.FillAddressIfEmpty(ctx, houseID, addr)
+	}
+	if ok > 0 && (ctName != "" || ctPhone != "") { // nhà thầu quét trên bảng hiệu
+		_ = s.houses.FillContractorIfEmpty(ctx, houseID, ctName, ctPhone)
 	}
 	return ok, msgs, nil
 }

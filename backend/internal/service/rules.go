@@ -317,3 +317,11 @@ func CleanFields(f model.HouseFields) model.HouseFields {
 
 // ValidDay: chuỗi "YYYY-MM-DD".
 func ValidDay(s string) bool { return dayRE.MatchString(s) }
+
+// validOrEmpty: SĐT hợp lệ thì giữ, không thì bỏ (dữ liệu app gửi kèm ảnh).
+func validOrEmpty(phone string) string {
+	if ValidPhone(phone) {
+		return phone
+	}
+	return ""
+}
