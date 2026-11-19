@@ -16,7 +16,7 @@ func TestClientIP(t *testing.T) {
 		return r
 	}
 	for _, c := range []struct{ remote, xff, want string }{
-		{"172.20.0.5:4000", "113.161.1.2", "113.161.1.2"},           // qua Caddy trong docker
+		{"172.20.0.5:4000", "113.161.1.2", "113.161.1.2"},          // qua Caddy trong docker
 		{"172.20.0.5:4000", "1.1.1.1, 113.161.1.2", "113.161.1.2"}, // người dùng tự ghi XFF giả: lấy địa chỉ Caddy thêm (cuối)
 		{"203.0.113.9:4000", "1.1.1.1", "203.0.113.9"},             // kết nối thẳng từ Internet: không tin XFF
 		{"172.20.0.5:4000", "", "172.20.0.5"},
