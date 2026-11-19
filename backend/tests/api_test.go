@@ -27,6 +27,7 @@ import (
 	"vuathau/backend/internal/config"
 	"vuathau/backend/internal/handler"
 	"vuathau/backend/internal/integration/google"
+	"vuathau/backend/internal/integration/ai"
 	"vuathau/backend/internal/integration/inbox"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/token"
@@ -56,6 +57,7 @@ type testEnv struct {
 }
 
 type envSettings struct {
+	ai           ai.Reader // nil: tắt AI
 	inbox        inbox.Source
 	cfg          *config.Config
 	healthChecks map[string]router.HealthCheck
@@ -125,7 +127,7 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 	userSvc := service.NewUserService(userRepo, authRepo, houseRepo, photoRepo, payRepo, logRepo, settingsRepo)
 	houseSvc := service.NewHouseService(service.HouseDeps{Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo,
 		Payments: payRepo, Settings: settingsRepo, Files: files, Public: "http://test",
-		Inbox: settings.inbox, Auth: authRepo, Sync: repository.NewSyncRepository(db)})
+		Inbox: settings.inbox, Auth: authRepo, Sync: repository.NewSyncRepository(db), AI: settings.ai})
 	paySvc := service.NewPaymentService(payRepo, houseRepo, photoRepo, userRepo, logRepo, settingsRepo, files)
 
 	deps := router.Deps{
