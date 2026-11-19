@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"vuathau/backend/internal/integration/inbox"
 	"vuathau/backend/internal/model"
@@ -377,7 +378,17 @@ func pickImages(all []inbox.Image, max int) []inbox.Image {
 	return out
 }
 
-var hasDigit = regexp.MustCompile(`\d`)
+var (
+	hasDigit = regexp.MustCompile(`\d`)
+	houseNo  = regexp.MustCompile(`(^|[\s,/])\d+[\p{L}/-]*(\s|,|$)`) // số nhà đứng riêng: "07 Hối Kiếng", "12/3 ...", "N20 ..." không tính
+)
+
+// moreDetailed: addr là địa chỉ chi tiết hơn old: có số nhà đứng riêng, old không có số nào, và dài hơn hẳn.
+// ("Đà Nẵng333" không phải số nhà; "07 Hối Kiếng 08, P. Ngũ Hành Sơn, Đà Nẵng" hơn "Đà Nẵng")
+func moreDetailed(addr, old string) bool {
+	return addr != "" && houseNo.MatchString(addr) && !hasDigit.MatchString(old) &&
+		utf8.RuneCountInString(addr) > utf8.RuneCountInString(old)+5
+}
 
 // betterAddress: hồ sơ xid (của cùng CTV, chưa duyệt) đang ghi địa chỉ chung chung ("Đà Nẵng"), bản ghi trùng của
 // chatbot có số nhà / tên đường: đổi sang địa chỉ chi tiết, ghi lịch sử.
@@ -386,7 +397,7 @@ func (s *houseService) betterAddress(ctx context.Context, xid, ctvID int64, addr
 	if err != nil || x.CTVID != ctvID || (x.Status != model.StatusPending && x.Status != model.StatusDraft) {
 		return
 	}
-	if addr == "" || addr == x.Address || !hasDigit.MatchString(addr) || hasDigit.MatchString(x.Address) {
+	if !moreDetailed(addr, x.Address) {
 		return
 	}
 	if err := s.houses.SetAddress(ctx, xid, addr); err != nil {
