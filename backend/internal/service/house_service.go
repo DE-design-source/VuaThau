@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"runtime"
 	"log"
 	"regexp"
 	"slices"
@@ -452,8 +453,11 @@ func (s *houseService) CheckPhoto(ctx context.Context, u *model.User, f Upload, 
 		return &CheckResult{Problems: []string{"Ảnh quá 20MB"}}, nil
 	}
 	sha := shaOf(f.Data)
-	img, info, _, err := imaging.Open(f.Data)
+	img, info, _, err := openImage(ctx, f.Data)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return &CheckResult{Problems: []string{imaging.ErrNotImage.Error()}}, nil
 	}
 	if hid, err := s.photos.HouseOfSHA(ctx, sha); err != nil {
@@ -465,7 +469,7 @@ func (s *houseService) CheckPhoto(ctx context.Context, u *model.User, f Upload, 
 	if err != nil {
 		return nil, err
 	}
-	read, aiOK := s.cachedOrRead(ctx, sha, img)
+	read, aiOK := s.checkAI(ctx, sha, img)
 	var it ai.PhotoRead
 	hasIt := read != nil && len(read.Photos) > 0
 	if hasIt {
@@ -496,6 +500,51 @@ func (s *houseService) CheckPhoto(ctx context.Context, u *model.User, f Upload, 
 		p.Lat = ptr(it.Lat)
 	}
 	return &CheckResult{Problems: PhotoProblems(&p, s.now()), AI: aiOK}, nil
+}
+
+// CheckAIWait: lúc CTV vừa chụp, chờ AI đọc ảnh tối đa chừng này rồi trả lời trước ("AI xem lại khi tải lên");
+// AI vẫn đọc tiếp ở nền và lưu kết quả theo sha256, lúc nộp hồ sơ dùng lại không đọc lần nữa.
+const CheckAIWait = 10 * time.Second
+
+func (s *houseService) checkAI(ctx context.Context, sha string, img image.Image) (*ai.Read, bool) {
+	type res struct {
+		r  *ai.Read
+		ok bool
+	}
+	ch := make(chan res, 1)
+	s.bg.Add(1)
+	go func() {
+		defer s.bg.Done()
+		bctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		r, ok := s.cachedOrRead(bctx, sha, img)
+		ch <- res{r, ok}
+	}()
+	t := time.NewTimer(CheckAIWait)
+	defer t.Stop()
+	select {
+	case x := <-ch:
+		return x.r, x.ok
+	case <-t.C:
+		return nil, false
+	case <-ctx.Done():
+		return nil, false
+	}
+}
+
+// decodeSlots: số ảnh được giải nén cùng lúc (ảnh điện thoại 12MP tốn ~50MB RAM mỗi ảnh khi mở):
+// nhiều CTV tải cùng lúc thì xếp hàng thay vì làm API hết bộ nhớ.
+var decodeSlots = make(chan struct{}, max(2, runtime.NumCPU()))
+
+// openImage: imaging.Open có xếp hàng theo decodeSlots; người dùng huỷ (ctx) khi đang chờ thì thôi.
+func openImage(ctx context.Context, data []byte) (image.Image, imaging.Info, string, error) {
+	select {
+	case decodeSlots <- struct{}{}:
+	case <-ctx.Done():
+		return nil, imaging.Info{}, "", ctx.Err()
+	}
+	defer func() { <-decodeSlots }()
+	return imaging.Open(data)
 }
 
 // cachedOrRead: kết quả AI đọc 1 ảnh, dùng lại theo sha256 nếu đã đọc. Tắt AI / lỗi: nil, false.
@@ -539,7 +588,7 @@ func (s *houseService) savePhoto(ctx context.Context, houseID int64, data []byte
 	} else if hid > 0 {
 		return fmt.Sprintf("ảnh này đã nộp ở hồ sơ #%d", hid), nil
 	}
-	img, info, format, err := imaging.Open(data)
+	img, info, format, err := openImage(ctx, data)
 	if err != nil {
 		return "không đọc được file ảnh (chỉ nhận JPG/PNG)", nil
 	}

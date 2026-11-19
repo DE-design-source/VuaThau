@@ -151,6 +151,7 @@ func New(d Deps) http.Handler {
 	// Outermost first: CORS -> rate limit -> routes.
 	var hd http.Handler = mux
 	hd = middleware.RateLimit(d.Config.RateLimitRPS, d.Config.RateLimitBurst)(hd)
+	hd = middleware.Slow(2 * time.Second)(hd) // ghi nhật ký yêu cầu chậm để đo chỗ nghẽn
 	hd = middleware.CORS(d.Config.CORSAllowedOrigins)(hd)
 
 	// Ô nền bản đồ: 1 lần mở bản đồ tải vài chục ô cùng lúc, không tính vào giới hạn tốc độ của API

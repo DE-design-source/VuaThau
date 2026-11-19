@@ -48,6 +48,7 @@ services:
       STATIC_DIR: /app/web
       PUBLIC_URL: https://map.vuathau.com.vn
       REDIS_ADDR: none      # không dùng Redis (chỉ cho /health)
+      GOMEMLIMIT: 800MiB    # Go dọn bộ nhớ sớm trước khi chạm mem_limit
     volumes:
       - data:/data
     ports:
@@ -57,7 +58,8 @@ services:
         condition: service_healthy
     # inbox: mạng của dezon-inbox, để đọc hồ sơ Messenger (dezon-inbox-db, kho ảnh dezon-inbox-s3). Chỉ đọc.
     networks: [vtnt, edge, inbox]
-    mem_limit: 384m
+    # 19/11/2026: 384m -> 1g: nhiều CTV tải ảnh cùng lúc (mỗi ảnh mở ra ~50MB; giới hạn mở cùng lúc theo số CPU)
+    mem_limit: 1g
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
