@@ -21,6 +21,9 @@ const houseApi = {
   /** Admin + kế toán: sửa tiền hồ sơ đã duyệt -> { message } */
   setAmount: (id, { amount, reason }) => axiosClient.put(`/houses/${id}/amount`, { amount, reason }),
 
+  /** Admin: loại chụp ngoai | trong_ngoai (tiền tính lại) -> { message } */
+  setScope: (id, scope) => axiosClient.put(`/houses/${id}/scope`, { scope }),
+
   /** Ảnh JPEG (Blob); original: ảnh gốc. */
   photo: (pid, { original = false } = {}) => getBlob(`/photos/${pid}`, original ? { original: 1 } : undefined),
 }

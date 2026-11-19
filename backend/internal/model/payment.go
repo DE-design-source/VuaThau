@@ -74,10 +74,21 @@ type Settings struct {
 	// Chặn chụp trùng: công trình trong bán kính DupRadiusM đã có hồ sơ trong DupDays ngày (AI so ảnh xác nhận)
 	DupDays    int `json:"dup_days"`
 	DupRadiusM int `json:"dup_radius_m"`
+	// Hồ sơ chỉ chụp bên ngoài công trình: tiền tối đa (chụp cả trong lẫn ngoài thì theo PriceMin / PriceMore)
+	PriceOut int64 `json:"price_out"`
 }
 
 // DefaultSettings: giá trị khi bảng settings trống.
-var DefaultSettings = Settings{PriceMin: 35000, PriceMore: 50000, MinPhotos: 5, PayMin: 5, DupDays: 30, DupRadiusM: 50}
+var DefaultSettings = Settings{PriceMin: 35000, PriceMore: 50000, MinPhotos: 5, PayMin: 5, DupDays: 30, DupRadiusM: 50, PriceOut: 35000}
+
+// AmountFor: tiền 1 hồ sơ theo số ảnh hợp lệ và loại chụp (chỉ ngoài: không quá PriceOut).
+func (s Settings) AmountFor(valid int, scope string) int64 {
+	a := s.Amount(valid)
+	if scope == ScopeOut && a > s.PriceOut {
+		return s.PriceOut
+	}
+	return a
+}
 
 // MaxPhotos: số ảnh tối đa của 1 hồ sơ.
 const MaxPhotos = 20

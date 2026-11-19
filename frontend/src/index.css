@@ -3613,3 +3613,55 @@ details.card > summary strong {
 .ctv-profile textarea {
   resize: vertical;
 }
+
+/* Loại chụp (chỉ ngoài / trong + ngoài) ở trang hồ sơ */
+.hp-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hp-seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--color-field);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.hp-seg button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 0;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.hp-seg button + button {
+  border-left: 1px solid var(--color-field);
+}
+.hp-seg button b {
+  font-size: 14px;
+  font-weight: 600;
+}
+.hp-seg button small {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.hp-seg button.on {
+  background: var(--color-text);
+  color: var(--color-surface);
+}
+.hp-seg button.on small {
+  color: inherit;
+  opacity: 0.8;
+}
+.hp-seg button:disabled {
+  cursor: default;
+}
+.hp-seg button:not(.on):not(:disabled):hover {
+  background: var(--color-sunken);
+}

@@ -167,6 +167,7 @@ function House({ id, d, reload }) {
                 </div>
               </div>
             </div>
+            <Scope h={h} payScope={d.pay_scope} editable={admin && ['cho_duyet', 'da_duyet'].includes(h.status)} act={act} busy={busy} id={id} />
             <hr />
             <div className="stack-sm">
               <span className="cap">Chuyển khoản cho cộng tác viên</span>
@@ -262,6 +263,43 @@ function House({ id, d, reload }) {
         </div>
       </div>
     </section>
+  )
+}
+
+const SCOPES = [
+  ['ngoai', 'Chỉ chụp ngoài'],
+  ['trong_ngoai', 'Chụp trong + ngoài'],
+]
+
+/** Loại chụp: chỉ bên ngoài công trình / cả trong lẫn ngoài (tiền khác nhau). AI gợi ý theo ảnh, admin chọn khi duyệt. */
+function Scope({ id, h, payScope = {}, editable, act, busy }) {
+  const cur = h.scope || h.scope_ai
+  const ai = h.scope_ai && SCOPES.find(([k]) => k === h.scope_ai)?.[1]
+  if (!cur && !editable) return null // hồ sơ cũ: tính tiền như trước
+  return (
+    <div className="hp-scope">
+      <span className="cap">Loại chụp</span>
+      <div className="hp-seg" role="radiogroup" aria-label="Loại chụp">
+        {SCOPES.map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            role="radio"
+            aria-checked={cur === k}
+            className={cur === k ? 'on' : ''}
+            disabled={!editable || busy === 'scope'}
+            onClick={() => cur !== k && act('scope', () => houseApi.setScope(id, k))}
+          >
+            <b>{label}</b>
+            {payScope[k] != null && <small>{money(payScope[k])}</small>}
+          </button>
+        ))}
+      </div>
+      <small className="muted">
+        {ai ? `AI gợi ý: ${ai}` : h.source === 'inbox' ? 'Hồ sơ Messenger không qua AI, mặc định chỉ chụp ngoài' : 'AI chưa gợi ý'}
+        {h.scope && h.scope_ai && h.scope !== h.scope_ai ? ' · admin đã chọn khác' : ''}
+      </small>
+    </div>
   )
 }
 

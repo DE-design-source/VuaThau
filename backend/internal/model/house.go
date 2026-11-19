@@ -80,11 +80,27 @@ type House struct {
 	DupOf           *int64            `json:"dup_of"` // hồ sơ trùng công trình (đã chụp trước)
 	SubmittedAt     *time.Time        `json:"submitted_at"`
 	Province        string            `json:"province"` // mã tỉnh mới (34 tỉnh, từ 1/7/2025), vd VN79
+	Scope           string            `json:"scope"`    // loại chụp admin chọn: ngoai | trong_ngoai ('' = theo AI / hồ sơ cũ)
+	ScopeAI         string            `json:"scope_ai"` // AI gợi ý từ ảnh: ngoai | trong_ngoai ('' = chưa có)
 	ProvinceName    string            `json:"province_name"`
 	CoverID         *int64            `json:"cover_id"`
 	PhotosTotal     int               `json:"photos_total"`
 	PhotosValid     int               `json:"photos_valid"`
 	VIP             bool              `json:"vip"` // chụp công trình này đầu tiên (không có hồ sơ nào gần đó gửi sớm hơn)
+}
+
+// Loại chụp: chỉ bên ngoài công trình / cả bên trong lẫn bên ngoài (tính tiền khác nhau).
+const (
+	ScopeOut  = "ngoai"
+	ScopeBoth = "trong_ngoai"
+)
+
+// EffScope: loại chụp đang áp dụng: admin chọn, không thì AI gợi ý ('' = hồ sơ cũ, tính tiền như trước).
+func (h *House) EffScope() string {
+	if h.Scope != "" {
+		return h.Scope
+	}
+	return h.ScopeAI
 }
 
 // HouseFields: các ô thông tin công trình (CTV lưu, admin sửa).

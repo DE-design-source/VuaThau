@@ -136,6 +136,7 @@ type HouseDetail struct {
 	AIFields  []string      `json:"ai_fields"`
 	Valid     int           `json:"valid"`
 	Pay       int64         `json:"pay"`
+	PayScope  map[string]int64 `json:"pay_scope"` // tiền theo từng loại chụp (nút chọn ở trang duyệt)
 	Editable  bool          `json:"editable"`
 	QueueLeft int           `json:"queue_left"`
 	Journal   []JournalSet  `json:"journal"` // nhật ký ảnh công trình: bộ ảnh đã duyệt cùng công trình, theo giai đoạn
@@ -200,6 +201,7 @@ type HouseService interface {
 	Undo(ctx context.Context, by *model.User, id int64) (string, error)
 	EditInfo(ctx context.Context, by *model.User, id int64, f model.HouseFields) (string, error)
 	SetAmount(ctx context.Context, by *model.User, id int64, amount int64, reason string) (string, error)
+	SetScope(ctx context.Context, by *model.User, id int64, scope string) (string, error)
 	Overview(ctx context.Context, q OverviewQuery) (*Overview, error)
 
 	// Bản đồ công trình + số công trình mỗi CTV đã chụp.
@@ -751,7 +753,7 @@ func (s *houseService) Save(ctx context.Context, u *model.User, id int64, f mode
 	if hit != nil {
 		dup = truncate(hit.Warn, MaxReasonLen)
 	}
-	amount := st.Amount(valid)
+	amount := st.AmountFor(valid, h.EffScope())
 	if err := s.houses.Submit(ctx, id, amount, lat, lng, dup, s.drive != nil); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return "", false, fail(ErrConflict, "Hồ sơ vừa đổi trạng thái, tải lại trang nhé.")
@@ -807,7 +809,8 @@ func (s *houseService) Detail(ctx context.Context, u *model.User, id int64) (*Ho
 	if len(ps) > 0 {
 		h.CoverID = ptr(ps[0].ID)
 	}
-	d := &HouseDetail{House: h, Photos: ps, Logs: logs, Valid: valid, Pay: st.Amount(valid), QueueLeft: left,
+	d := &HouseDetail{House: h, Photos: ps, Logs: logs, Valid: valid, Pay: st.AmountFor(valid, h.EffScope()), QueueLeft: left,
+		PayScope: map[string]int64{model.ScopeOut: st.AmountFor(valid, model.ScopeOut), model.ScopeBoth: st.AmountFor(valid, model.ScopeBoth)},
 		Editable: u.Role == model.RoleCTV && model.Editable(h.Status), Todo: []string{}, BadFields: []string{},
 		Issues: []Issue{}, AIFields: []string{}}
 	vs, err := s.photos.Videos(ctx, id)
@@ -991,7 +994,21 @@ func (s *houseService) runAI(ctx context.Context, hid int64) error {
 	}
 	got := MergeReads(reads)
 	got.Address = truncate(addr, MaxAddressLen)
-	return s.houses.ApplyAI(ctx, hid, got, ok)
+	if err := s.houses.ApplyAI(ctx, hid, got, ok); err != nil {
+		return err
+	}
+	// gợi ý loại chụp: thấy ít nhất 1 ảnh công trình chụp bên trong thì "trong + ngoài"
+	if len(items) == 0 {
+		return nil
+	}
+	scope := model.ScopeOut
+	for _, it := range items {
+		if it.IsSite && it.Inside {
+			scope = model.ScopeBoth
+			break
+		}
+	}
+	return s.houses.SetScopeAI(ctx, hid, scope)
 }
 
 var nonWord = regexp.MustCompile(`[^\p{L}\p{N}]`)
@@ -1193,6 +1210,38 @@ func (s *houseService) SetAmount(ctx context.Context, by *model.User, id int64, 
 	}
 	s.note(ctx, by, ActAmount, id, fmt.Sprintf("%s → %s: %s", Money(h.Amount), Money(amount), reason))
 	return fmt.Sprintf("Hồ sơ #%d giờ là %s.", id, Money(amount)), nil
+}
+
+// SetScope: admin chọn loại chụp (chỉ ngoài / trong + ngoài) khi duyệt; tiền hồ sơ tính lại theo số ảnh đạt.
+func (s *houseService) SetScope(ctx context.Context, by *model.User, id int64, scope string) (string, error) {
+	h, err := s.load(ctx, by, id)
+	if err != nil {
+		return "", err
+	}
+	if scope != model.ScopeOut && scope != model.ScopeBoth {
+		return "", fail(ErrInvalidInput, "Loại chụp không hợp lệ.")
+	}
+	if h.Status != model.StatusPending && h.Status != model.StatusApproved {
+		return "", fail(ErrForbidden, "Chỉ đổi được loại chụp của hồ sơ đang chờ duyệt hoặc đã duyệt, chưa thanh toán.")
+	}
+	ps, err := s.photos.ListByHouse(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	st, err := s.settings.Get(ctx)
+	if err != nil {
+		return "", err
+	}
+	amount := st.AmountFor(FillProblems(ps, s.now()), scope)
+	if err := s.houses.SetScope(ctx, id, scope, amount); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return "", fail(ErrConflict, "Hồ sơ vừa đổi trạng thái, tải lại trang nhé.")
+		}
+		return "", err
+	}
+	label := map[string]string{model.ScopeOut: "Chỉ chụp ngoài", model.ScopeBoth: "Chụp trong + ngoài"}[scope]
+	s.note(ctx, by, ActScope, id, fmt.Sprintf("%s, tiền %s → %s", label, Money(h.Amount), Money(amount)))
+	return fmt.Sprintf("Hồ sơ #%d: %s, %s.", id, label, Money(amount)), nil
 }
 
 // dayRange: "YYYY-MM-DD" -> [đầu ngày, đầu ngày hôm sau) theo giờ Việt Nam.

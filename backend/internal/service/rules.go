@@ -260,6 +260,7 @@ const (
 	ActUndo       = "Hoàn tác, đưa về chờ duyệt"
 	ActEdit       = "Admin sửa thông tin"
 	ActAmount     = "Sửa số tiền"
+	ActScope      = "Chọn loại chụp"
 	ActCancel     = "Huỷ phiếu chi"
 	ActUnpay      = "Huỷ thanh toán"
 	ActReceipt    = "Thêm ảnh biên lai"

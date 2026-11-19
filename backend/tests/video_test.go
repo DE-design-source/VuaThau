@@ -99,7 +99,7 @@ func TestVideos(t *testing.T) {
 	}
 	// sửa chữ ký / đổi id / hết hạn: chặn
 	for _, bad := range []string{
-		src[:len(src)-1] + "0",
+		src[:len(src)-1] + map[bool]string{true: "1", false: "0"}[strings.HasSuffix(src, "0")], // đổi ký tự cuối (luôn khác)
 		strings.Replace(src, fmt.Sprintf("/videos/%d?", det.Videos[0].ID), fmt.Sprintf("/videos/%d?", det.Videos[1].ID), 1),
 		fmt.Sprintf("/api/v1/videos/%d?e=%d&s=x", det.Videos[0].ID, time.Now().Add(-time.Hour).Unix()),
 		fmt.Sprintf("/api/v1/videos/%d", det.Videos[0].ID),

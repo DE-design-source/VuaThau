@@ -103,6 +103,9 @@ type HouseRepository interface {
 	FillAddressIfEmpty(ctx context.Context, id int64, addr string) error
 	// FillContractorIfEmpty: tên / SĐT nhà thầu app quét trên bảng hiệu, chỉ điền ô còn trống.
 	FillContractorIfEmpty(ctx context.Context, id int64, name, phone string) error
+	SetScope(ctx context.Context, id int64, scope string, amount int64) error
+	SetScopeAI(ctx context.Context, id int64, scope string) error
+	SetAddress(ctx context.Context, id int64, addr string) error
 	Submit(ctx context.Context, id int64, amount int64, lat, lng *float64, dup string, queueDrive bool) error
 	SetStatus(ctx context.Context, id int64, from []string, to, note string) (bool, error)
 	ApproveMany(ctx context.Context, ids []int64) ([]int64, error)
@@ -131,7 +134,7 @@ func NewHouseRepository(db *pgxpool.Pool) HouseRepository {
 
 const houseCols = `h.id, h.ctv_id, u.name, u.username, u.bank, h.status, h.address, h.lat, h.lng, h.contractor_name,
 	h.contractor_phone, h.floors, h.stage, h.note, h.dup, h.amount, h.ai_state, h.ai_json, h.batch_id, h.drive, h.created_at,
-	h.source, h.dup_of, h.submitted_at, COALESCE(h.province, '')`
+	h.source, h.dup_of, h.submitted_at, COALESCE(h.province, ''), h.scope, h.scope_ai`
 
 const houseFrom = ` FROM houses h JOIN users u ON u.id = h.ctv_id `
 
@@ -139,7 +142,7 @@ func scanHouse(row pgx.Row) (*model.House, error) {
 	var h model.House
 	err := row.Scan(&h.ID, &h.CTVID, &h.CTVName, &h.CTVPhone, &h.CTVBank, &h.Status, &h.Address, &h.Lat, &h.Lng,
 		&h.ContractorName, &h.ContractorPhone, &h.Floors, &h.Stage, &h.Note, &h.Dup, &h.Amount, &h.AIState, &h.AIJSON,
-		&h.BatchID, &h.Drive, &h.CreatedAt, &h.Source, &h.DupOf, &h.SubmittedAt, &h.Province)
+		&h.BatchID, &h.Drive, &h.CreatedAt, &h.Source, &h.DupOf, &h.SubmittedAt, &h.Province, &h.Scope, &h.ScopeAI)
 	if err == nil {
 		if p := province.ByCode(h.Province); p != nil {
 			h.ProvinceName = p.Name
@@ -285,6 +288,23 @@ func (r *houseRepository) exec(ctx context.Context, q string, args ...any) error
 func (r *houseRepository) UpdateFields(ctx context.Context, id int64, f model.HouseFields) error {
 	return r.exec(ctx, `UPDATE houses SET address = $2, floors = $3, stage = $4, contractor_name = $5, contractor_phone = $6
 		WHERE id = $1`, id, f.Address, f.Floors, f.Stage, f.ContractorName, f.ContractorPhone)
+}
+
+// SetScope: loại chụp admin chọn + số tiền tính lại (chỉ hồ sơ chưa thanh toán).
+func (r *houseRepository) SetScope(ctx context.Context, id int64, scope string, amount int64) error {
+	return r.exec(ctx, `UPDATE houses SET scope = $2, amount = $3 WHERE id = $1 AND status NOT IN ('da_chi')`, id, scope, amount)
+}
+
+// SetScopeAI: loại chụp AI gợi ý từ ảnh.
+func (r *houseRepository) SetScopeAI(ctx context.Context, id int64, scope string) error {
+	_, err := r.db.Exec(ctx, `UPDATE houses SET scope_ai = $2 WHERE id = $1`, id, scope)
+	return err
+}
+
+// SetAddress: đổi địa chỉ (đồng bộ Messenger tìm được địa chỉ chi tiết hơn).
+func (r *houseRepository) SetAddress(ctx context.Context, id int64, addr string) error {
+	_, err := r.db.Exec(ctx, `UPDATE houses SET address = $2 WHERE id = $1`, id, addr)
+	return err
 }
 
 func (r *houseRepository) FillContractorIfEmpty(ctx context.Context, id int64, name, phone string) error {

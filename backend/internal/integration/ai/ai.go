@@ -27,6 +27,7 @@ type PhotoRead struct {
 	Lat     float64 `json:"lat"`
 	Lng     float64 `json:"lng"`
 	IsSite  bool    `json:"is_site"`
+	Inside  bool    `json:"inside"` // ảnh chụp bên trong công trình (trong nhà), không phải mặt ngoài
 }
 
 // Read: kết quả AI đọc 1 bộ ảnh của 1 căn nhà.
@@ -90,11 +91,12 @@ var schema = map[string]any{
 	"properties": map[string]any{
 		"photos": map[string]any{"type": "array", "items": map[string]any{
 			"type": "object", "additionalProperties": false,
-			"required": []string{"index", "time", "address", "lat", "lng", "is_site"},
+			"required": []string{"index", "time", "address", "lat", "lng", "is_site", "inside"},
 			"properties": map[string]any{
 				"index": map[string]any{"type": "integer"}, "time": map[string]any{"type": "string"},
 				"address": map[string]any{"type": "string"}, "lat": map[string]any{"type": "number"},
 				"lng": map[string]any{"type": "number"}, "is_site": map[string]any{"type": "boolean"},
+				"inside": map[string]any{"type": "boolean"},
 			},
 		}},
 		"contractor_name":  map[string]any{"type": "string"},
@@ -111,6 +113,7 @@ var prompt = fmt.Sprintf(`Đây là các ảnh nghiệm thu của MỘT căn nh�
   address: địa chỉ in trên ảnh, giữ nguyên tiếng Việt. Không có thì "".
   lat, lng: toạ độ in trên ảnh nếu có, không có thì 0.
   is_site: true nếu ảnh thực sự chụp công trình nhà đang xây/sửa; false nếu là ảnh màn hình, ảnh chụp lại ảnh, hoặc không phải công trình.
+  inside: true nếu ảnh chụp BÊN TRONG căn nhà (đứng trong nhà: thấy trần / sàn / tường phía trong, cầu thang, phòng, ống điện nước trong tường); false nếu chụp mặt ngoài, mặt tiền, từ đường hay từ nhà bên cạnh nhìn vào.
 - contractor_name, contractor_phone: nhà thầu / đơn vị thi công trên băng rôn, bảng hiệu, bạt che, biển công trình
   (thường ghi "Đơn vị thi công", "Nhà thầu", "Thi công", tên công ty + SĐT/hotline). Ghi đủ tên như in, SĐT in cạnh tên đó.
   Đọc kỹ cả chữ nhỏ trên mọi ảnh. Không lấy chủ đầu tư, đơn vị thiết kế, hay tên/logo trong dải chữ của app chụp ảnh (vd logo công ty người chụp in cạnh giờ Timemark).

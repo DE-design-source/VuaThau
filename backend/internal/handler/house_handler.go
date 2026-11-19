@@ -428,6 +428,26 @@ func (h *HouseHandler) SetAmount(w http.ResponseWriter, r *http.Request) {
 	msg(w, m)
 }
 
+// SetScope handles PUT /api/v1/houses/{id}/scope (admin): {scope: ngoai | trong_ngoai}
+func (h *HouseHandler) SetScope(w http.ResponseWriter, r *http.Request) {
+	id, valid := idOr400(w, r, "id")
+	if !valid {
+		return
+	}
+	var in struct {
+		Scope string `json:"scope"`
+	}
+	if !bodyOr400(w, r, &in) {
+		return
+	}
+	m, err := h.svc.SetScope(r.Context(), me(r), id, in.Scope)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	msg(w, m)
+}
+
 // Overview handles GET /api/v1/houses?status=&q=&ctv=&from=&to=&page=
 func (h *HouseHandler) Overview(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -473,6 +493,7 @@ func (h *HouseHandler) InboxSync(w http.ResponseWriter, r *http.Request) {
 	}
 	ok(w, res)
 }
+
 // Provinces handles GET /api/v1/geo/provinces: ranh giới 34 tỉnh, thành (GeoJSON, công khai, lưu đệm lâu).
 func (h *HouseHandler) Provinces(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/geo+json")

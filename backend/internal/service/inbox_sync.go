@@ -261,10 +261,7 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 	addr := truncate(l.Fields["dia_chi"], MaxAddressLen)
 	sent := l.CreatedAt.In(VN).Format("2006-01-02 15:04") // giờ CTV gửi tin: dùng làm giờ chụp (không cho AI đọc giờ in trên ảnh)
 	files, metas := []Upload{}, []Meta{}
-	for i, im := range l.Images {
-		if i >= model.MaxPhotos {
-			break
-		}
+	for i, im := range pickImages(l.Images, model.MaxPhotos) {
 		b, err := x.src.Image(ctx, im.Key)
 		if err != nil {
 			return false, false, fmt.Errorf("tải ảnh %s: %w", im.Key, err)
@@ -280,6 +277,12 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 	if created {
 		if ok == 0 { // không ảnh nào nhận được (đều đã nộp ở hồ sơ khác)
 			_ = s.houses.Delete(ctx, hid)
+			// chatbot hay ghi 2 hồ sơ cho cùng 1 bộ ảnh; bản sau có khi ghi địa chỉ chi tiết hơn: chép sang hồ sơ đã nhận
+			if len(files) > 0 {
+				if xid, err := s.photos.HouseOfSHA(ctx, shaOf(files[0].Data)); err == nil && xid > 0 && xid != hid {
+					s.betterAddress(ctx, xid, ctv.ID, addr)
+				}
+			}
 			return false, false, nil
 		}
 		f := CleanFields(model.HouseFields{Address: addr, ContractorName: l.Fields["nha_thau"],
@@ -299,7 +302,16 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 		return false, false, nil // không có ảnh mới
 	}
 	if !created { // hồ sơ đang chờ duyệt có thêm ảnh: cập nhật số tiền theo ảnh đạt, giữ trạng thái
+		if h.Status == model.StatusPending {
+			if err := s.repriceInbox(ctx, h, ok); err != nil {
+				return false, false, err
+			}
+		}
 		return false, false, nil
+	}
+	// Messenger không qua AI: mặc định "chỉ chụp ngoài", admin đổi khi duyệt
+	if err := s.houses.SetScope(ctx, hid, model.ScopeOut, 0); err != nil {
+		return false, false, err
 	}
 	if h, err = s.houses.Get(ctx, hid); err != nil {
 		return false, false, err
@@ -327,7 +339,7 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 	if hit != nil && !hit.Block {
 		warn = truncate(hit.Warn, MaxReasonLen)
 	}
-	if err := s.houses.Submit(ctx, hid, st.Amount(valid), lat, lng, warn, s.drive != nil); err != nil {
+	if err := s.houses.Submit(ctx, hid, st.AmountFor(valid, model.ScopeOut), lat, lng, warn, s.drive != nil); err != nil {
 		return false, false, err
 	}
 	s.assignProvince(ctx, hid)
@@ -339,6 +351,69 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 		return true, true, nil
 	}
 	return true, false, nil
+}
+
+// pickImages: tối đa max ảnh; ưu tiên ảnh chatbot đã gắn vào hồ sơ, rồi ảnh lẻ gửi trước đó (mới nhất trước);
+// trả theo thứ tự gửi.
+func pickImages(all []inbox.Image, max int) []inbox.Image {
+	if len(all) <= max {
+		return all
+	}
+	keep := map[int]bool{}
+	for i, im := range all {
+		if !im.Extra && len(keep) < max {
+			keep[i] = true
+		}
+	}
+	for i := len(all) - 1; i >= 0 && len(keep) < max; i-- {
+		keep[i] = true
+	}
+	out := make([]inbox.Image, 0, max)
+	for i, im := range all {
+		if keep[i] {
+			out = append(out, im)
+		}
+	}
+	return out
+}
+
+var hasDigit = regexp.MustCompile(`\d`)
+
+// betterAddress: hồ sơ xid (của cùng CTV, chưa duyệt) đang ghi địa chỉ chung chung ("Đà Nẵng"), bản ghi trùng của
+// chatbot có số nhà / tên đường: đổi sang địa chỉ chi tiết, ghi lịch sử.
+func (s *houseService) betterAddress(ctx context.Context, xid, ctvID int64, addr string) {
+	x, err := s.houses.Get(ctx, xid)
+	if err != nil || x.CTVID != ctvID || (x.Status != model.StatusPending && x.Status != model.StatusDraft) {
+		return
+	}
+	if addr == "" || addr == x.Address || !hasDigit.MatchString(addr) || hasDigit.MatchString(x.Address) {
+		return
+	}
+	if err := s.houses.SetAddress(ctx, xid, addr); err != nil {
+		log.Printf("Messenger: đổi địa chỉ hồ sơ #%d: %v", xid, err)
+		return
+	}
+	s.note(ctx, &model.User{}, ActInbox, xid, truncate(fmt.Sprintf("Địa chỉ chi tiết hơn từ Messenger: %q → %q", x.Address, addr), MaxReasonLen))
+}
+
+// repriceInbox: hồ sơ Messenger đang chờ duyệt vừa có thêm ảnh: tính lại tiền theo số ảnh đạt, ghi lịch sử.
+func (s *houseService) repriceInbox(ctx context.Context, h *model.House, added int) error {
+	ps, err := s.photos.ListByHouse(ctx, h.ID)
+	if err != nil {
+		return err
+	}
+	st, err := s.settings.Get(ctx)
+	if err != nil {
+		return err
+	}
+	amount := st.AmountFor(FillProblems(ps, s.now()), h.EffScope())
+	if amount != h.Amount {
+		if err := s.houses.SetAmount(ctx, h.ID, amount); err != nil {
+			return err
+		}
+	}
+	s.note(ctx, &model.User{}, ActInbox, h.ID, fmt.Sprintf("Messenger: thêm %d ảnh, tiền %s → %s", added, Money(h.Amount), Money(amount)))
+	return nil
 }
 
 // SyncInbox: lấy các hồ sơ Messenger mới (gọi định kỳ và khi admin bấm "Đồng bộ ngay").
@@ -358,6 +433,9 @@ func (s *houseService) SyncInbox(ctx context.Context) (*SyncStatus, error) {
 
 	res := SyncStatus{Enabled: true, At: ptr(s.now())}
 	err := s.backfillVideos(ctx)
+	if err == nil {
+		err = s.resyncOnce(ctx)
+	}
 	if err == nil {
 		err = s.syncAll(ctx, &res)
 	}
@@ -450,4 +528,20 @@ func (s *houseService) StartInboxSync(every time.Duration) {
 			time.Sleep(every)
 		}
 	}()
+}
+
+// resyncKey: đã đọc lại toàn bộ hồ sơ Messenger 1 lần sau bản sửa 19/11/2026 (lấy ảnh lẻ chatbot bỏ sót,
+// gộp địa chỉ từ bản ghi trùng). Hồ sơ đã duyệt / từ chối không bị đụng; ảnh đã có bị bỏ qua (trùng file).
+const resyncKey = "inbox_resync_v2"
+
+func (s *houseService) resyncOnce(ctx context.Context) error {
+	x := s.inbox
+	if done, _, err := x.state.Get(ctx, resyncKey); err != nil || done != "" {
+		return err
+	}
+	if err := x.state.Set(ctx, syncCursorKey, ""); err != nil {
+		return err
+	}
+	log.Printf("Messenger: đọc lại toàn bộ hồ sơ (bản sửa ảnh bỏ sót)")
+	return x.state.Set(ctx, resyncKey, s.now().Format(time.RFC3339))
 }
