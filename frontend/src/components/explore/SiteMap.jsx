@@ -1,7 +1,7 @@
-// Bản đồ công trình: mỗi công trình là 1 ghim định vị (giọt nước, lỗ tròn trắng giữa):
-// vàng: chụp chưa quá hạn; xanh lá: cần cập nhật; đỏ: mới xuất hiện (thời gian thực); navy: đang chọn / rê chuột;
-// xanh dương: công trình nhà thầu đăng trên dezon.vn (lớp riêng, prop dezon).
-// Giai đoạn thi công: nhãn nhỏ dưới ghim khi phóng gần (>= cấp 15) hoặc khi rê chuột. Bấm ghim: thẻ có hình đại diện.
+// Bản đồ công trình (thiết kế 19/11): mỗi hồ sơ là 1 nhãn viên thuốc ghi mã (HS-00121), đáy nhãn chỉ đúng vị trí:
+// vàng: chụp chưa quá hạn; xanh lá: cần cập nhật; đỏ: mới xuất hiện (thời gian thực); đen: đang chọn / rê chuột.
+// Phóng xa (< cấp 12): nhãn thu thành chấm cho đỡ chồng. Bấm nhãn: thẻ có hình đại diện.
+// Công trình nhà thầu đăng trên dezon.vn: ghim giọt nước xanh dương (lớp riêng, prop dezon), giai đoạn hiện khi phóng gần.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import L from 'leaflet'
@@ -10,7 +10,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { maplibreGL } from '@maplibre/maplibre-gl-leaflet'
 import MapSearch from '@/components/MapSearch'
 import { dezonTip, fillCover, stageLabel } from '@/utils/siteTip'
-import { esc, isStale } from '@/utils/format'
+import { esc, hsId, isStale } from '@/utils/format'
 
 const VN_CENTER = [16.0, 106.2]
 const VN_BOUNDS = [
@@ -174,12 +174,12 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
     marks.current = new Map()
     const latlngs = []
     for (const p of points) {
-      const cls = ['site-pin', isStale(p.last_at || p.at, staleDays) ? 'stale' : '', fresh?.has(p.id) ? 'new' : ''].join(' ')
+      const cls = ['site-tag', isStale(p.last_at || p.at, staleDays) ? 'stale' : '', fresh?.has(p.id) ? 'new' : ''].join(' ')
       const icon = L.divIcon({
         className: 'site-pin-icon',
-        html: `<span class="${cls}">${PIN}<span class="site-pin-label">${esc(stageLabel(p.stage))}</span></span>`,
+        html: `<span class="${cls}" title="${esc(stageLabel(p.stage))}">${hsId(p.id)}</span>`,
         iconSize: null,
-        popupAnchor: [0, -38],
+        popupAnchor: [0, -30],
       })
       const mk = L.marker([p.lat, p.lng], { icon, riseOnHover: true, keyboard: false })
       if (pop) {
@@ -222,7 +222,7 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
   useEffect(() => {
     for (const [id, mk] of marks.current) {
       const on = id === active
-      mk.getElement()?.querySelector('.site-pin')?.classList.toggle('on', on)
+      mk.getElement()?.querySelector('.site-tag')?.classList.toggle('on', on)
       mk.setZIndexOffset(on ? 1000 : 0)
     }
   }, [active, points])

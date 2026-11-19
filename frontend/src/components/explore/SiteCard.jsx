@@ -1,9 +1,8 @@
-// Thẻ công trình kiểu Airbnb: ảnh lớn bo góc (ảnh cỡ thẻ 640px, chỉ tải khi cuộn tới), nhãn nổi trên ảnh,
-// nút Google Maps góc ảnh, bên dưới: tiêu đề + các dòng thông tin + nhãn nhỏ.
+// Thẻ công trình (thiết kế 19/11): ảnh 4:3 bo góc (ảnh cỡ thẻ 640px, chỉ tải khi cuộn tới), nhãn giai đoạn nổi góc trái,
+// nút ghim góc phải (bay tới trên bản đồ); bên dưới: số nhà + đường, khu vực, nhà thầu; dòng cuối: CTV và ngày chụp.
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getBlob } from '@/api/axiosClient'
-import { gmapUrl } from '@/utils/format'
 
 // Ảnh đã tải (id ảnh -> URL blob), dùng lại khi lọc / cuộn lại
 const cache = new Map()
@@ -45,48 +44,51 @@ function CardImage({ id }) {
 }
 
 /**
- * p: công trình; to: link trang chi tiết; badge: chữ nhãn nổi trên ảnh (vd "VIP · chụp đầu tiên");
- * title / right: dòng tiêu đề và chữ bên phải; lines: các dòng chữ xám; when: dòng ngày chụp; chips: nhãn nhỏ cuối thẻ.
+ * p: công trình; to: link trang chi tiết; tag: nhãn trên ảnh (giai đoạn); street / area: địa chỉ tách 2 dòng;
+ * contractor; ctv: tên CTV; date: ngày chụp lần cuối; stale: quá hạn cần cập nhật; dist: khoảng cách (lọc quanh vị trí).
  * on: đang rê chuột (từ bản đồ); onHover(id|null); onLocate(): bay tới trên bản đồ.
  */
-export default function SiteCard({ p, to, badge, title, right, lines = [], when, chips = [], on, onHover, onLocate, dist }) {
+export default function SiteCard({ p, to, tag, street, area, contractor, ctv, date, stale, dist, on, onHover, onLocate }) {
+  const ini = (ctv || '').trim().split(/s+/).pop()?.[0]?.toUpperCase()
   return (
     <article className={`ex-card ${on ? 'on' : ''}`} onMouseEnter={() => onHover?.(p.id)} onMouseLeave={() => onHover?.(null)}>
       <div className="ex-media">
-        <Link to={to} aria-label={title}>
+        <Link to={to} aria-label={street}>
           <CardImage id={p.cover_id} />
         </Link>
-        {badge && <span className="ex-badge">{badge}</span>}
-        <a className="ex-gmap" href={gmapUrl(p.lat, p.lng)} target="_blank" rel="noreferrer" title="Mở Google Maps" aria-label="Mở Google Maps">
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-            <path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z" fill="currentColor" />
+        {tag && <span className="ex-badge">{tag}</span>}
+        <button type="button" className="ex-gmap" onClick={onLocate} title="Xem trên bản đồ" aria-label="Xem trên bản đồ">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <path d="M8 1a5 5 0 0 0-5 5c0 3.6 5 9 5 9s5-5.4 5-9a5 5 0 0 0-5-5zm0 7a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" fill="currentColor" />
           </svg>
-        </a>
+        </button>
       </div>
-      <div className="ex-info">
-        <div className="ex-row">
-          <Link to={to} className="ex-title">
-            {title}
-          </Link>
-          {right && <span className="ex-right">{right}</span>}
-        </div>
-        {lines.filter(Boolean).map((l, i) => (
-          <div key={i} className="ex-line">
-            {l}
+      <Link to={to} className="ex-info">
+        <div className="ex-title">{street}</div>
+        {(area || dist) && (
+          <div className="ex-line">
+            {area}
+            {dist && <b className="ex-dist"> · cách {dist}</b>}
           </div>
-        ))}
-        {when && <div className="ex-when">{when}</div>}
-        <div className="ex-chips">
-          {dist && <span className="ex-chip ex-chip-dist">Cách {dist}</span>}
-          {chips.filter(Boolean).map((c, i) => (
-            <span key={i} className="ex-chip">
-              {c}
+        )}
+        {contractor && <div className="ex-line ex-ct">{contractor}</div>}
+      </Link>
+      <div className="ex-foot">
+        {ctv ? (
+          <span className="ex-ctv">
+            <i>{ini || '?'}</i>
+            <span>
+              CTV <b>{ctv}</b>
             </span>
-          ))}
-          <button type="button" className="ex-chip ex-chip-btn" onClick={onLocate}>
-            Xem trên bản đồ
-          </button>
-        </div>
+          </span>
+        ) : (
+          <span />
+        )}
+        {date && (
+          <span className={stale ? 'ex-stale' : ''} title={stale ? 'Quá hạn, cần chụp cập nhật' : 'Chụp lần cuối'}>
+            {date}
+          </span>
+        )}
       </div>
     </article>
   )

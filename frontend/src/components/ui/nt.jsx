@@ -110,7 +110,7 @@ export function Pager({ page, pages, onGo }) {
 }
 
 /** Ảnh cần đăng nhập (ảnh hồ sơ, biên lai): tải qua axiosClient (Bearer) dạng Blob rồi hiện. path: đường dẫn API, vd /photos/101. */
-export function AuthImage({ path, alt = '', className = '', onClick }) {
+export function AuthImage({ path, alt = '', className = '', onClick, onLoad }) {
   const [src, setSrc] = useState(null)
   const [failed, setFailed] = useState(false)
   useEffect(() => {
@@ -131,7 +131,7 @@ export function AuthImage({ path, alt = '', className = '', onClick }) {
   }, [path])
   if (failed) return <div className={`img-ph ${className}`}>Không tải được ảnh</div>
   if (!src) return <div className={`img-ph ${className}`} />
-  return <img src={src} alt={alt} className={className} onClick={onClick} loading="lazy" />
+  return <img src={src} alt={alt} className={className} onClick={onClick} onLoad={onLoad} loading="lazy" />
 }
 
 /** Ảnh bìa nhỏ của hồ sơ trong danh sách. */
@@ -147,18 +147,6 @@ function downloadOriginal(id) {
 /** Lưới ảnh hồ sơ + xem lớn (vuốt bằng phím ← →). */
 export function PhotoGrid({ ps, checks = true }) {
   const [at, setAt] = useState(null)
-  useEffect(() => {
-    if (at === null) return
-    const key = (e) => {
-      if (e.key === 'Escape') setAt(null)
-      if (e.key === 'ArrowRight') setAt((k) => Math.min(ps.length - 1, k + 1))
-      if (e.key === 'ArrowLeft') setAt((k) => Math.max(0, k - 1))
-    }
-    window.addEventListener('keydown', key)
-    return () => window.removeEventListener('keydown', key)
-  }, [at, ps.length])
-  const p = at !== null ? ps[at] : null
-  const lat = p?.lat
   return (
     <>
       <div className="photo-grid">
@@ -170,6 +158,27 @@ export function PhotoGrid({ ps, checks = true }) {
           </button>
         ))}
       </div>
+      <Lightbox ps={ps} at={at} setAt={setAt} checks={checks} />
+    </>
+  )
+}
+
+/** Xem ảnh lớn: at = vị trí ảnh đang xem (null: đóng), phím ← → Esc. */
+export function Lightbox({ ps, at, setAt, checks = true }) {
+  useEffect(() => {
+    if (at === null) return
+    const key = (e) => {
+      if (e.key === 'Escape') setAt(null)
+      if (e.key === 'ArrowRight') setAt((k) => Math.min(ps.length - 1, k + 1))
+      if (e.key === 'ArrowLeft') setAt((k) => Math.max(0, k - 1))
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [at, ps.length, setAt])
+  const p = at !== null ? ps[at] : null
+  const lat = p?.lat
+  return (
+    <>
       {p && (
         <div className="lightbox" role="dialog" aria-modal="true" onClick={() => setAt(null)}>
           <div className="lightbox-bar" onClick={(e) => e.stopPropagation()}>

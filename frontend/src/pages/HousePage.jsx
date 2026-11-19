@@ -10,9 +10,9 @@ import useAct from '@/hooks/useAct'
 import useCfg from '@/hooks/useCfg'
 import useAuth from '@/hooks/useAuth'
 import houseApi from '@/api/houseApi'
-import { AuthImage, Button, Icon, PageState, PhotoGrid, StatusBadge, hsId } from '@/components/ui'
+import { AuthImage, Button, Icon, Lightbox, PageState, PhotoGrid, StatusBadge, hsId } from '@/components/ui'
 import { toast } from '@/services/toast'
-import { REASONS, aiDiffText, bankParts, copyGmap, gmapUrl, money, parseMoney, vnTime } from '@/utils/format'
+import { REASONS, aiDiffText, bankParts, copyGmap, gmapUrl, money, parseMoney, vnDate, vnTime } from '@/utils/format'
 
 // Mô tả 8 giai đoạn (hiện khi rê chuột ở nhật ký công trình)
 const STAGE_DESC = {
@@ -46,7 +46,6 @@ function House({ id, d, reload }) {
   const { role } = useAuth()
   const cfg = useCfg()
   const [act, busy] = useAct(reload)
-  const [allPhotos, setAllPhotos] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
   const h = d.house
   const ps = d.photos || []
@@ -90,7 +89,8 @@ function House({ id, d, reload }) {
                   <i />
                   {h.stage || 'Chưa rõ'}
                 </span>
-                {h.province_name && <span className="muted">· {h.province_name}</span>}
+                <span className="hp-dot">·</span>
+                <span>Cập nhật {vnDate(h.submitted_at || h.created_at)}</span>
               </div>
             </div>
             <Link to={`/ctvs/${h.ctv_id}`} className="hp-ctv">
@@ -129,40 +129,8 @@ function House({ id, d, reload }) {
             </div>
           )}
 
-          {/* ảnh: khảm (1 lớn + 4 nhỏ) hoặc tất cả */}
-          {ps.length === 0 ? (
-            <p className="muted">Chưa có ảnh.</p>
-          ) : allPhotos || ps.length < 3 ? (
-            <div className="stack">
-              <PhotoGrid ps={ps} />
-              {ps.length >= 3 && (
-                <a href="#thu-gon" className="hp-link" onClick={(e) => (e.preventDefault(), setAllPhotos(false))}>
-                  Thu gọn
-                </a>
-              )}
-            </div>
-          ) : (
-            <div className="hp-mosaic">
-              {ps.slice(0, 5).map((p, k) => (
-                <button key={p.id} type="button" className={`hp-tile ${k === 0 ? 'hp-big' : ''}`} onClick={() => setAllPhotos(true)}>
-                  <AuthImage path={`/photos/${p.id}`} alt={`Ảnh ${k + 1}`} />
-                  {k === 0 ? (
-                    <span className={`hp-first ${p.problems?.length ? 'bad' : ''}`}>
-                      <i>{p.problems?.length ? '✕' : '✓'}</i>Ảnh 1 · {p.problems?.length ? 'Lỗi' : 'Đạt'}
-                    </span>
-                  ) : (
-                    <span className={`hp-mark ${p.problems?.length ? 'bad' : ''}`}>{p.problems?.length ? '✕' : '✓'}</span>
-                  )}
-                </button>
-              ))}
-              <button type="button" className="hp-all" onClick={() => setAllPhotos(true)}>
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="#222" aria-hidden="true">
-                  {[2, 8, 14].flatMap((y) => [2, 8, 14].map((x) => <circle key={`${x}${y}`} cx={x} cy={y} r="1.5" />))}
-                </svg>
-                Hiển thị tất cả {ps.length} ảnh
-              </button>
-            </div>
-          )}
+          {/* ảnh + video: khảm theo hàng 3 ô (ô rộng theo tỉ lệ ảnh), 2 hàng đầu; bấm nút xem tất cả */}
+          {ps.length + (d.videos || []).length === 0 ? <p className="muted">Chưa có ảnh.</p> : <Mosaic ps={ps} videos={d.videos || []} />}
           {(issues.length > 0 || fieldsTodo.length > 0) && (
             <ul className="issues">
               {groupIssues(issues).map(([problem, idx]) => (
@@ -174,25 +142,6 @@ function House({ id, d, reload }) {
                 <li key={c.key}>{c.message || c.label}</li>
               ))}
             </ul>
-          )}
-
-          {/* video công trình (CTV quay trên app / gửi qua Messenger): chỉ để xem thêm, không tính tiền */}
-          {(d.videos || []).length > 0 && (
-            <section className="hp-videos">
-              <h3 className="hp-h3">
-                Video công trình <span className="muted">· {d.videos.length}</span>
-              </h3>
-              <div className="hp-vgrid">
-                {d.videos.map((v, k) => (
-                  <figure key={v.id}>
-                    <video src={v.src} controls preload="metadata" playsInline />
-                    <figcaption className="muted">
-                      Video {k + 1} · {(v.size / 1048576).toFixed(1).replace('.', ',')} MB
-                    </figcaption>
-                  </figure>
-                ))}
-              </div>
-            </section>
           )}
 
           {/* nhật ký công trình: 8 giai đoạn */}
@@ -231,11 +180,11 @@ function House({ id, d, reload }) {
                   <div>{bank.owner || (h.ctv_bank ? '—' : <span className="muted">Chưa có tài khoản</span>)}</div>
                 </div>
                 <div>
-                  <span className="cap">Số tài khoản</span>
-                  <div className="mono">{bank.no || '—'}</div>
+                  <span className="cap">Số điện thoại</span>
+                  <div>{h.ctv_phone || '—'}</div>
                 </div>
               </div>
-              {h.ctv_phone && <small className="muted">SĐT cộng tác viên: {h.ctv_phone}</small>}
+              {bank.no && bank.no.replace(/D/g, '') !== (h.ctv_phone || '').replace(/D/g, '') && <small className="muted">Số tài khoản: {bank.no}</small>}
             </div>
             <hr />
             <div className="stack-sm">
@@ -313,6 +262,86 @@ function House({ id, d, reload }) {
         </div>
       </div>
     </section>
+  )
+}
+
+const ROW = 3 // ô mỗi hàng
+const SHOW_ROWS = 2 // số hàng khi thu gọn
+
+/** Ảnh khảm (thiết kế 19/11): hàng 3 ô cao bằng nhau, ô rộng theo tỉ lệ thật của ảnh / video (đo khi tải xong).
+ *  Video đứng sau ảnh 1. Ảnh 1 có nhãn "Ảnh 1 · Đạt", ảnh khác có dấu ✓ / ✕. Bấm ảnh: xem lớn; bấm video: phát. */
+function Mosaic({ ps, videos }) {
+  const [all, setAll] = useState(false)
+  const [at, setAt] = useState(null) // ảnh đang xem lớn
+  const [ratio, setRatio] = useState({}) // khoá ô -> rộng/cao
+  const [play, setPlay] = useState(null) // id video đang phát
+  const items = [
+    ...ps.slice(0, 1).map((p) => ({ key: `p${p.id}`, p, k: 0 })),
+    ...videos.map((v, i) => ({ key: `v${v.id}`, v, i })),
+    ...ps.slice(1).map((p, i) => ({ key: `p${p.id}`, p, k: i + 1 })),
+  ]
+  const measure = (key, w, h) => w && h && setRatio((r) => (r[key] ? r : { ...r, [key]: Math.min(2, Math.max(0.5, w / h)) }))
+  const shown = all ? items : items.slice(0, ROW * SHOW_ROWS)
+  const rows = []
+  for (let i = 0; i < shown.length; i += ROW) rows.push(shown.slice(i, i + ROW))
+  const what = videos.length ? `${ps.length} ảnh và video` : `${ps.length} ảnh`
+  return (
+    <div className="hp-mosaic">
+      {rows.map((row, r) => (
+        <div key={r} className="hp-mrow">
+          {row.map((it) => {
+            const rt = ratio[it.key] || (it.v ? 9 / 16 : 4 / 3)
+            const bad = it.p?.problems?.length > 0
+            return (
+              <div key={it.key} className="hp-tile" style={{ flex: `${rt} 1 0`, aspectRatio: rt }}>
+                {it.p ? (
+                  <button type="button" onClick={() => setAt(it.k)} aria-label={`Xem ảnh ${it.k + 1}`}>
+                    <AuthImage path={`/photos/${it.p.id}`} alt={`Ảnh ${it.k + 1}`} onLoad={(e) => measure(it.key, e.target.naturalWidth, e.target.naturalHeight)} />
+                  </button>
+                ) : (
+                  <video
+                    src={it.v.src}
+                    preload="metadata"
+                    playsInline
+                    controls={play === it.v.id}
+                    autoPlay={play === it.v.id}
+                    onLoadedMetadata={(e) => measure(it.key, e.target.videoWidth, e.target.videoHeight)}
+                    onClick={() => play !== it.v.id && setPlay(it.v.id)}
+                  />
+                )}
+                {it.p && it.k === 0 ? (
+                  <span className={`hp-first ${bad ? 'bad' : ''}`}>
+                    <i>{bad ? '✕' : '✓'}</i>Ảnh 1 · {bad ? 'Lỗi' : 'Đạt'}
+                  </span>
+                ) : it.p ? (
+                  <span className={`hp-mark ${bad ? 'bad' : ''}`}>{bad ? '✕' : '✓'}</span>
+                ) : (
+                  play !== it.v.id && (
+                    <span className="hp-vtag">
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="#fff" aria-hidden="true">
+                        <path d="M2 1l7 4-7 4z" />
+                      </svg>
+                      Video{videos.length > 1 ? ` ${it.i + 1}` : ''}
+                    </span>
+                  )
+                )}
+              </div>
+            )
+          })}
+          {/* hàng cuối thiếu ô: chừa chỗ trống để ô không phình to */}
+          {row.length < ROW && <div style={{ flex: `${(ROW - row.length) * (4 / 3)} 1 0` }} />}
+        </div>
+      ))}
+      {items.length > ROW * SHOW_ROWS && (
+        <button type="button" className="hp-all" onClick={() => setAll(!all)}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            {[2, 8, 14].flatMap((y) => [2, 8, 14].map((x) => <circle key={`${x}${y}`} cx={x} cy={y} r="1.5" />))}
+          </svg>
+          {all ? 'Thu gọn' : `Hiển thị tất cả ${what}`}
+        </button>
+      )}
+      <Lightbox ps={ps} at={at} setAt={setAt} />
+    </div>
   )
 }
 
@@ -448,13 +477,17 @@ function Review({ id, act, busy, left, reasons }) {
 
 /** Thông tin công trình: khung ô kiểu Airbnb; admin sửa được (ghi lịch sử), vai trò khác chỉ xem. */
 function InfoForm({ id, h, act, busy, stages, aiTag, editable }) {
-  const [f, setF] = useState({
+  const [init] = useState(() => ({
     address: h.address || '',
     floors: h.floors ?? '',
     stage: h.stage || '',
     contractor_name: h.contractor_name || '',
     contractor_phone: h.contractor_phone || '',
-  })
+  }))
+  const [f, setF] = useState(init)
+  // "Xem chi tiết": số tầng, giai đoạn (mở sẵn khi AI đọc khác giá trị đang lưu ở 2 ô này)
+  const [more, setMore] = useState(() => h.ai_diff?.floors != null || h.ai_diff?.stage != null)
+  const dirty = Object.keys(init).some((k) => String(f[k]) !== String(init[k]))
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const ai = (k) => aiTag.includes(k) && <em className="hp-aitag">AI đọc</em>
   // AI đọc khác giá trị đang lưu; ẩn khi ô đã được sửa thành đúng giá trị AI
@@ -489,27 +522,37 @@ function InfoForm({ id, h, act, busy, stages, aiTag, editable }) {
             <input value={f.contractor_phone} onChange={set('contractor_phone')} readOnly={!editable} inputMode="tel" placeholder="—" />
             {diff('contractor_phone')}
           </label>
-          <label className="hp-cell">
-            <span className="cap">Số tầng {ai('floors')}</span>
-            <input value={f.floors} onChange={set('floors')} readOnly={!editable} inputMode="numeric" placeholder="—" />
-            {diff('floors')}
-          </label>
+          <button type="button" className="hp-more" aria-expanded={more} onClick={() => setMore(!more)}>
+            <span>{more ? 'Thu gọn' : 'Xem chi tiết'}</span>
+            <svg width="12" height="12" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="4" aria-hidden="true">
+              <path d={more ? 'M4 20l12-12 12 12' : 'M12 4l12 12-12 12'} />
+            </svg>
+          </button>
         </div>
-        <label className="hp-cell">
-          <span className="cap">Giai đoạn thi công {ai('stage')}</span>
-          {editable ? (
-            <select value={f.stage} onChange={set('stage')}>
-              <option value="">—</option>
-              {stages.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-              {f.stage && !stages.includes(f.stage) && <option>{f.stage}</option>}
-            </select>
-          ) : (
-            <input value={f.stage || '—'} readOnly />
-          )}
-          {diff('stage')}
-        </label>
+        {more && (
+          <div className="hp-cell-row">
+            <label className="hp-cell">
+              <span className="cap">Số tầng {ai('floors')}</span>
+              <input value={f.floors} onChange={set('floors')} readOnly={!editable} inputMode="numeric" placeholder="—" />
+              {diff('floors')}
+            </label>
+            <label className="hp-cell">
+              <span className="cap">Giai đoạn thi công {ai('stage')}</span>
+              {editable ? (
+                <select value={f.stage} onChange={set('stage')}>
+                  <option value="">—</option>
+                  {stages.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                  {f.stage && !stages.includes(f.stage) && <option>{f.stage}</option>}
+                </select>
+              ) : (
+                <input value={f.stage || '—'} readOnly />
+              )}
+              {diff('stage')}
+            </label>
+          </div>
+        )}
       </div>
       <div className="hp-info-foot">
         {h.lat != null && (
@@ -530,10 +573,15 @@ function InfoForm({ id, h, act, busy, stages, aiTag, editable }) {
           </>
         )}
         <span className="spacer" />
-        {editable && (
-          <Button type="submit" variant="secondary" loading={busy === 'info'}>
-            Lưu thông tin
-          </Button>
+        {editable && (dirty || busy === 'info') && (
+          <>
+            <button type="button" className="link-btn" onClick={() => setF(init)}>
+              Huỷ
+            </button>
+            <Button type="submit" variant="secondary" loading={busy === 'info'}>
+              Lưu thông tin
+            </Button>
+          </>
         )}
       </div>
       {h.lat != null && (

@@ -6,8 +6,8 @@ import saleApi from '@/api/saleApi'
 import dezonApi from '@/api/dezonApi'
 import { Kpi, PageState } from '@/components/ui'
 import Explorer from '@/components/explore/Explorer'
-import { siteTip, stageLabel } from '@/utils/siteTip'
-import { gmapUrl, hsId, isStale, vnDate } from '@/utils/format'
+import { cardProps, siteTip } from '@/utils/siteTip'
+import { gmapUrl, isStale } from '@/utils/format'
 
 export default function SaleMapPage() {
   const [sp, setSp] = useSearchParams()
@@ -24,7 +24,6 @@ export default function SaleMapPage() {
     const next = { ...cur, ...patch }
     setSp(Object.fromEntries(Object.entries(next).filter(([, v]) => v)))
   }
-  const where = (p) => name[p.province] || 'chưa rõ tỉnh'
 
   return (
     <Explorer
@@ -60,22 +59,7 @@ export default function SaleMapPage() {
         `<div class="site-pop-actions"><a href="/sale/projects/${p.id}" data-to="/sale/projects/${p.id}">Xem dự án</a>` +
         `<a href="${gmapUrl(p.lat, p.lng)}" target="_blank" rel="noreferrer">Google Maps</a></div>`
       }
-      card={(p) => {
-        const old = isStale(p.last_at || p.at, stale)
-        return {
-          to: `/sale/projects/${p.id}`,
-          badge: old ? 'Cần cập nhật' : null,
-          title: `${stageLabel(p.stage)} tại ${where(p)}`,
-          right: <span className="mono">{hsId(p.id)}</span>,
-          lines: [p.address || '(chưa có địa chỉ)', p.contractor && `Nhà thầu: ${p.contractor}`, p.ctv_name && `CTV: ${p.ctv_name}`],
-          when: (
-            <>
-              <u>Chụp lần cuối {vnDate(p.last_at || p.at)}</u>
-              {old && <b className="text-ok"> · cần cập nhật</b>}
-            </>
-          ),
-        }
-      }}
+      card={(p) => cardProps(p, { to: `/sale/projects/${p.id}`, prov: name[p.province], staleDays: stale })}
       footer={
         <div className="kpis ex-kpis">
           <Kpi label="Công trình" value={points.length} sub={[name[cur.province], ctvs.find((c) => String(c.id) === cur.ctv)?.name].filter(Boolean).join(' · ') || 'cả nước'} />

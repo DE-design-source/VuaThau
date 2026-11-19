@@ -1,5 +1,5 @@
 // Bản đồ công trình (/map, admin + kế toán), kiểu Airbnb: thanh tìm (Địa chỉ | Tỉnh thành | Cộng tác viên | Trạng thái),
-// lưới thẻ công trình có ảnh bên trái, bản đồ nhãn giai đoạn thi công bên phải. Nút Bộ lọc: cập nhật theo thời gian thực,
+// lưới thẻ công trình có ảnh bên trái, bản đồ nhãn mã hồ sơ bên phải. Nút Bộ lọc: cập nhật theo thời gian thực,
 // lọc theo lịch sử (từ ngày - đến ngày). Cuối danh sách: số liệu + thống kê theo CTV.
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -8,9 +8,9 @@ import useCfg from '@/hooks/useCfg'
 import mapApi from '@/api/mapApi'
 import dezonApi from '@/api/dezonApi'
 import Explorer from '@/components/explore/Explorer'
-import { siteTip, stageLabel } from '@/utils/siteTip'
+import { cardProps, siteTip } from '@/utils/siteTip'
 import { Button, Kpi, PageState, Pill } from '@/components/ui'
-import { gmapUrl, hsId, isStale, vnDate } from '@/utils/format'
+import { gmapUrl, isStale, vnDate } from '@/utils/format'
 
 const LIVE_MS = 15000 // thời gian thực: tự tải lại mỗi 15 giây
 
@@ -165,30 +165,7 @@ export default function MapPage() {
         `<div class="site-pop-actions"><a href="/houses/${p.id}" data-to="/houses/${p.id}">Mở hồ sơ</a>` +
         `<a href="${gmapUrl(p.lat, p.lng)}" target="_blank" rel="noreferrer">Google Maps</a></div>`
       }
-      card={(p) => {
-        const old = isStale(p.last_at || p.at, days)
-        return {
-          to: `/houses/${p.id}`,
-          badge: fresh.has(p.id) ? 'Mới' : p.vip ? 'VIP · chụp đầu tiên' : old ? 'Cần cập nhật' : null,
-          title: `${stageLabel(p.stage)} tại ${name[p.province] || 'chưa rõ tỉnh'}`,
-          right: statuses[p.status]?.label || p.status,
-          lines: [
-            p.address || '(chưa có địa chỉ)',
-            <>
-              CTV <b className="ctv-name">{p.ctv_name}</b>
-              {p.source === 'inbox' ? ' · Messenger' : ''}
-            </>,
-            p.contractor && `Nhà thầu: ${p.contractor}`,
-          ],
-          when: (
-            <>
-              <u>Chụp lần cuối {vnDate(p.last_at || p.at)}</u>
-              {old && <b className="text-ok"> · cần cập nhật</b>}
-            </>
-          ),
-          chips: [hsId(p.id)],
-        }
-      }}
+      card={(p) => cardProps(p, { to: `/houses/${p.id}`, prov: name[p.province], staleDays: days, fresh })}
       footer={
         <>
           <div className="kpis ex-kpis">

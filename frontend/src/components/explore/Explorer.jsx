@@ -1,6 +1,6 @@
 // Khung trang Bản đồ kiểu Airbnb (admin + sale):
 //   trên: thanh tìm dạng viên thuốc (Địa chỉ | các ô lọc | nút tìm tròn) + nút Bộ lọc;
-//   trái: "N công trình" + lưới thẻ ảnh 2 cột; phải: bản đồ bo góc đứng yên khi cuộn, nhãn viên thuốc.
+//   trái: "N công trình" + lưới thẻ ảnh (3 cột trên màn rộng); phải: bản đồ bo góc đứng yên khi cuộn, nhãn mã hồ sơ.
 import { useEffect, useRef, useState } from 'react'
 import SiteMap from './SiteMap'
 import SiteCard from './SiteCard'
@@ -10,9 +10,9 @@ const PAGE = 24
 const NONE = [] // tắt lớp Dezon: mảng cố định để bản đồ không vẽ lại mỗi lần render
 
 /** Ghim nhỏ trong chú thích (cùng hình với ghim trên bản đồ). */
-function PinMark({ stale, dz }) {
+function PinMark({ dz }) {
   return (
-    <svg className={`pin-mark ${stale ? 'stale' : ''} ${dz ? 'dz' : ''}`} viewBox="0 0 32 42" width="14" height="19" aria-hidden="true">
+    <svg className={`pin-mark ${dz ? 'dz' : ''}`} viewBox="0 0 32 42" width="14" height="19" aria-hidden="true">
       <path d="M16 1.5C8.3 1.5 2 7.7 2 15.4 2 25.8 16 40.5 16 40.5S30 25.8 30 15.4C30 7.7 23.7 1.5 16 1.5z" fill="currentColor" />
       <circle cx="16" cy="15.4" r="6.2" fill="#fff" />
     </svg>
@@ -23,7 +23,7 @@ function PinMark({ stale, dz }) {
  * points; provinces; staleDays
  * selects: [{ key, label, value, options: [{ value, label }], onChange(v) }] ô lọc trong thanh tìm
  * selectedProvince, onProvince(code): bấm tỉnh trên bản đồ; fitKey: đổi khi đổi bộ lọc (bản đồ canh lại)
- * pop(p): HTML thẻ khi bấm nhãn; card(p): props cho SiteCard (to, badge, title, right, lines, when, chips)
+ * pop(p): HTML thẻ khi bấm nhãn; card(p): props cho SiteCard (xem cardProps trong utils/siteTip)
  * fresh: Set id mới (thời gian thực); filterPanel: nội dung nút Bộ lọc; filterCount: số bộ lọc đang bật
  * footer: phần cuối danh sách (số liệu...); busy: đang tải
  * dezon: công trình nhà thầu đăng trên dezon.vn (lớp ghim xanh dương, bật / tắt ở chú thích; không vào danh sách thẻ)
@@ -128,8 +128,12 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
               )}
             </h2>
             <span className="ex-legend">
-              <PinMark /> chưa quá {staleDays} ngày
-              <PinMark stale /> cần cập nhật
+              <span className="ex-key">
+                <i /> Chưa quá {staleDays} ngày
+              </span>
+              <span className="ex-key stale">
+                <i /> Cần cập nhật
+              </span>
               {dezon.length > 0 && (
                 <label className="ex-dz" title="Công trình nhà thầu đăng trên dezon.vn (không phải hồ sơ CTV)">
                   <input type="checkbox" checked={showDz} onChange={(e) => toggleDz(e.target.checked)} />

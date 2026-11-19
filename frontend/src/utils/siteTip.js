@@ -3,6 +3,30 @@
 import { getBlob } from '@/api/axiosClient'
 import { esc, hsId, isStale, vnDate } from '@/utils/format'
 
+/** Tách địa chỉ thành 2 dòng thẻ: [số nhà, đường…] và [phường/xã, tỉnh]. prov: tên tỉnh khi địa chỉ quá ngắn. */
+export function splitAddr(addr, prov = '') {
+  const parts = (addr || '').split(',').map((x) => x.trim()).filter(Boolean)
+  if (!parts.length) return ['(chưa có địa chỉ)', prov]
+  if (parts.length === 1) return [parts[0], prov]
+  const n = parts.length >= 3 ? 2 : 1
+  return [parts.slice(0, -n).join(', '), parts.slice(-n).join(', ')]
+}
+
+/** Props SiteCard của 1 công trình. o: { to, prov, staleDays, fresh (Set id mới) } */
+export function cardProps(p, { to, prov = '', staleDays = 30, fresh } = {}) {
+  const [street, area] = splitAddr(p.address, prov)
+  return {
+    to,
+    tag: (fresh?.has(p.id) ? 'Mới · ' : '') + ((p.stage || '').trim() || 'Công trình'),
+    street,
+    area,
+    contractor: p.contractor,
+    ctv: p.ctv_name,
+    date: vnDate(p.last_at || p.at),
+    stale: isStale(p.last_at || p.at, staleDays),
+  }
+}
+
 /** p: điểm trên bản đồ; o: { staleDays, prov (tên tỉnh), status (nhãn trạng thái, chỉ admin) } */
 export function siteTip(p, { staleDays = 30, prov = '', status = '' } = {}) {
   const last = p.last_at || p.at

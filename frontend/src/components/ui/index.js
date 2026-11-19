@@ -13,6 +13,7 @@ export {
   PageState,
   Pager,
   PhotoGrid,
+  Lightbox,
   Pill,
   StatusBadge,
   Toasts,
