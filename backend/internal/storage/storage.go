@@ -45,7 +45,11 @@ func (f *Files) photoPath(sha string, small bool) (string, error) {
 	return filepath.Join(f.photos, sha), nil
 }
 
-// SavePhoto ghi ảnh gốc và ảnh thu nhỏ.
+// SmallSize: cạnh dài ảnh thu nhỏ (xem trên web / app, gửi AI). Trùng service.SmallSide.
+const SmallSize = 1568
+
+// SavePhoto ghi ảnh gốc và ảnh thu nhỏ. small = nil: chưa tạo, ReadPhoto tạo khi cần lần đầu
+// (nộp ảnh không phải chờ nén lại: CTV nộp nhanh hơn, máy chủ đỡ tải lúc đông người).
 func (f *Files) SavePhoto(sha string, original, small []byte) error {
 	p, err := f.photoPath(sha, false)
 	if err != nil {
@@ -53,6 +57,9 @@ func (f *Files) SavePhoto(sha string, original, small []byte) error {
 	}
 	if err := os.WriteFile(p, original, 0o644); err != nil {
 		return err
+	}
+	if small == nil {
+		return nil
 	}
 	s, _ := f.photoPath(sha, true)
 	return os.WriteFile(s, small, 0o644)
@@ -63,7 +70,27 @@ func (f *Files) ReadPhoto(sha string, small bool) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return os.ReadFile(p)
+	b, err := os.ReadFile(p)
+	if err == nil || !small || !os.IsNotExist(err) {
+		return b, err
+	}
+	// chưa có ảnh thu nhỏ: tạo từ ảnh gốc rồi lưu cho lần sau
+	src, err := f.ReadPhoto(sha, false)
+	if err != nil {
+		return nil, err
+	}
+	img, _, _, err := imaging.Open(src)
+	if err != nil {
+		return src, nil // không đọc được: trả ảnh gốc
+	}
+	if b, err = imaging.SmallJPEG(img, SmallSize); err != nil {
+		return src, nil
+	}
+	tmp := p + ".tmp" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	if os.WriteFile(tmp, b, 0o644) == nil && os.Rename(tmp, p) != nil {
+		_ = os.Remove(tmp)
+	}
+	return b, nil
 }
 
 func (f *Files) DeletePhoto(sha string) {

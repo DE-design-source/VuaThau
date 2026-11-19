@@ -454,19 +454,24 @@ func (s *houseService) CheckPhoto(ctx context.Context, u *model.User, f Upload, 
 		return &CheckResult{Problems: []string{"Ảnh quá 20MB"}}, nil
 	}
 	sha := shaOf(f.Data)
-	img, info, _, err := openImage(ctx, f.Data)
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return &CheckResult{Problems: []string{imaging.ErrNotImage.Error()}}, nil
-	}
 	if hid, err := s.photos.HouseOfSHA(ctx, sha); err != nil {
 		return nil, err
 	} else if hid > 0 {
 		return &CheckResult{Problems: []string{fmt.Sprintf("Ảnh này đã nộp ở hồ sơ #%d", hid)}}, nil
 	}
-	dup, err := s.dupHouse(ctx, imaging.DHash(img))
+	release, err := takeSlot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	img, info, _, err := imaging.Open(f.Data)
+	if err != nil {
+		release()
+		return &CheckResult{Problems: []string{imaging.ErrNotImage.Error()}}, nil
+	}
+	dh := imaging.DHash(img)
+	release()
+	dhashes.put(sha, dh) // lúc nộp dùng lại, khỏi giải nén lần 2
+	dup, err := s.dupHouse(ctx, dh)
 	if err != nil {
 		return nil, err
 	}
@@ -546,16 +551,49 @@ func (s *houseService) checkAI(ctx context.Context, sha string, img image.Image)
 // nhiều CTV tải cùng lúc thì xếp hàng thay vì làm API hết bộ nhớ.
 var decodeSlots = make(chan struct{}, max(2, runtime.NumCPU()))
 
-// openImage: imaging.Open có xếp hàng theo decodeSlots; người dùng huỷ (ctx) khi đang chờ thì thôi.
-func openImage(ctx context.Context, data []byte) (image.Image, imaging.Info, string, error) {
+// dhashes: dHash của ảnh vừa kiểm lúc chụp (theo sha256), giữ tối đa dhashMax ảnh gần nhất trong bộ nhớ.
+var dhashes = &dhashCache{m: map[string]string{}}
+
+const dhashMax = 20000
+
+type dhashCache struct {
+	mu    sync.Mutex
+	m     map[string]string
+	order []string
+}
+
+func (c *dhashCache) get(sha string) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok := c.m[sha]
+	return v, ok
+}
+
+func (c *dhashCache) put(sha, dh string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.m[sha]; ok {
+		return
+	}
+	c.m[sha] = dh
+	c.order = append(c.order, sha)
+	if len(c.order) > dhashMax {
+		delete(c.m, c.order[0])
+		c.order = c.order[1:]
+	}
+}
+
+// takeSlot: giữ 1 chỗ xử lý ảnh (trả hàm nhả); người dùng huỷ (ctx) khi đang chờ thì thôi.
+func takeSlot(ctx context.Context) (func(), error) {
 	select {
 	case decodeSlots <- struct{}{}:
+		return func() { <-decodeSlots }, nil
 	case <-ctx.Done():
-		return nil, imaging.Info{}, "", ctx.Err()
+		return nil, ctx.Err()
 	}
-	defer func() { <-decodeSlots }()
-	return imaging.Open(data)
 }
+
+
 
 // cachedOrRead: kết quả AI đọc 1 ảnh, dùng lại theo sha256 nếu đã đọc. Tắt AI / lỗi: nil, false.
 func (s *houseService) cachedOrRead(ctx context.Context, sha string, img image.Image) (*ai.Read, bool) {
@@ -570,7 +608,12 @@ func (s *houseService) cachedOrRead(ctx context.Context, sha string, img image.I
 	if !s.ai.Enabled() {
 		return nil, false
 	}
+	release, err := takeSlot(ctx)
+	if err != nil {
+		return nil, false
+	}
 	small, err := imaging.SmallJPEG(img, SmallSide)
+	release()
 	if err != nil {
 		return nil, false
 	}
@@ -598,20 +641,35 @@ func (s *houseService) savePhoto(ctx context.Context, houseID int64, data []byte
 	} else if hid > 0 {
 		return fmt.Sprintf("ảnh này đã nộp ở hồ sơ #%d", hid), nil
 	}
-	img, info, format, err := openImage(ctx, data)
-	if err != nil {
-		return "không đọc được file ảnh (chỉ nhận JPG/PNG)", nil
+	// dHash: ảnh camera app đã kiểm lúc chụp (/photos/check) thì dùng lại, chỉ đọc EXIF (không giải nén cả ảnh);
+	// chưa có thì giải nén + băm (nặng CPU / RAM nhất, xếp hàng theo decodeSlots).
+	// Ảnh thu nhỏ không tạo lúc nộp: storage tạo khi xem / AI đọc lần đầu.
+	var info imaging.Info
+	var format string
+	dh, hit := dhashes.get(sha)
+	if hit {
+		var err error
+		if info, format, err = imaging.Probe(data); err != nil {
+			return "không đọc được file ảnh (chỉ nhận JPG/PNG)", nil
+		}
+	} else {
+		release, err := takeSlot(ctx)
+		if err != nil {
+			return "", err
+		}
+		img, inf, f, err := imaging.Open(data)
+		if err != nil {
+			release()
+			return "không đọc được file ảnh (chỉ nhận JPG/PNG)", nil
+		}
+		info, format, dh = inf, f, imaging.DHash(img)
+		release()
 	}
-	dh := imaging.DHash(img)
 	dup, err := s.dupHouse(ctx, dh)
 	if err != nil {
 		return "", err
 	}
-	small, err := imaging.SmallJPEG(img, SmallSide)
-	if err != nil {
-		return "", err
-	}
-	if err := s.files.SavePhoto(sha, data, small); err != nil {
+	if err := s.files.SavePhoto(sha, data, nil); err != nil {
 		return "", err
 	}
 	m = m.clean()

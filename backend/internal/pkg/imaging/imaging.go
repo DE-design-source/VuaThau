@@ -37,6 +37,16 @@ func Open(data []byte) (image.Image, Info, string, error) {
 	return orient8(img, orient), info, format, nil
 }
 
+// Probe: kiểu ảnh + EXIF mà không giải nén cả ảnh (chỉ đọc phần đầu file). Không phải ảnh: ErrNotImage.
+func Probe(data []byte) (Info, string, error) {
+	if _, format, err := image.DecodeConfig(bytes.NewReader(data)); err != nil {
+		return Info{}, "", ErrNotImage
+	} else {
+		info, _ := readExif(data)
+		return info, format, nil
+	}
+}
+
 func readExif(data []byte) (Info, int) {
 	var info Info
 	x, err := exif.Decode(bytes.NewReader(data))
@@ -119,14 +129,36 @@ func Fit(src image.Image, max int) image.Image {
 }
 
 // SmallJPEG: ảnh thu nhỏ (cạnh dài <= max) dạng JPEG chất lượng 85, nền trắng cho ảnh trong suốt.
+// Thu nhỏ ít (ảnh app 1920 -> 1568): ApproxBiLinear nhanh gấp ~3 lần CatmullRom và không cấp phát thêm
+// (CatmullRom cần ~72MB bộ đệm cho 1 ảnh 1920px); thu nhỏ nhiều (ảnh gốc 12MP) thì CatmullRom cho khỏi răng cưa.
+func fitFast(src image.Image, max int) image.Image {
+	b := src.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w <= max && h <= max {
+		return src
+	}
+	k := float64(max) / math.Max(float64(w), float64(h))
+	if k < 0.5 {
+		return Fit(src, max)
+	}
+	nw, nh := int(math.Round(float64(w)*k)), int(math.Round(float64(h)*k))
+	dst := image.NewRGBA(image.Rect(0, 0, nw, nh))
+	draw.ApproxBiLinear.Scale(dst, dst.Bounds(), src, b, draw.Src, nil)
+	return dst
+}
+
 func SmallJPEG(src image.Image, max int) ([]byte, error) {
-	img := Fit(src, max)
-	b := img.Bounds()
-	flat := image.NewRGBA(b)
-	draw.Draw(flat, b, &image.Uniform{C: color.White}, image.Point{}, draw.Src)
-	draw.Draw(flat, b, img, b.Min, draw.Over)
+	img := fitFast(src, max)
+	// ảnh có vùng trong suốt (PNG): lót nền trắng; ảnh chụp (đặc) thì nén thẳng
+	if o, ok := img.(interface{ Opaque() bool }); !ok || !o.Opaque() {
+		b := img.Bounds()
+		flat := image.NewRGBA(b)
+		draw.Draw(flat, b, &image.Uniform{C: color.White}, image.Point{}, draw.Src)
+		draw.Draw(flat, b, img, b.Min, draw.Over)
+		img = flat
+	}
 	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, flat, &jpeg.Options{Quality: 85}); err != nil {
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 85}); err != nil {
 		return nil, fmt.Errorf("encode jpeg: %w", err)
 	}
 	return buf.Bytes(), nil
@@ -135,8 +167,12 @@ func SmallJPEG(src image.Image, max int) ([]byte, error) {
 // DHash: băm cảm nhận 64 bit (ảnh xám 9x8, so sánh điểm kề nhau), dạng 16 ký tự hex.
 // Ảnh đã nén lại / đổi cỡ vẫn cho dHash gần giống: khác <= 6 bit coi là cùng ảnh.
 func DHash(src image.Image) string {
+	return dhashOf(Fit(src, 256)) // thu nhỏ trước cho nhanh và mượt
+}
+
+// dhashOf: băm từ ảnh đã thu nhỏ (cạnh <= 256).
+func dhashOf(s image.Image) string {
 	g := image.NewGray(image.Rect(0, 0, 9, 8))
-	s := Fit(src, 256) // thu nhỏ trước cho nhanh và mượt
 	draw.ApproxBiLinear.Scale(g, g.Bounds(), s, s.Bounds(), draw.Src, nil)
 	var v uint64
 	for i := 0; i < 64; i++ {
