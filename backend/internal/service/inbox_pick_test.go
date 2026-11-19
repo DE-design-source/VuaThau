@@ -40,3 +40,17 @@ func TestMoreDetailed(t *testing.T) {
 		}
 	}
 }
+
+func TestWithOrphans(t *testing.T) {
+	im := func(k string, extra bool) inbox.Image { return inbox.Image{Key: k, Extra: extra} }
+	// hồ sơ đã đủ 5 ảnh của chính nó: không gom ảnh lẻ (ảnh công trình khác CTV gửi trước)
+	full := []inbox.Image{im("le1", true), im("le2", true), im("a", false), im("b", false), im("c", false), im("d", false), im("e", false)}
+	if got := withOrphans(full, 5); len(got) != 5 || got[0].Key != "a" {
+		t.Fatalf("đủ ảnh: %+v", got)
+	}
+	// chỉ có 1 ảnh biển báo: lấy thêm ảnh lẻ
+	one := []inbox.Image{im("le1", true), im("le2", true), im("bien-bao", false)}
+	if got := withOrphans(one, 5); len(got) != 3 {
+		t.Fatalf("thiếu ảnh: %+v", got)
+	}
+}

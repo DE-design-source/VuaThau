@@ -263,7 +263,11 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 	addr := truncate(l.Fields["dia_chi"], MaxAddressLen)
 	sent := l.CreatedAt.In(VN).Format("2006-01-02 15:04") // giờ CTV gửi tin: dùng làm giờ chụp (không cho AI đọc giờ in trên ảnh)
 	files, metas := []Upload{}, []Meta{}
-	for i, im := range pickImages(l.Images, model.MaxPhotos) {
+	st0, err := s.settings.Get(ctx)
+	if err != nil {
+		return false, false, err
+	}
+	for i, im := range pickImages(withOrphans(l.Images, st0.MinPhotos), model.MaxPhotos) {
 		b, err := x.src.Image(ctx, im.Key)
 		if err != nil {
 			return false, false, fmt.Errorf("tải ảnh %s: %w", im.Key, err)
@@ -362,6 +366,22 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 		return true, true, nil
 	}
 	return true, false, nil
+}
+
+// withOrphans: chỉ dùng ảnh lẻ (chatbot không gắn vào hồ sơ nào) khi ảnh của chính hồ sơ chưa đủ min ảnh
+// (vd chatbot chỉ ghi 1 ảnh biển báo gửi bổ sung). Hồ sơ đã đủ ảnh thì bỏ ảnh lẻ: CTV hay gửi nhiều công trình liền nhau,
+// chatbot chưa ghi hồ sơ cho các công trình kia, gom vào là gộp nhầm (góp ý 19/11: 3 công trình thành 1 hồ sơ 20 ảnh).
+func withOrphans(all []inbox.Image, min int) []inbox.Image {
+	own := []inbox.Image{}
+	for _, im := range all {
+		if !im.Extra {
+			own = append(own, im)
+		}
+	}
+	if len(own) >= min {
+		return own
+	}
+	return all
 }
 
 // pickImages: tối đa max ảnh; ưu tiên ảnh chatbot đã gắn vào hồ sơ, rồi ảnh lẻ gửi trước đó (mới nhất trước);
