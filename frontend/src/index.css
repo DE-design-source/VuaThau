@@ -3809,3 +3809,23 @@ details.card > summary strong {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* Khách (chưa đăng nhập): mục cần đăng nhập mờ đi, có ổ khoá */
+.side-locked {
+  opacity: 0.55;
+}
+.side-locked:hover {
+  opacity: 0.85;
+}
+.side-lock {
+  margin-left: auto;
+}
+.side-login {
+  flex: 1;
+  justify-content: center;
+}
+.topbar .btn-sm {
+  padding: 6px 12px;
+  font-size: 13px;
+  min-height: 0;
+}

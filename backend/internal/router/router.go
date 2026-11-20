@@ -47,6 +47,10 @@ func New(d Deps) http.Handler {
 	// Công khai
 	mux.HandleFunc("GET /api/v1/config", p.Config)
 	mux.HandleFunc("GET /api/v1/geo/provinces", h.Provinces)
+	// Bản đồ công khai (người chưa đăng nhập): không tên CTV, ảnh đại diện đã che SĐT qua link có chữ ký
+	mux.HandleFunc("GET /api/v1/public/map", h.PublicMap)
+	mux.HandleFunc("GET /api/v1/public/photos/{pid}", h.PublicPhoto)
+	mux.HandleFunc("GET /api/v1/public/geo/search", h.PublicSearchPlace)
 
 	// Tải app Android (link gửi qua Zalo) + cấu hình cho app Expo cũ (để nó mời tải app mới)
 	dl := handler.NewDownloadHandler(d.Config.DataDir, p)

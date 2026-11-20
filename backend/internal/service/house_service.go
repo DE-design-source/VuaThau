@@ -213,6 +213,10 @@ type HouseService interface {
 
 	// Trang sale (sale_service.go): không CTV, không tiền.
 	SaleMap(ctx context.Context, province string, ctv int64) (*SaleMapData, error)
+	// Bản đồ công khai (chưa đăng nhập): như sale, không tên CTV; ảnh đại diện qua link có chữ ký.
+	PublicMap(ctx context.Context, province string) (*SaleMapData, error)
+	PublicPhoto(ctx context.Context, pid int64, sig string) ([]byte, error)
+	PublicSearchPlace(ctx context.Context, q string) (*PlaceSearch, error)
 	SaleProjects(ctx context.Context, f repository.SaleFilter, page int) (*SaleProjectList, error)
 	SaleProject(ctx context.Context, id int64) (*SaleProjectDetail, error)
 	Contractors(ctx context.Context, q string) ([]repository.Contractor, error)
@@ -248,6 +252,7 @@ type houseService struct {
 	public   string
 	inbox    *inboxSync // nil: không lấy hồ sơ Messenger
 	mediaKey []byte     // ký link xem video
+	pub      publicMapCache // bản đồ công khai: nhớ tạm theo tỉnh
 
 	bg      sync.WaitGroup
 	aiSem   chan struct{} // giới hạn số lượt AI chạy cùng lúc

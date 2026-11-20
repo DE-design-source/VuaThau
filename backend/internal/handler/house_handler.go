@@ -332,6 +332,42 @@ func (h *HouseHandler) Photo(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
+// PublicMap handles GET /api/v1/public/map?province= (không cần đăng nhập)
+func (h *HouseHandler) PublicMap(w http.ResponseWriter, r *http.Request) {
+	res, err := h.svc.PublicMap(r.Context(), r.URL.Query().Get("province"))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, res)
+}
+
+// PublicPhoto handles GET /api/v1/public/photos/{pid}?s= (ảnh đại diện bản đồ công khai, đã che SĐT)
+func (h *HouseHandler) PublicPhoto(w http.ResponseWriter, r *http.Request) {
+	pid, valid := idOr400(w, r, "pid")
+	if !valid {
+		return
+	}
+	data, err := h.svc.PublicPhoto(r.Context(), pid, r.URL.Query().Get("s"))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	_, _ = w.Write(data)
+}
+
+// PublicSearchPlace handles GET /api/v1/public/geo/search?q= (chỉ địa điểm)
+func (h *HouseHandler) PublicSearchPlace(w http.ResponseWriter, r *http.Request) {
+	res, err := h.svc.PublicSearchPlace(r.Context(), r.URL.Query().Get("q"))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, res)
+}
+
 // Queue handles GET /api/v1/admin/queue
 func (h *HouseHandler) Queue(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.svc.Queue(r.Context())

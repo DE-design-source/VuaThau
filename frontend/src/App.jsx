@@ -25,6 +25,7 @@ import ContractorsPage from '@/pages/sale/ContractorsPage'
 // Bản đồ (Leaflet) tải riêng khi mở trang, không làm nặng các trang khác
 const MapPage = lazy(() => import('@/pages/MapPage'))
 const PlanPage = lazy(() => import('@/pages/PlanPage'))
+const PublicMapPage = lazy(() => import('@/pages/PublicMapPage'))
 const SaleMapPage = lazy(() => import('@/pages/sale/SaleMapPage'))
 
 /** Chỉ cho vào khi đã đăng nhập, và đúng vai trò nếu có roles. */
@@ -40,6 +41,28 @@ function Guard({ roles, children }) {
 function Home() {
   const { user } = useAuth()
   return <Navigate to={STAFF_HOME[user?.role] || '/me'} replace />
+}
+
+/** Trang chủ: đã đăng nhập thì về trang theo vai trò, chưa thì xem Bản đồ công khai. */
+function Index() {
+  const { isAuthenticated } = useAuth()
+  if (!isAuthenticated) return <Navigate to="/ban-do" replace />
+  return (
+    <Guard>
+      <Home />
+    </Guard>
+  )
+}
+
+/** Bản đồ công khai: người đã đăng nhập về bản đồ theo vai trò (đủ thông tin hơn). */
+function PublicMap() {
+  const { isAuthenticated, user } = useAuth()
+  if (isAuthenticated && user) return <Navigate to={user.role === 'sale' ? '/sale/map' : STAFF.includes(user.role) ? '/map' : '/me'} replace />
+  return (
+    <Suspense fallback={<PageState err="" />}>
+      <PublicMapPage />
+    </Suspense>
+  )
 }
 
 const STAFF = ['admin', 'ketoan']
@@ -59,7 +82,8 @@ export default function App() {
   return (
     <Routes>
       <Route element={<MainLayout />}>
-        <Route index element={g(<Home />)} />
+        <Route index element={<Index />} />
+        <Route path="ban-do" element={<PublicMap />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="queue" element={g(<QueuePage />, ['admin'])} />
         <Route path="houses/:id" element={g(<HousePage />)} />
@@ -67,7 +91,7 @@ export default function App() {
         <Route path="ctvs" element={g(<CtvListPage />)} />
         <Route path="ctvs/:id" element={g(<CtvPage />)} />
         <Route path="map" element={g(<Suspense fallback={<PageState err="" />}><MapPage /></Suspense>)} />
-        <Route path="quy-hoach" element={g(<Suspense fallback={<PageState err="" />}><PlanPage /></Suspense>, [...STAFF, 'sale'])} />
+        <Route path="quy-hoach" element={<Suspense fallback={<PageState err="" />}><PlanPage /></Suspense>} />
         <Route path="sale/map" element={g(<Suspense fallback={<PageState err="" />}><SaleMapPage /></Suspense>, SALE)} />
         <Route path="sale/projects" element={g(<SaleProjectsPage />, SALE)} />
         <Route path="sale/projects/:id" element={g(<SaleProjectPage />, SALE)} />

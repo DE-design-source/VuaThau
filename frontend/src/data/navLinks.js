@@ -17,4 +17,17 @@ const navLinks = [
   { to: '/settings', label: 'Cấu hình', icon: 'settings', roles: ['admin'], group: 'Hệ thống' },
 ]
 
+// Người chưa đăng nhập (góp ý 20/11/2026): xem được Bản đồ (công khai) và Xem quy hoạch; mục khác hiện ổ khoá,
+// bấm vào thì sang Đăng nhập.
+export const guestLinks = [
+  { to: '/ban-do', label: 'Bản đồ', icon: 'map', group: 'Xem tự do' },
+  { to: '/quy-hoach', label: 'Xem quy hoạch', icon: 'layers', group: 'Xem tự do' },
+  { to: '/houses', label: 'Hồ sơ', icon: 'houses', group: 'Cần đăng nhập', locked: true },
+  { to: '/ctvs', label: 'Cộng tác viên', icon: 'users', group: 'Cần đăng nhập', locked: true },
+  { to: '/sale/projects', label: 'Dự án', icon: 'houses', group: 'Cần đăng nhập', locked: true },
+  { to: '/sale/contractors', label: 'Nhà thầu', icon: 'users', group: 'Cần đăng nhập', locked: true },
+  { to: '/batches', label: 'Phiếu chi', icon: 'receipt', group: 'Cần đăng nhập', locked: true },
+  { to: '/reports', label: 'Báo cáo', icon: 'chart', group: 'Cần đăng nhập', locked: true },
+]
+
 export default navLinks

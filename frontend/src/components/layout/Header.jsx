@@ -1,7 +1,7 @@
 // Thanh bên điều hướng (desktop cố định bên trái, điện thoại mở bằng nút menu) + thanh trên mỏng.
 import { useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import navLinks from '@/data/navLinks'
+import navLinks, { guestLinks } from '@/data/navLinks'
 import useAuth from '@/hooks/useAuth'
 import useTheme from '@/hooks/useTheme'
 import Icon from '@/components/ui/Icon'
@@ -13,13 +13,14 @@ export function Mark({ size = 28 }) {
 }
 
 export default function Header() {
-  const { user, role, logout } = useAuth()
+  const { user, role, logout, isAuthenticated } = useAuth()
+  const guest = !isAuthenticated
   const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
 
-  const links = navLinks.filter((l) => role && l.roles.includes(role))
+  const links = guest ? guestLinks : navLinks.filter((l) => role && l.roles.includes(role))
   const groups = [...new Set(links.map((l) => l.group))]
   const current = links.find((l) => pathname.startsWith(l.to))
   const todo = user?.todo || 0
@@ -45,16 +46,32 @@ export default function Header() {
               <span className="side-label">{g}</span>
               {links
                 .filter((l) => l.group === g)
-                .map((l) => (
-                  <NavLink key={l.to} to={l.to} className="side-link">
-                    <Icon name={l.icon} />
-                    <span>{l.label}</span>
-                    {l.badge && todo > 0 && <em className="side-count">{todo}</em>}
-                  </NavLink>
-                ))}
+                .map((l) =>
+                  l.locked ? (
+                    // chưa đăng nhập: mục khoá, bấm thì sang Đăng nhập rồi quay lại đúng trang
+                    <Link key={l.to} to="/login" state={{ from: { pathname: l.to } }} className="side-link side-locked" title="Đăng nhập để xem">
+                      <Icon name={l.icon} />
+                      <span>{l.label}</span>
+                      <Icon name="lock" size={14} className="side-lock" />
+                    </Link>
+                  ) : (
+                    <NavLink key={l.to} to={l.to} className="side-link">
+                      <Icon name={l.icon} />
+                      <span>{l.label}</span>
+                      {l.badge && todo > 0 && <em className="side-count">{todo}</em>}
+                    </NavLink>
+                  ),
+                )}
             </div>
           ))}
         </nav>
+        {guest && (
+          <div className="side-user">
+            <Link to="/login" className="btn btn-primary side-login" onClick={() => setOpen(false)}>
+              Đăng nhập
+            </Link>
+          </div>
+        )}
         {user && (
           <div className="side-user">
             <Link to="/me" className="side-me" onClick={() => setOpen(false)} title="Tài khoản">
@@ -82,9 +99,15 @@ export default function Header() {
           <b>{current?.label || (pathname.startsWith('/me') ? 'Tài khoản' : 'Tổng quan')}</b>
         </div>
         <span className="spacer" />
-        <span className="live">
-          <i /> Đang hoạt động
-        </span>
+        {guest ? (
+          <Link to="/login" className="btn btn-secondary btn-sm">
+            Đăng nhập
+          </Link>
+        ) : (
+          <span className="live">
+            <i /> Đang hoạt động
+          </span>
+        )}
         <button type="button" className="side-icon" onClick={toggleTheme} aria-label="Đổi giao diện sáng/tối" title="Đổi giao diện sáng/tối">
           <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
         </button>

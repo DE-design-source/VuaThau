@@ -34,7 +34,11 @@ export function siteTip(p, { staleDays = 30, prov = '', status = '', ctvLink = f
   const row = (label, v) => (v ? `<div class="site-tip-row"><span>${label}</span>${esc(v)}</div>` : '')
   return (
     `<div class="site-tip">` +
-    (p.cover_id ? `<div class="site-tip-img"><img data-cover="${p.cover_id}" alt=""></div>` : '') +
+    (p.cover_url
+      ? `<div class="site-tip-img"><img src="${esc(p.cover_url)}" alt="" onerror="this.parentNode.remove()"></div>`
+      : p.cover_id
+        ? `<div class="site-tip-img"><img data-cover="${p.cover_id}" alt=""></div>`
+        : '') +
     `<div class="site-tip-body">` +
     `<div class="site-tip-top"><span class="mono">${hsId(p.id)}</span>${p.vip ? ' <span class="vip-tag">VIP</span>' : ''}` +
     `${status ? ` · ${esc(status)}` : ''}</div>` +
