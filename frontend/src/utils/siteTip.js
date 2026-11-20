@@ -27,8 +27,8 @@ export function cardProps(p, { to, prov = '', staleDays = 30, fresh } = {}) {
   }
 }
 
-/** p: điểm trên bản đồ; o: { staleDays, prov (tên tỉnh), status (nhãn trạng thái, chỉ admin) } */
-export function siteTip(p, { staleDays = 30, prov = '', status = '' } = {}) {
+/** p: điểm trên bản đồ; o: { staleDays, prov (tên tỉnh), status (nhãn trạng thái, chỉ admin), ctvLink (tên CTV bấm mở hồ sơ CTV: admin, kế toán) } */
+export function siteTip(p, { staleDays = 30, prov = '', status = '', ctvLink = false } = {}) {
   const last = p.last_at || p.at
   const stale = isStale(last, staleDays)
   const row = (label, v) => (v ? `<div class="site-tip-row"><span>${label}</span>${esc(v)}</div>` : '')
@@ -42,7 +42,9 @@ export function siteTip(p, { staleDays = 30, prov = '', status = '' } = {}) {
     row('Tỉnh', prov) +
     row('Nhà thầu', p.contractor) +
     row('Giai đoạn', p.stage) +
-    row('CTV', p.ctv_name) +
+    (ctvLink && p.ctv_id && p.ctv_name
+      ? `<div class="site-tip-row"><span>CTV</span><a class="site-tip-ctv" href="/ctvs/${p.ctv_id}" data-to="/ctvs/${p.ctv_id}">${esc(p.ctv_name)}</a></div>`
+      : row('CTV', p.ctv_name)) +
     `<div class="site-tip-when ${stale ? 'stale' : ''}">${stale ? '<b>Cần cập nhật công trình</b> · ' : ''}chụp lần cuối ${esc(vnDate(last))}</div>` +
     `</div></div>`
   )

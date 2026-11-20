@@ -161,7 +161,7 @@ export default function MapPage() {
         },
       ]}
       pop={(p) =>
-        siteTip(p, { staleDays: days, prov: name[p.province], status: statuses[p.status]?.label }) +
+        siteTip(p, { staleDays: days, prov: name[p.province], status: statuses[p.status]?.label, ctvLink: true }) +
         `<div class="site-pop-actions"><a href="/houses/${p.id}" data-to="/houses/${p.id}">Mở hồ sơ</a>` +
         `<a href="${gmapUrl(p.lat, p.lng)}" target="_blank" rel="noreferrer">Google Maps</a></div>`
       }

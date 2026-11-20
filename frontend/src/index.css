@@ -3802,3 +3802,10 @@ details.card > summary strong {
 .qh-map {
   cursor: crosshair;
 }
+/* thẻ công trình trên bản đồ: tên CTV bấm mở hồ sơ CTV */
+.site-tip-ctv {
+  color: var(--color-primary);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
