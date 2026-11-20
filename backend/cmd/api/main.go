@@ -17,6 +17,7 @@ import (
 	"vuathau/backend/internal/integration/dezon"
 	"vuathau/backend/internal/integration/gdrive"
 	"vuathau/backend/internal/integration/inbox"
+	"vuathau/backend/internal/integration/ocr"
 	"vuathau/backend/internal/integration/geo"
 	"vuathau/backend/internal/integration/google"
 	"vuathau/backend/internal/repository"
@@ -98,7 +99,7 @@ func run() error {
 	geocoder := geo.New(cfg.GoogleMapsKey)
 	houseSvc := service.NewHouseService(service.HouseDeps{
 		Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo, Payments: payRepo, Settings: settingsRepo,
-		Files: files, AI: ai.New(cfg.AIEnabled, cfg.AIModel, cfg.AIWorkspace), Geo: geocoder,
+		Files: files, AI: ai.New(cfg.AIEnabled, cfg.AIModel, cfg.AIWorkspace), Geo: geocoder, OCR: ocr.New(),
 		Drive: drive, Public: cfg.PublicURL, MediaKey: cfg.JWTSecret,
 		Inbox: inboxSrc, Auth: authRepo, Sync: repository.NewSyncRepository(db),
 	})
@@ -107,6 +108,9 @@ func run() error {
 	log.Printf("AI đọc ảnh: %v (%s) · Google Drive: %v · đăng nhập Google: %v", cfg.AIEnabled, cfg.AIModel, drive != nil, gVerifier.Enabled())
 	log.Printf("Hồ sơ Messenger (dezon-inbox): %v, mỗi %s", inboxSrc != nil, cfg.InboxSyncEvery)
 	go houseSvc.RunDriveSync() // đẩy các hồ sơ còn chờ từ lần chạy trước
+	maskCtx, stopMask := context.WithCancel(context.Background())
+	defer stopMask()
+	go houseSvc.RunPhoneMaskScan(maskCtx) // che SĐT trên ảnh (ảnh cũ + ảnh mới)
 	houseSvc.StartInboxSync(cfg.InboxSyncEvery)
 	// Công trình nhà thầu mới đăng trên dezon.vn -> lớp ghim Dezon trên bản đồ (tra toạ độ: Google nếu có key)
 	dezonRepo := repository.NewDezonRepository(db)

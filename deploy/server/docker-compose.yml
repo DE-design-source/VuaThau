@@ -59,7 +59,7 @@ services:
     # inbox: mạng của dezon-inbox, để đọc hồ sơ Messenger (dezon-inbox-db, kho ảnh dezon-inbox-s3). Chỉ đọc.
     networks: [vtnt, edge, inbox]
     # 19/11/2026: 384m -> 1g: nhiều CTV tải ảnh cùng lúc (mỗi ảnh mở ra ~50MB; giới hạn mở cùng lúc theo số CPU)
-    mem_limit: 1g
+    mem_limit: 2g    # + Tesseract che SĐT trên ảnh: tối đa 2 lượt x ~330MB
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }

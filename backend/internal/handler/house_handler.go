@@ -308,7 +308,8 @@ func (h *HouseHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	ok(w, res)
 }
 
-// Photo handles GET /api/v1/photos/{pid}[?original=1][?size=card]: trả file ảnh (thu nhỏ 1568px / gốc / cỡ thẻ 640px).
+// Photo handles GET /api/v1/photos/{pid}[?original=1][?size=card][?masked=1]: trả file ảnh (thu nhỏ 1568px / gốc /
+// cỡ thẻ 640px). Sale, CTV: ảnh có SĐT luôn là bản đã che.
 func (h *HouseHandler) Photo(w http.ResponseWriter, r *http.Request) {
 	pid, valid := idOr400(w, r, "pid")
 	if !valid {
@@ -317,6 +318,9 @@ func (h *HouseHandler) Photo(w http.ResponseWriter, r *http.Request) {
 	size := r.URL.Query().Get("size")
 	if r.URL.Query().Get("original") == "1" {
 		size = "original"
+	}
+	if r.URL.Query().Get("masked") == "1" { // admin xem thử bản che SĐT (sale / CTV thấy bản này)
+		size = "masked"
 	}
 	data, mime, err := h.svc.PhotoFile(r.Context(), me(r), pid, size)
 	if err != nil {

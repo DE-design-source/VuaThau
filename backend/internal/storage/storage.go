@@ -102,6 +102,50 @@ func (f *Files) DeletePhoto(sha string) {
 	if shaRE.MatchString(sha) {
 		_ = os.Remove(filepath.Join(f.photos, sha+"_c.jpg"))
 	}
+	f.DeleteMasked(sha)
+}
+
+// ReadMasked: ảnh đã che SĐT (vùng boxes) cỡ thu nhỏ (card=false) hoặc cỡ thẻ. Lưu <sha>_m.jpg / <sha>_mc.jpg cho lần
+// sau; vùng che đổi (quét lại) thì gọi DeleteMasked.
+func (f *Files) ReadMasked(sha string, card bool, boxes []imaging.RelBox) ([]byte, error) {
+	if !shaRE.MatchString(sha) {
+		return nil, fmt.Errorf("sha256 không hợp lệ")
+	}
+	name := sha + "_m.jpg"
+	if card {
+		name = sha + "_mc.jpg"
+	}
+	p := filepath.Join(f.photos, name)
+	if b, err := os.ReadFile(p); err == nil {
+		return b, nil
+	}
+	var src []byte
+	var err error
+	if card {
+		src, err = f.ReadCard(sha)
+	} else {
+		src, err = f.ReadPhoto(sha, true)
+	}
+	if err != nil {
+		return nil, err
+	}
+	b, err := imaging.MaskJPEG(src, boxes)
+	if err != nil {
+		return nil, err // không che được: không trả ảnh chưa che
+	}
+	tmp := p + ".tmp" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	if os.WriteFile(tmp, b, 0o644) == nil && os.Rename(tmp, p) != nil {
+		_ = os.Remove(tmp)
+	}
+	return b, nil
+}
+
+// DeleteMasked: xoá ảnh đã che (để tạo lại theo vùng che mới).
+func (f *Files) DeleteMasked(sha string) {
+	if shaRE.MatchString(sha) {
+		_ = os.Remove(filepath.Join(f.photos, sha+"_m.jpg"))
+		_ = os.Remove(filepath.Join(f.photos, sha+"_mc.jpg"))
+	}
 }
 
 // CardSize: cạnh dài ảnh cỡ thẻ (lưới thẻ công trình trên web).

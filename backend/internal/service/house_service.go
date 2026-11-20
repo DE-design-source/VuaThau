@@ -20,6 +20,7 @@ import (
 	"vuathau/backend/internal/integration/gdrive"
 	"vuathau/backend/internal/integration/geo"
 	"vuathau/backend/internal/integration/inbox"
+	"vuathau/backend/internal/integration/ocr"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/imaging"
 	"vuathau/backend/internal/province"
@@ -226,6 +227,8 @@ type HouseService interface {
 
 	// RunDriveSync đẩy các hồ sơ chờ lên Google Drive (chạy nền, gọi lúc khởi động và sau mỗi lần gửi duyệt).
 	RunDriveSync()
+	// RunPhoneMaskScan: quét nền SĐT trên ảnh để che (chạy tới khi ctx huỷ)
+	RunPhoneMaskScan(ctx context.Context)
 	// Wait chờ các việc chạy nền (AI, Drive) xong: dùng khi tắt máy chủ và trong test.
 	Wait()
 }
@@ -239,6 +242,7 @@ type houseService struct {
 	settings repository.SettingsRepository
 	files    *storage.Files
 	ai       ai.Reader
+	ocr      ocr.Finder
 	geo      Geocoder
 	drive    *gdrive.Client // nil: tắt
 	public   string
@@ -267,6 +271,8 @@ type HouseDeps struct {
 	Files    *storage.Files
 	AI       ai.Reader
 	Geo      Geocoder
+	// OCR: tìm SĐT trên ảnh để che (nil: không che)
+	OCR      ocr.Finder
 	Drive    *gdrive.Client
 	Public   string
 	// Hồ sơ Messenger: Inbox nil thì tắt; Auth (tạo CTV) và Sync (con trỏ đồng bộ) cần khi bật.
@@ -282,7 +288,7 @@ func NewHouseService(d HouseDeps) HouseService {
 		d.AI = ai.New(false, "", "")
 	}
 	s := &houseService{houses: d.Houses, photos: d.Photos, logs: d.Logs, users: d.Users, payments: d.Payments,
-		settings: d.Settings, files: d.Files, ai: d.AI, geo: d.Geo, drive: d.Drive, public: d.Public,
+		settings: d.Settings, files: d.Files, ai: d.AI, ocr: d.OCR, geo: d.Geo, drive: d.Drive, public: d.Public,
 		aiSem: make(chan struct{}, 4), now: time.Now, mediaKey: newMediaKey(d.MediaKey)}
 	if d.Inbox != nil {
 		s.inbox = &inboxSync{src: d.Inbox, users: d.Users, auth: d.Auth, state: d.Sync}
@@ -992,6 +998,19 @@ func (s *houseService) PhotoFile(ctx context.Context, u *model.User, pid int64, 
 	} else if _, err := s.load(ctx, u, p.HouseID); err != nil {
 		return nil, "", err
 	}
+	// sale, CTV: ảnh có SĐT thì trả bản đã che; admin xem thử bản che: size "masked"
+	if !seesOriginal(u) || size == "masked" {
+		if size != "card" {
+			size = ""
+		}
+		mb, err := s.maskedPhoto(ctx, p, size)
+		if err != nil {
+			log.Printf("che SĐT ảnh #%d: %v", p.ID, err)
+			_ = s.photos.SetPhoneMask(ctx, p.ID, []byte("[]")) // ảnh không quét được: không chặn xem mãi
+		} else if mb != nil {
+			return mb, "image/jpeg", nil
+		}
+	}
 	var b []byte
 	switch size {
 	case "card":
@@ -1594,6 +1613,19 @@ func (s *houseService) drivePut(ctx context.Context, h *model.House) (string, er
 	}
 	files := []gdrive.File{{Name: "thong-tin.txt", Mime: "text/plain; charset=utf-8", Data: []byte(b.String())}}
 	for i, p := range ps {
+		// ảnh có SĐT: đẩy bản đã che (thư mục Drive chia sẻ ra ngoài)
+		boxes, err := s.phoneMask(ctx, &p, h.ContractorPhone)
+		if err != nil {
+			return "", fmt.Errorf("che SĐT ảnh #%d: %w", p.ID, err)
+		}
+		if len(boxes) > 0 {
+			data, err := s.files.ReadMasked(p.SHA256, false, boxes)
+			if err != nil {
+				return "", err
+			}
+			files = append(files, gdrive.File{Name: fmt.Sprintf("%02d.jpg", i+1), Mime: "image/jpeg", Data: data})
+			continue
+		}
 		data, err := s.files.ReadPhoto(p.SHA256, false)
 		if err != nil {
 			return "", err

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,6 +28,10 @@ type PhotoRepository interface {
 	Get(ctx context.Context, id int64) (*model.Photo, error)
 	Delete(ctx context.Context, id, houseID int64) (*model.Photo, error)
 	Count(ctx context.Context, houseID int64) (int, error)
+	// SetPhoneMask: lưu vùng SĐT cần che (JSON, [] = không có).
+	SetPhoneMask(ctx context.Context, id int64, mask []byte) error
+	// NoPhoneMask: ảnh chưa quét SĐT (mới nhất trước), kèm SĐT nhà thầu của hồ sơ.
+	NoPhoneMask(ctx context.Context, limit int) ([]MaskTodo, error)
 	// ApplyAI ghi kết quả AI đọc 1 ảnh (giờ in trên ảnh, địa chỉ, có phải công trình, toạ độ nếu còn trống).
 	ApplyAI(ctx context.Context, id int64, aiTime, addr string, isSite bool, lat, lng *float64) error
 
@@ -50,14 +55,20 @@ func NewPhotoRepository(db *pgxpool.Pool) PhotoRepository {
 	return &photoRepository{db: db}
 }
 
-const photoCols = `id, house_id, sha256, dhash, exif_time, ai_time, lat, lng, address, is_site, dup_of, mime`
+const photoCols = `id, house_id, sha256, dhash, exif_time, ai_time, lat, lng, address, is_site, dup_of, mime, phone_mask`
 
 func scanPhoto(row pgx.Row) (*model.Photo, error) {
 	var p model.Photo
 	err := row.Scan(&p.ID, &p.HouseID, &p.SHA256, &p.DHash, &p.ExifTime, &p.AITime, &p.Lat, &p.Lng, &p.Address,
-		&p.IsSite, &p.DupOf, &p.Mime)
+		&p.IsSite, &p.DupOf, &p.Mime, &p.PhoneMask)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
+	}
+	if len(p.PhoneMask) > 2 {
+		var boxes []json.RawMessage
+		if json.Unmarshal(p.PhoneMask, &boxes) == nil {
+			p.Masked = len(boxes)
+		}
 	}
 	return &p, err
 }
@@ -137,6 +148,37 @@ func (r *photoRepository) Get(ctx context.Context, id int64) (*model.Photo, erro
 
 func (r *photoRepository) Delete(ctx context.Context, id, houseID int64) (*model.Photo, error) {
 	return scanPhoto(r.db.QueryRow(ctx, `DELETE FROM photos WHERE id = $1 AND house_id = $2 RETURNING `+photoCols, id, houseID))
+}
+
+// MaskTodo: ảnh chờ quét SĐT.
+type MaskTodo struct {
+	ID              int64
+	SHA256          string
+	ContractorPhone string
+}
+
+func (r *photoRepository) SetPhoneMask(ctx context.Context, id int64, mask []byte) error {
+	_, err := r.db.Exec(ctx, `UPDATE photos SET phone_mask = $2 WHERE id = $1`, id, mask)
+	return err
+}
+
+func (r *photoRepository) NoPhoneMask(ctx context.Context, limit int) ([]MaskTodo, error) {
+	rows, err := r.db.Query(ctx, `SELECT p.id, p.sha256, h.contractor_phone FROM photos p JOIN houses h ON h.id = p.house_id
+		WHERE p.phone_mask IS NULL AND h.ai_state <> 'dang_doc' ORDER BY p.id DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MaskTodo{}
+	for rows.Next() {
+		var m MaskTodo
+		if err := rows.Scan(&m.ID, &m.SHA256, &m.ContractorPhone); err != nil {
+			return nil, err
+		}
+		m.SHA256 = strings.TrimSpace(m.SHA256)
+		out = append(out, m)
+	}
+	return out, rows.Err()
 }
 
 func (r *photoRepository) Count(ctx context.Context, houseID int64) (int, error) {

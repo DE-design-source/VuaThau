@@ -3729,3 +3729,9 @@ details.card > summary strong {
   color: #fff;
   cursor: pointer;
 }
+
+/* Trang hồ sơ: dòng báo SĐT đã che trên ảnh (sale / CTV / Drive thấy bản che) */
+.hp-masked {
+  margin: 6px 0 0;
+  font-size: 13px;
+}

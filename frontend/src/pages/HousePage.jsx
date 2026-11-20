@@ -47,6 +47,7 @@ function House({ id, d, reload }) {
   const cfg = useCfg()
   const [act, busy] = useAct(reload)
   const [showLogs, setShowLogs] = useState(false)
+  const [asMasked, setAsMasked] = useState(false) // xem ảnh như sale / CTV thấy (SĐT đã che)
   const h = d.house
   const ps = d.photos || []
   const admin = role === 'admin'
@@ -130,7 +131,15 @@ function House({ id, d, reload }) {
           )}
 
           {/* ảnh + video: khảm theo hàng 3 ô (ô rộng theo tỉ lệ ảnh), 2 hàng đầu; bấm nút xem tất cả */}
-          {ps.length + (d.videos || []).length === 0 ? <p className="muted">Chưa có ảnh.</p> : <Mosaic ps={ps} videos={d.videos || []} />}
+          {ps.length + (d.videos || []).length === 0 ? <p className="muted">Chưa có ảnh.</p> : <Mosaic ps={ps} videos={d.videos || []} masked={asMasked} />}
+          {ps.some((p) => p.masked > 0) && (
+            <p className="hp-masked muted">
+              Đã tự che SĐT trên {ps.filter((p) => p.masked > 0).length} ảnh khi sale, CTV, Google Drive xem (bạn đang xem {asMasked ? 'bản đã che' : 'ảnh gốc'}).{' '}
+              <button type="button" className="link-btn" onClick={() => setAsMasked(!asMasked)}>
+                {asMasked ? 'Xem ảnh gốc' : 'Xem bản đã che'}
+              </button>
+            </p>
+          )}
           {admin && h.status === 'cho_duyet' && ps.length > 1 && <Split key={ps.length} id={id} ps={ps} videos={d.videos || []} act={act} busy={busy} />}
           {(issues.length > 0 || fieldsTodo.length > 0) && (
             <ul className="issues">
@@ -382,7 +391,7 @@ function Split({ id, ps, videos, act, busy }) {
   )
 }
 
-function Mosaic({ ps, videos }) {
+function Mosaic({ ps, videos, masked }) {
   const [all, setAll] = useState(false)
   const [at, setAt] = useState(null) // ảnh đang xem lớn
   const [ratio, setRatio] = useState({}) // khoá ô -> rộng/cao
@@ -408,7 +417,7 @@ function Mosaic({ ps, videos }) {
               <div key={it.key} className="hp-tile" style={{ flex: `${rt} 1 0`, aspectRatio: rt }}>
                 {it.p ? (
                   <button type="button" onClick={() => setAt(it.k)} aria-label={`Xem ảnh ${it.k + 1}`}>
-                    <AuthImage path={`/photos/${it.p.id}`} alt={`Ảnh ${it.k + 1}`} onLoad={(e) => measure(it.key, e.target.naturalWidth, e.target.naturalHeight)} />
+                    <AuthImage path={`/photos/${it.p.id}${masked ? '?masked=1' : ''}`} alt={`Ảnh ${it.k + 1}`} onLoad={(e) => measure(it.key, e.target.naturalWidth, e.target.naturalHeight)} />
                   </button>
                 ) : (
                   <video

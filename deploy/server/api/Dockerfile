@@ -2,7 +2,8 @@
 # Dựng: xem deploy/server/README.md (deploy.ps1 build rồi chép bin/ và web/ vào đây).
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates tzdata \
+# tesseract: tìm SĐT trên ảnh công trình để che khi sale / CTV / Google Drive xem
+RUN apk add --no-cache ca-certificates tzdata tesseract-ocr tesseract-ocr-data-eng \
     && addgroup -S -g 10001 app \
     && adduser -S -u 10001 -G app -H -s /sbin/nologin app
 

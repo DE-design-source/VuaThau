@@ -95,7 +95,7 @@ const (
 	ScopeBoth = "trong_ngoai"
 )
 
-// EffScope: loại chụp đang áp dụng: admin chọn, không thì AI gợi ý ('' = hồ sơ cũ, tính tiền như trước).
+// EffScope: loại chụp đang áp dụng: admin chọn, không thì AI gợi ý (” = hồ sơ cũ, tính tiền như trước).
 func (h *House) EffScope() string {
 	if h.Scope != "" {
 		return h.Scope
@@ -168,6 +168,10 @@ type Photo struct {
 	DupOf    *int64   `json:"dup_of"`
 	Mime     string   `json:"-"`
 	Problems []string `json:"problems"`
+	// PhoneMask: vùng có SĐT cần che khi sale / CTV / Drive xem (JSON [{x,y,w,h}] tỉ lệ 0..1); nil = chưa quét.
+	PhoneMask []byte `json:"-"`
+	// Masked: số SĐT đã che trên ảnh (admin thấy để biết)
+	Masked int `json:"masked"`
 }
 
 // Log: 1 dòng lịch sử thao tác trên hồ sơ / phiếu chi.
