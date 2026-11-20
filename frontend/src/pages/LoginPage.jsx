@@ -40,15 +40,15 @@ export default function LoginPage() {
         </div>
         <div className="login-pitch">
           <span className="eyebrow">Hệ thống nghiệm thu công trình</span>
-          <h2>Mỗi công trình một hồ sơ. AI đọc ảnh, admin duyệt, kế toán trả tiền.</h2>
+          <h2>Mỗi công trình một hồ sơ. CTV chụp ảnh, admin duyệt, kế toán trả tiền.</h2>
           <dl className="login-stats">
             <div>
               <dt>Đọc ảnh Timemark</dt>
-              <dd className="mono">AI</dd>
+              <dd className="mono">Tự động</dd>
             </div>
             <div>
               <dt>Chặn chụp trùng</dt>
-              <dd className="mono">AI + GPS</dd>
+              <dd className="mono">GPS</dd>
             </div>
             <div>
               <dt>Bản đồ công trình</dt>
