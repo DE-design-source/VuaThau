@@ -24,6 +24,7 @@ import SaleProjectPage from '@/pages/sale/SaleProjectPage'
 import ContractorsPage from '@/pages/sale/ContractorsPage'
 // Bản đồ (Leaflet) tải riêng khi mở trang, không làm nặng các trang khác
 const MapPage = lazy(() => import('@/pages/MapPage'))
+const PlanPage = lazy(() => import('@/pages/PlanPage'))
 const SaleMapPage = lazy(() => import('@/pages/sale/SaleMapPage'))
 
 /** Chỉ cho vào khi đã đăng nhập, và đúng vai trò nếu có roles. */
@@ -66,6 +67,7 @@ export default function App() {
         <Route path="ctvs" element={g(<CtvListPage />)} />
         <Route path="ctvs/:id" element={g(<CtvPage />)} />
         <Route path="map" element={g(<Suspense fallback={<PageState err="" />}><MapPage /></Suspense>)} />
+        <Route path="quy-hoach" element={g(<Suspense fallback={<PageState err="" />}><PlanPage /></Suspense>, [...STAFF, 'sale'])} />
         <Route path="sale/map" element={g(<Suspense fallback={<PageState err="" />}><SaleMapPage /></Suspense>, SALE)} />
         <Route path="sale/projects" element={g(<SaleProjectsPage />, SALE)} />
         <Route path="sale/projects/:id" element={g(<SaleProjectPage />, SALE)} />

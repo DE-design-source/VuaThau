@@ -3712,3 +3712,93 @@ details.card > summary strong {
   margin: 6px 0 0;
   font-size: 13px;
 }
+
+/* Xem quy hoạch (/quy-hoach) */
+.qh-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin-bottom: 10px;
+}
+.qh-search {
+  display: flex;
+  gap: 6px;
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.qh-search .input {
+  flex: 1;
+  min-width: 0;
+}
+.qh-opacity,
+.qh-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+}
+.qh-opacity input {
+  width: 120px;
+}
+.qh-bar .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.qh-wrap {
+  position: relative;
+}
+.qh-map {
+  height: calc(100vh - 230px);
+  min-height: 420px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+.qh-pop {
+  top: 10px;
+}
+.qh-note {
+  margin-top: 8px;
+  font-size: 12.5px;
+}
+@media (max-width: 640px) {
+  .qh-map {
+    height: calc(100vh - 300px);
+  }
+}
+.qh-info {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: min(360px, calc(100% - 70px));
+  max-height: calc(100% - 20px);
+  z-index: 600;
+}
+.qh-lot {
+  display: grid;
+  gap: 10px;
+  padding-right: 18px;
+}
+.qh-lot .cap {
+  display: block;
+  margin-bottom: 2px;
+}
+.qh-use {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 4px;
+}
+.qh-use i {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  border-radius: 3px;
+  border: 1px solid rgb(0 0 0 / 0.2);
+}
+.qh-map {
+  cursor: crosshair;
+}
