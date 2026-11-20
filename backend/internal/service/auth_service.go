@@ -33,6 +33,13 @@ type RegisterInput struct {
 	IDToken   string `json:"id_token"`
 }
 
+// PhoneResult: app đăng nhập bằng SĐT. Registered = false: SĐT chưa có tài khoản, app sang Đăng ký (điền sẵn SĐT).
+type PhoneResult struct {
+	*AuthResult
+	Registered bool   `json:"registered"`
+	Phone      string `json:"phone"`
+}
+
 type LoginInput struct {
 	Login    string `json:"login"`
 	Password string `json:"password"`
@@ -56,6 +63,8 @@ type AuthService interface {
 	Register(ctx context.Context, in RegisterInput) (*AuthResult, error)
 	Login(ctx context.Context, in LoginInput) (*AuthResult, error)
 	Google(ctx context.Context, idToken string) (*GoogleResult, error)
+	// PhoneLogin: CTV vào app chỉ bằng SĐT (góp ý 20/11/2026), không mật khẩu.
+	PhoneLogin(ctx context.Context, phone string) (*PhoneResult, error)
 	// Issue cấp token mới cho người dùng (sau khi đổi mật khẩu).
 	Issue(u *model.User) (*AuthResult, error)
 }
@@ -167,8 +176,35 @@ func (s *authService) Login(ctx context.Context, in LoginInput) (*AuthResult, er
 	return s.Issue(u)
 }
 
+// PhoneLogin: SĐT có tài khoản CTV thì vào luôn; chưa có thì báo app sang Đăng ký. Tài khoản nhân viên vẫn dùng mật khẩu.
+// Ai biết SĐT cũng vào được, nên CTV không tự đổi ngân hàng khi đã có (UserService.UpdateBank), phải nhờ admin.
+func (s *authService) PhoneLogin(ctx context.Context, raw string) (*PhoneResult, error) {
+	phone := normPhone(raw)
+	if !ValidPhone(phone) {
+		return nil, fail(ErrInvalidInput, "Số điện thoại chưa đúng, nhập 10 số, ví dụ 0912345678.")
+	}
+	u, err := s.repo.FindByLogin(ctx, phone)
+	if errors.Is(err, repository.ErrNotFound) {
+		return &PhoneResult{Registered: false, Phone: phone}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find user: %w", err)
+	}
+	if u.Role != model.RoleCTV {
+		return nil, fail(ErrForbidden, "Tài khoản nhân viên đăng nhập trên web bằng mật khẩu.")
+	}
+	if u.Locked == model.LockedDeleted {
+		return nil, fail(ErrLocked, "Tài khoản của số này đã xoá. Liên hệ admin Vua Thầu để mở lại.")
+	}
+	res, err := s.signIn(u, "")
+	if err != nil {
+		return nil, err
+	}
+	return &PhoneResult{AuthResult: res, Registered: true, Phone: phone}, nil
+}
+
 func (s *authService) Register(ctx context.Context, in RegisterInput) (*AuthResult, error) {
-	phone := CleanPhone(strings.TrimSpace(in.Phone))
+	phone := normPhone(in.Phone)
 	name := truncate(in.Name, 100)
 	var g *google.Identity
 	if in.IDToken != "" {
@@ -178,10 +214,10 @@ func (s *authService) Register(ctx context.Context, in RegisterInput) (*AuthResu
 		if u, err := s.repo.FindByGoogle(ctx, g.Sub); err == nil {
 			return s.signIn(u, "") // Google này đã đăng ký rồi: vào luôn
 		}
-		// CTV cũ (đăng ký bằng SĐT): đúng mật khẩu thì gắn Google vào tài khoản đó
+		// CTV cũ (đăng ký bằng SĐT): gắn Google vào tài khoản đó (app vào bằng SĐT nên không hỏi mật khẩu cũ)
 		if old, err := s.repo.FindByLogin(ctx, phone); err == nil {
-			if old.Role != model.RoleCTV || old.GoogleSub != "" || !checkPassword(old.PasswordHash, in.Password) {
-				return nil, fail(ErrConflict, "Số điện thoại này đã có tài khoản. Nhập đúng mật khẩu cũ để liên kết Google.")
+			if old.Role != model.RoleCTV || old.GoogleSub != "" || old.Locked != model.LockedNone {
+				return nil, fail(ErrConflict, "Số điện thoại này đã có tài khoản. Quay lại, nhập SĐT để đăng nhập.")
 			}
 			if err := s.repo.LinkGoogle(ctx, old.ID, g.Sub, g.Email); err != nil {
 				return nil, fmt.Errorf("link google: %w", err)
@@ -190,11 +226,16 @@ func (s *authService) Register(ctx context.Context, in RegisterInput) (*AuthResu
 		}
 	}
 	bank := BankFrom(in.BankName, in.BankNo, in.BankOwner)
-	if !ValidPhone(phone) || utf8.RuneCountInString(in.Password) < 6 || len(in.Password) > 72 || name == "" || bank == "" {
-		return nil, fail(ErrInvalidInput,
-			"Kiểm tra lại: SĐT hợp lệ, mật khẩu từ 6 ký tự, đủ ngân hàng, số tài khoản (chỉ số) và tên chủ tài khoản.")
+	// mật khẩu không bắt buộc nữa (app vào bằng SĐT); không nhập thì đặt mật khẩu ngẫu nhiên
+	pw := in.Password
+	if pw == "" {
+		pw = randomSecret()
 	}
-	hash, err := hashPassword(in.Password)
+	if !ValidPhone(phone) || utf8.RuneCountInString(pw) < 6 || len(pw) > 72 || name == "" || bank == "" {
+		return nil, fail(ErrInvalidInput,
+			"Kiểm tra lại: SĐT hợp lệ, có họ tên, đủ ngân hàng, số tài khoản (chỉ số) và tên chủ tài khoản.")
+	}
+	hash, err := hashPassword(pw)
 	if err != nil {
 		return nil, err
 	}

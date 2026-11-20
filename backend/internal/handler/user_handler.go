@@ -212,6 +212,28 @@ func (h *UserHandler) CTVLogin(w http.ResponseWriter, r *http.Request) {
 	ok(w, map[string]any{"message": m})
 }
 
+// CTVBank handles PUT /api/v1/ctvs/{id}/bank (admin): {bank_name, bank_no, bank_owner}
+func (h *UserHandler) CTVBank(w http.ResponseWriter, r *http.Request) {
+	id, valid := idOr400(w, r, "id")
+	if !valid {
+		return
+	}
+	var in struct {
+		BankName  string `json:"bank_name"`
+		BankNo    string `json:"bank_no"`
+		BankOwner string `json:"bank_owner"`
+	}
+	if !bodyOr400(w, r, &in) {
+		return
+	}
+	m, err := h.svc.SetCTVBank(r.Context(), me(r), id, in.BankName, in.BankNo, in.BankOwner)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"message": m})
+}
+
 // CTVKinds handles PUT /api/v1/ctv-kinds (admin): {kinds: [...]}
 func (h *UserHandler) CTVKinds(w http.ResponseWriter, r *http.Request) {
 	var in struct {

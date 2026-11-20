@@ -54,6 +54,7 @@ export default function CtvPage() {
           <p>{bank.owner ? `${bank.name} · ${bank.no} · ${bank.owner}` : ctv.bank || <span className="muted">Chưa có</span>}</p>
           {admin && !deleted && (
             <>
+              <BankEdit key={ctv.bank} id={ctv.id} bank={bank} act={act} busy={busy} />
               <div className="row-wrap">
                 <Button
                   variant="secondary"
@@ -100,12 +101,11 @@ export default function CtvPage() {
   )
 }
 
-/** SĐT = tên đăng nhập app; mật khẩu admin đặt rồi gửi CTV. Chưa có SĐT: lấy SĐT bên Messenger (nếu có), không
- *  có thì ô để trống, tô vàng để admin nhập. */
+/** SĐT = tên đăng nhập app (CTV mở app nhập SĐT là vào, không mật khẩu). Chưa có SĐT: lấy SĐT bên Messenger (nếu có),
+ *  không có thì ô để trống, tô vàng để admin nhập. */
 function LoginBox({ ctv, loginPhone, inboxPhone, act, busy }) {
   const init = loginPhone ? ctv.username : phoneOf(inboxPhone)
   const [phone, setPhone] = useState(init)
-  const [pw, setPw] = useState('')
   const need = !loginPhone
   const digits = phone.replace(/\D/g, '')
   return (
@@ -139,19 +139,65 @@ function LoginBox({ ctv, loginPhone, inboxPhone, act, busy }) {
           )}
         </label>
       </form>
-      <form
-        className="row-wrap"
-        onSubmit={(e) => {
-          e.preventDefault()
-          act('pw', () => userApi.setPassword(ctv.id, pw)).then((j) => j && setPw(''))
-        }}
-      >
-        <input className="input grow" type="text" placeholder="Mật khẩu mới (từ 6 ký tự)" value={pw} onChange={(e) => setPw(e.target.value)} />
-        <Button type="submit" variant="secondary" disabled={pw.length < 6} loading={busy === 'pw'}>
-          Đặt lại mật khẩu
-        </Button>
-      </form>
+      <p className="muted">CTV mở app, nhập SĐT này là vào, không cần mật khẩu.</p>
     </div>
+  )
+}
+
+/** Admin đổi tài khoản nhận tiền giúp CTV (app chỉ cho CTV tự nhập lần đầu). */
+function BankEdit({ id, bank, act, busy }) {
+  const cfg = useCfg()
+  const init = { bank_name: bank.name || '', bank_no: bank.no || '', bank_owner: bank.owner || '' }
+  const [open, setOpen] = useState(false)
+  const [f, setF] = useState(init)
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
+  const banks = cfg?.banks || []
+  if (!open) {
+    return (
+      <div className="row-wrap">
+        <Button variant="secondary" onClick={() => setOpen(true)}>
+          {bank.owner ? 'Đổi tài khoản nhận tiền' : 'Nhập tài khoản nhận tiền'}
+        </Button>
+        <small className="muted">CTV không tự đổi được trong app, nhờ admin đổi.</small>
+      </div>
+    )
+  }
+  return (
+    <form
+      className="stack tight"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (!window.confirm(`Đổi tài khoản nhận tiền thành ${f.bank_name} · ${f.bank_no} · ${f.bank_owner}?`)) return
+        act('bank', () => ctvApi.setBank(id, f)).then((j) => j && setOpen(false))
+      }}
+    >
+      <label className="field">
+        <span>Ngân hàng</span>
+        <select className="input" value={f.bank_name} onChange={set('bank_name')}>
+          <option value="">—</option>
+          {f.bank_name && !banks.includes(f.bank_name) && <option>{f.bank_name}</option>}
+          {banks.map((b) => (
+            <option key={b}>{b}</option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span>Số tài khoản</span>
+        <input className="input" inputMode="numeric" value={f.bank_no} onChange={set('bank_no')} />
+      </label>
+      <label className="field">
+        <span>Chủ tài khoản</span>
+        <input className="input" value={f.bank_owner} onChange={set('bank_owner')} />
+      </label>
+      <div className="row-wrap">
+        <Button type="submit" loading={busy === 'bank'} disabled={!f.bank_name || !/^\d{6,20}$/.test(f.bank_no.replace(/\s/g, '')) || !f.bank_owner.trim()}>
+          Lưu tài khoản
+        </Button>
+        <Button variant="ghost" type="button" onClick={() => (setF(init), setOpen(false))}>
+          Huỷ
+        </Button>
+      </div>
+    </form>
   )
 }
 

@@ -57,6 +57,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/register", a.Register)
 	mux.HandleFunc("POST /api/v1/auth/login", a.Login)
 	mux.HandleFunc("POST /api/v1/auth/google", a.Google)
+	mux.HandleFunc("POST /api/v1/auth/phone", a.Phone)
 
 	// Tài khoản (mọi vai trò)
 	mux.Handle("GET /api/v1/me", role(u.Me))
@@ -127,6 +128,7 @@ func New(d Deps) http.Handler {
 	mux.Handle("GET /api/v1/ctvs/{id}", role(u.CTV, admin, ketoan))
 	mux.Handle("PUT /api/v1/ctvs/{id}/profile", role(u.CTVProfile, admin))
 	mux.Handle("PUT /api/v1/ctvs/{id}/login", role(u.CTVLogin, admin))
+	mux.Handle("PUT /api/v1/ctvs/{id}/bank", role(u.CTVBank, admin))
 	mux.Handle("PUT /api/v1/ctv-kinds", role(u.CTVKinds, admin))
 	mux.Handle("POST /api/v1/ctvs/{id}/adjustments", role(p.AddAdjustment, admin, ketoan))
 	mux.Handle("DELETE /api/v1/adjustments/{id}", role(p.DeleteAdjustment, admin, ketoan))

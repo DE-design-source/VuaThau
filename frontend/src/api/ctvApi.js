@@ -18,6 +18,9 @@ const ctvApi = {
   /** Admin đặt SĐT làm tên đăng nhập app -> { message } */
   setLogin: (id, phone) => axiosClient.put(`/ctvs/${id}/login`, { phone }),
 
+  /** Admin đổi tài khoản nhận tiền (CTV không tự đổi được khi đã có, vì app vào chỉ bằng SĐT) -> { message } */
+  setBank: (id, { bank_name, bank_no, bank_owner }) => axiosClient.put(`/ctvs/${id}/bank`, { bank_name, bank_no, bank_owner }),
+
   /** Thưởng (> 0) / trừ (< 0) -> { message } */
   addAdjustment: (ctvId, { amount, reason }) => axiosClient.post(`/ctvs/${ctvId}/adjustments`, { amount, reason }),
 

@@ -277,6 +277,7 @@ const (
 	ActSelfDel    = "CTV tự xoá tài khoản"
 	ActCTVProfile = "Sửa khu vực, chức năng CTV"
 	ActCTVLogin   = "Đặt SĐT đăng nhập CTV"
+	ActCTVBank    = "Admin đổi ngân hàng CTV"
 )
 
 // Money định dạng "35.000đ".

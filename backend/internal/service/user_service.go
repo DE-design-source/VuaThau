@@ -78,6 +78,7 @@ type UserService interface {
 	CTV(ctx context.Context, id int64) (*CTVDetail, error)
 	SetCTVProfile(ctx context.Context, by *model.User, id int64, in CTVProfileInput) (string, error)
 	SetCTVLogin(ctx context.Context, by *model.User, id int64, phone string) (string, error)
+	SetCTVBank(ctx context.Context, by *model.User, id int64, name, no, owner string) (string, error)
 	SaveKinds(ctx context.Context, by *model.User, kinds []string) ([]string, string, error)
 }
 
@@ -155,6 +156,10 @@ func (s *userService) UpdateBank(ctx context.Context, u *model.User, name, no, o
 	if u.Role != model.RoleCTV {
 		return nil, ErrForbidden
 	}
+	// App vào bằng SĐT (ai biết SĐT cũng vào được): đã có tài khoản nhận tiền thì CTV không tự đổi, nhờ admin đổi trên web
+	if u.Bank != "" {
+		return nil, fail(ErrForbidden, "Tài khoản ngân hàng đã lưu. Muốn đổi, liên hệ admin Vua Thầu để đổi giúp.")
+	}
 	bank := BankFrom(name, no, owner)
 	if bank == "" {
 		return nil, fail(ErrInvalidInput, "Chưa lưu: cần đủ ngân hàng, số tài khoản (6-20 chữ số) và tên chủ tài khoản.")
@@ -163,6 +168,29 @@ func (s *userService) UpdateBank(ctx context.Context, u *model.User, name, no, o
 		return nil, err
 	}
 	return s.repo.GetByID(ctx, u.ID)
+}
+
+// SetCTVBank: admin đổi tài khoản nhận tiền cho CTV (CTV không tự đổi được khi đã có).
+func (s *userService) SetCTVBank(ctx context.Context, by *model.User, id int64, name, no, owner string) (string, error) {
+	u, err := s.repo.GetByID(ctx, id)
+	if errors.Is(err, repository.ErrNotFound) || (err == nil && u.Role != model.RoleCTV) {
+		return "", fail(ErrNotFound, "Không tìm thấy cộng tác viên.")
+	}
+	if err != nil {
+		return "", err
+	}
+	bank := BankFrom(name, no, owner)
+	if bank == "" {
+		return "", fail(ErrInvalidInput, "Chưa lưu: cần đủ ngân hàng, số tài khoản (6-20 chữ số) và tên chủ tài khoản.")
+	}
+	if bank == u.Bank {
+		return "Tài khoản ngân hàng không đổi.", nil
+	}
+	if err := s.repo.UpdateBank(ctx, id, bank); err != nil {
+		return "", err
+	}
+	_ = s.logs.Add(ctx, by.ID, ActCTVBank, nil, nil, fmt.Sprintf("%s: %s -> %s", u.Name, u.Bank, bank))
+	return fmt.Sprintf("Đã đổi tài khoản nhận tiền của %s.", u.Name), nil
 }
 
 func (s *userService) ChangePassword(ctx context.Context, u *model.User, old, new string) (*model.User, error) {
@@ -435,7 +463,7 @@ func (s *userService) SetCTVLogin(ctx context.Context, by *model.User, id int64,
 		return "", err
 	}
 	_ = s.logs.Add(ctx, by.ID, ActCTVLogin, nil, nil, fmt.Sprintf("%s: %s -> %s", u.Name, u.Username, p))
-	return fmt.Sprintf("Đã đặt SĐT đăng nhập cho %s: %s. Đặt mật khẩu rồi gửi cho CTV.", u.Name, p), nil
+	return fmt.Sprintf("Đã đặt SĐT đăng nhập cho %s: %s. CTV mở app, nhập SĐT này là vào được.", u.Name, p), nil
 }
 
 func regionText(code string) string {

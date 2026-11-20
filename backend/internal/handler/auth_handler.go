@@ -43,6 +43,22 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	ok(w, res)
 }
 
+// Phone handles POST /api/v1/auth/phone {phone}: app CTV vào bằng SĐT
+func (h *AuthHandler) Phone(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Phone string `json:"phone"`
+	}
+	if !bodyOr400(w, r, &in) {
+		return
+	}
+	res, err := h.svc.PhoneLogin(r.Context(), in.Phone)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, res)
+}
+
 // Google handles POST /api/v1/auth/google {id_token}
 func (h *AuthHandler) Google(w http.ResponseWriter, r *http.Request) {
 	var in struct {
