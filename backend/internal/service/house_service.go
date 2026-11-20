@@ -1599,8 +1599,12 @@ func (s *houseService) drivePut(ctx context.Context, h *model.House) (string, er
 	var b strings.Builder
 	fmt.Fprintf(&b, "Hồ sơ #%d: %s/houses/%d\n", h.ID, s.public, h.ID)
 	fmt.Fprintf(&b, "Gửi duyệt: %s\n", s.now().In(VN).Format("15:04 02/01/2006"))
-	fmt.Fprintf(&b, "CTV: %s - %s\n", h.CTVName, h.CTVPhone)
+	// không ghi SĐT (nhà thầu, CTV): thư mục Drive có thể chia sẻ ra ngoài; ảnh trên Drive cũng đã che SĐT
+	fmt.Fprintf(&b, "CTV: %s\n", h.CTVName)
 	for _, f := range model.Fields {
+		if f.Key == "contractor_phone" {
+			continue
+		}
 		fmt.Fprintf(&b, "%s: %s\n", capFirst(f.Label), h.Value(f.Key))
 	}
 	fmt.Fprintf(&b, "Số tiền dự kiến: %s\n\nẢnh:\n", Money(h.Amount))

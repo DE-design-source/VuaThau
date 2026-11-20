@@ -60,6 +60,28 @@ func TestKnownPartial(t *testing.T) {
 	}
 }
 
+// Ảnh thật (HS 243, bảng hiệu IVY ARCHI): OCR đọc dính biểu tượng điện thoại vào số: "©093586" "1417,"
+func TestIconGlued(t *testing.T) {
+	words := []Word{
+		{Text: "hotine:", Line: "2-1-1", X: 558, Y: 953, W: 34, H: 10, Conf: 83},
+		{Text: "©093586", Line: "3-1-1", X: 492, Y: 965, W: 92, H: 32, Conf: 6},
+		{Text: "1417,", Line: "3-1-1", X: 595, Y: 972, W: 54, H: 17, Conf: 49},
+		{Text: "®", Line: "4-1-1", X: 492, Y: 997, W: 17, H: 19, Conf: 83},
+		{Text: "0943", Line: "4-1-1", X: 517, Y: 999, W: 43, H: 17, Conf: 94},
+		{Text: "545", Line: "4-1-1", X: 568, Y: 1000, W: 31, H: 17, Conf: 94},
+		{Text: "444", Line: "4-1-1", X: 605, Y: 1001, W: 31, H: 15, Conf: 96},
+		{Text: "Hotline:0905123456", Line: "5-1-1", X: 100, Y: 1100, W: 200, H: 20, Conf: 90},
+	}
+	if b := PhoneBoxes(words, 1176, 1568, nil); len(b) != 3 {
+		t.Fatalf("cần che 3 SĐT, được %d: %+v", len(b), b)
+	}
+	for _, s := range []string{"hotline", "IVY", "2026", "©"} {
+		if numPart(s) != s && digitsOf(s) == "" {
+			t.Errorf("numPart(%q) = %q", s, numPart(s))
+		}
+	}
+}
+
 func TestIsPhone(t *testing.T) {
 	for d, want := range map[string]bool{
 		"0905123456": true, "02363888999": true, "84905123456": true, "19006868": true, "18001234": true,

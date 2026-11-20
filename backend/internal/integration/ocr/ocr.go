@@ -149,6 +149,19 @@ func phoneish(s string) bool {
 	return true
 }
 
+// numPart: phần từ con số đầu tiên của chữ: OCR hay đọc dính biểu tượng điện thoại / nhãn vào số ("©093586",
+// "Hotline:0905", "ĐT:0236..."). Giữ "+" / "(" / chữ O (số 0 đọc nhầm) đứng ngay trước số.
+func numPart(s string) string {
+	i := strings.IndexFunc(s, func(r rune) bool { return r >= '0' && r <= '9' })
+	if i <= 0 {
+		return s
+	}
+	if c := s[i-1]; c == '+' || c == '(' || c == 'O' || c == 'o' {
+		i--
+	}
+	return s[i:]
+}
+
 // isPhone: chuỗi số giống SĐT Việt Nam: 0xxxxxxxxx (10-11 số), 84xxxxxxxxx, hoặc tổng đài 1800 / 1900 (8-10 số).
 func isPhone(d string) bool {
 	switch {
@@ -186,7 +199,7 @@ func PhoneBoxes(words []Word, w, h int, known []string) []Box {
 		}
 		all := ""
 		for _, x := range run {
-			all += digitsOf(strings.NewReplacer("O", "0", "o", "0").Replace(x.Text))
+			all += digitsOf(strings.NewReplacer("O", "0", "o", "0").Replace(numPart(x.Text)))
 		}
 		// phần số bị sót (theo SĐT đã biết): trước / sau chuỗi đọc được
 		before, after := 0, 0
@@ -222,7 +235,7 @@ func PhoneBoxes(words []Word, w, h int, known []string) []Box {
 	}
 	var run []Word
 	for _, x := range words {
-		ok := phoneish(x.Text) && x.Conf >= 0 // conf -1: dòng trống
+		ok := phoneish(numPart(x.Text)) && x.Conf >= 0 // conf -1: dòng trống
 		near := len(run) > 0 && run[len(run)-1].Line == x.Line &&
 			x.X-(run[len(run)-1].X+run[len(run)-1].W) <= 3*max(x.H, run[len(run)-1].H)
 		if ok && (len(run) == 0 || near) {
