@@ -15,6 +15,7 @@ import (
 	"vuathau/backend/internal/handler"
 	"vuathau/backend/internal/integration/ai"
 	"vuathau/backend/internal/integration/dezon"
+	"vuathau/backend/internal/integration/dezontech"
 	"vuathau/backend/internal/integration/gdrive"
 	"vuathau/backend/internal/integration/geo"
 	"vuathau/backend/internal/integration/google"
@@ -97,11 +98,16 @@ func run() error {
 		}
 	}
 	geocoder := geo.New(cfg.GoogleMapsKey)
+	// Khách hàng: pipeline Kinh doanh của Dezon Pro (khoá chỉ đọc). Không có khoá: tắt.
+	var leads service.LeadSource
+	if c := dezontech.New(cfg.DezonTechURL, cfg.DezonTechKey); c != nil {
+		leads = c
+	}
 	houseSvc := service.NewHouseService(service.HouseDeps{
 		Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo, Payments: payRepo, Settings: settingsRepo,
 		Files: files, AI: ai.New(cfg.AIEnabled, cfg.AIModel, cfg.AIWorkspace), Geo: geocoder, OCR: ocr.New(),
 		Drive: drive, Public: cfg.PublicURL, MediaKey: cfg.JWTSecret,
-		Inbox: inboxSrc, Auth: authRepo, Sync: repository.NewSyncRepository(db), Customers: repository.NewCustomerRepository(db),
+		Inbox: inboxSrc, Auth: authRepo, Sync: repository.NewSyncRepository(db), Customers: repository.NewCustomerRepository(db), Leads: leads,
 	})
 	paySvc := service.NewPaymentService(payRepo, houseRepo, photoRepo, userRepo, logRepo, settingsRepo, files)
 
@@ -112,6 +118,7 @@ func run() error {
 	defer stopMask()
 	go houseSvc.RunPhoneMaskScan(maskCtx) // che SĐT trên ảnh (ảnh cũ + ảnh mới)
 	houseSvc.StartInboxSync(cfg.InboxSyncEvery)
+	houseSvc.StartCustomerSync(15 * time.Minute)
 	// Công trình nhà thầu mới đăng trên dezon.vn -> lớp ghim Dezon trên bản đồ (tra toạ độ: Google nếu có key)
 	dezonRepo := repository.NewDezonRepository(db)
 	log.Printf("Công trình Dezon: tra toạ độ bằng %s, mỗi 6h", map[bool]string{true: "Google", false: "OpenStreetMap"}[geocoder.Google()])

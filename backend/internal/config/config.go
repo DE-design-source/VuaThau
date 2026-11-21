@@ -48,6 +48,9 @@ type Config struct {
 	GoogleMapsKey string
 	// Nền bản đồ Vietmap (Hoàng Sa, Trường Sa đúng chủ quyền) cho web: /map-style/vn.json. Trống: nền cũ.
 	VietmapKey string
+	// Khách hàng: pipeline Kinh doanh của Dezon Pro (dezon.tech). Trống key: tắt lớp khách hàng.
+	DezonTechURL string
+	DezonTechKey string
 
 	// Đăng nhập / đăng ký bằng Google trong app: OAuth client loại Web (id đầu tiên gửi cho app).
 	GoogleClientIDs []string
@@ -91,6 +94,8 @@ func Load() (*Config, error) {
 		AIWorkspace:        getEnv("ANTHROPIC_WORKSPACE_ID", ""),
 		GoogleMapsKey:      getEnv("GOOGLE_MAPS_API_KEY", ""),
 		VietmapKey:         getEnv("VIETMAP_API_KEY", ""),
+		DezonTechURL:       getEnv("DEZON_TECH_URL", "https://dezon.tech"),
+		DezonTechKey:       getEnv("DEZON_TECH_KEY", ""),
 		GoogleClientIDs:    splitCSV(getEnv("GOOGLE_CLIENT_IDS", "")),
 		GDriveClientID:     getEnv("GDRIVE_CLIENT_ID", ""),
 		GDriveClientSecret: getEnv("GDRIVE_CLIENT_SECRET", ""),

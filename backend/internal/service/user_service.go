@@ -23,8 +23,6 @@ type MeResult struct {
 	Bank  model.Bank   `json:"bank"`
 	Money *model.Money `json:"money,omitempty"`
 	Todo  int          `json:"todo"`
-	// Sales: CTV kinh doanh (app hiện mục Khách hàng)
-	Sales bool `json:"sales"`
 }
 
 // CTVDetail: 1 CTV cho admin / kế toán.
@@ -150,9 +148,6 @@ func (s *userService) Me(ctx context.Context, u *model.User) (*MeResult, error) 
 			return nil, err
 		}
 		res.Money = &m
-		if k, err := s.repo.KindOf(ctx, u.ID); err == nil {
-			res.Sales = ctvType(k) == "sales"
-		}
 	}
 	return res, nil
 }

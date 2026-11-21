@@ -54,23 +54,21 @@ export function siteTip(p, { staleDays = 30, prov = '', status = '', ctvLink = f
   )
 }
 
-const KH_KINDS = { nha_pho: 'Nhà phố', biet_thu: 'Biệt thự', can_ho: 'Căn hộ' }
-
-/** Thẻ của 1 khách hàng trên bản đồ (lớp Khách hàng, admin / kế toán). edit: có link sửa (admin). */
-export function cusTip(k, { edit = false } = {}) {
+/** Thẻ của 1 khách hàng trên bản đồ (lớp Khách hàng: pipeline Kinh doanh Dezon Pro, admin / kế toán). */
+export function cusTip(k) {
   const tel = (k.phone || '').replace(/[^\d+]/g, '')
+  const addr = [k.address, k.area].filter(Boolean).join(', ')
+  const value = k.value_vnd > 0 ? (k.value_vnd >= 1e9 ? `${(k.value_vnd / 1e9).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} tỷ` : `${Math.round(k.value_vnd / 1e6).toLocaleString('vi-VN')} triệu`) : ''
   return (
     `<div class="site-tip"><div class="site-tip-body">` +
-    `<div class="site-tip-top"><b class="cus-tip-name">${esc(k.name)}</b> <span class="cus-tag">${esc(KH_KINDS[k.kind] || k.kind)}</span></div>` +
-    (k.address ? `<div class="site-tip-row"><span>Địa chỉ</span>${esc(k.address)}</div>` : '') +
+    `<div class="site-tip-top"><b class="cus-tip-name">${esc(k.name || 'Khách hàng')}</b>${k.kind ? ` <span class="cus-tag">${esc(k.kind)}</span>` : ''}</div>` +
+    (addr ? `<div class="site-tip-row"><span>Địa chỉ</span>${esc(addr)}</div>` : '') +
     (/^\+?\d{9,12}$/.test(tel) ? `<div class="site-tip-row"><span>SĐT</span><a href="tel:${tel}">${esc(k.phone)}</a></div>` : '') +
-    `<div class="site-tip-row"><span>Phụ trách</span><b>${esc(k.ctv_name || '—')}</b></div>` +
-    (k.note ? `<div class="site-tip-row"><span>Ghi chú</span>${esc(k.note)}</div>` : '') +
+    `<div class="site-tip-row"><span>Phụ trách</span><b>${esc(k.owner || '—')}</b></div>` +
+    (k.scale || value ? `<div class="site-tip-row"><span>Quy mô</span>${esc([k.scale, value].filter(Boolean).join(' · '))}</div>` : '') +
+    (k.source ? `<div class="site-tip-row"><span>Nguồn</span>${esc(k.source)}</div>` : '') +
     `</div></div>` +
-    `<div class="site-pop-actions">` +
-    (edit ? `<a href="/customers?edit=${k.id}" data-to="/customers?edit=${k.id}">Sửa khách hàng</a>` : '') +
-    (k.ctv_id ? `<a href="/ctvs/${k.ctv_id}" data-to="/ctvs/${k.ctv_id}">CTV phụ trách</a>` : '') +
-    `</div>`
+    `<div class="site-pop-actions"><a href="https://dezon.tech/kinh-doanh?lead=${encodeURIComponent(k.ext_id)}" target="_blank" rel="noreferrer">Mở trên Dezon Pro</a></div>`
   )
 }
 

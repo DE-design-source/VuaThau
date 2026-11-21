@@ -6,7 +6,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import usePage from '@/hooks/usePage'
 import useCfg from '@/hooks/useCfg'
-import useAuth from '@/hooks/useAuth'
 import mapApi from '@/api/mapApi'
 import dezonApi from '@/api/dezonApi'
 import Explorer from '@/components/explore/Explorer'
@@ -28,7 +27,6 @@ export default function MapPage() {
   const { data: d, err, busy, reload } = usePage(() => mapApi.get(cur), [cur.ctv, cur.status, cur.from, cur.to, cur.province])
   const dz = usePage(() => dezonApi.projects({ province: cur.province }), [cur.province]) // lỗi: bỏ qua, chỉ thiếu lớp Dezon
   const cfg = useCfg()
-  const { role } = useAuth()
   // Cập nhật theo thời gian thực: tự tải lại mỗi LIVE_MS, đánh dấu công trình mới xuất hiện
   const [live, setLive] = useState(false)
   const [liveAt, setLiveAt] = useState(null)
@@ -156,7 +154,6 @@ export default function MapPage() {
       filterCount={[cur.from, cur.to, live, cur.ctv, cur.status].filter(Boolean).length}
       ctvPins={d.ctv_pins || []}
       customers={d.customers || []}
-      canEditCustomer={role === 'admin'}
       selects={[
         {
           key: 'province',

@@ -213,12 +213,10 @@ type HouseService interface {
 
 	// Trang sale (sale_service.go): không CTV, không tiền.
 	SaleMap(ctx context.Context, province string, ctv int64) (*SaleMapData, error)
-	// Khách hàng của CTV kinh doanh
-	SalesCTV(ctx context.Context, u *model.User) bool
+	// Khách hàng (lấy từ pipeline Kinh doanh của Dezon Pro): admin, kế toán xem
 	Customers(ctx context.Context, u *model.User) ([]repository.Customer, error)
-	CreateCustomer(ctx context.Context, u *model.User, in CustomerInput) (*repository.Customer, string, error)
-	UpdateCustomer(ctx context.Context, u *model.User, id int64, in CustomerInput) (*repository.Customer, string, error)
-	DeleteCustomer(ctx context.Context, u *model.User, id int64) (string, error)
+	SyncCustomers(ctx context.Context) (int, error)
+	StartCustomerSync(every time.Duration)
 	// Quy tắc duyệt ảnh cho AI (admin viết ở trang Cấu hình)
 	AIRules(ctx context.Context) (*AIRules, error)
 	SaveAIRules(ctx context.Context, by *model.User, rules string) (string, *AIRules, error)
@@ -266,6 +264,7 @@ type houseService struct {
 	sync      repository.SyncRepository // quy tắc duyệt ảnh của admin (khoá ai_rules)
 	rules     aiRulesCache
 	customers repository.CustomerRepository // khách hàng của CTV kinh doanh (nil: tắt)
+	leads     LeadSource                    // nguồn khách hàng (dezon.tech; nil: tắt)
 
 	bg      sync.WaitGroup
 	aiSem   chan struct{} // giới hạn số lượt AI chạy cùng lúc
@@ -297,8 +296,9 @@ type HouseDeps struct {
 	Inbox inbox.Source
 	Auth  repository.AuthRepository
 	Sync  repository.SyncRepository
-	// Customers: khách hàng của CTV kinh doanh (nil: tắt)
+	// Customers + Leads: khách hàng lấy từ Dezon Pro (Leads nil: tắt)
 	Customers repository.CustomerRepository
+	Leads     LeadSource
 	// MediaKey: khoá ký link xem video (trống: khoá ngẫu nhiên, link hết hiệu lực khi khởi động lại).
 	MediaKey string
 }
@@ -309,7 +309,7 @@ func NewHouseService(d HouseDeps) HouseService {
 	}
 	s := &houseService{houses: d.Houses, photos: d.Photos, logs: d.Logs, users: d.Users, payments: d.Payments,
 		settings: d.Settings, files: d.Files, ai: d.AI, ocr: d.OCR, geo: d.Geo, drive: d.Drive, public: d.Public,
-		aiSem: make(chan struct{}, 4), now: time.Now, mediaKey: newMediaKey(d.MediaKey), sync: d.Sync, customers: d.Customers}
+		aiSem: make(chan struct{}, 4), now: time.Now, mediaKey: newMediaKey(d.MediaKey), sync: d.Sync, customers: d.Customers, leads: d.Leads}
 	if d.Inbox != nil {
 		s.inbox = &inboxSync{src: d.Inbox, users: d.Users, auth: d.Auth, state: d.Sync}
 	}

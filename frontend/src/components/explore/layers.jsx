@@ -3,7 +3,7 @@
 //   Cộng tác viên: CTV cập nhật (hồng) · CTV kinh doanh (đỏ); trạng thái: Tích cực (ghim đặc) · Đã đăng ký (ghim rỗng)
 import { useState } from 'react'
 import { initials } from '@/utils/format'
-import { CUSTOMER_KINDS, LAYER_META, ctvKey, ctvStatusLabel, ctvTypeLabel } from '@/utils/mapLayers'
+import { LAYER_META, ctvKey, ctvStatusLabel, ctvTypeLabel } from '@/utils/mapLayers'
 
 function Switch({ on, onClick, label }) {
   return (
@@ -87,26 +87,37 @@ export function LayerPanel({ layers: L, set, counts }) {
   )
 }
 
-/** Danh sách khách hàng (tab Khách hàng) + ô lọc Phụ trách. onPick(k): bay tới ghim khách. */
+/** Danh sách khách hàng (tab Khách hàng, lấy từ Dezon Pro) + ô lọc Phụ trách. onPick(k): bay tới ghim khách.
+ *  synced: false khi máy chủ chưa kết nối dezon.tech. */
 export function CustomerList({ rows, all, owner, setOwner, onPick, active, onHover }) {
   // người phụ trách có khách (đếm theo toàn bộ khách, không theo ô tìm)
-  const owners = [...new Map(all.filter((k) => k.ctv_id).map((k) => [k.ctv_id, k.ctv_name])).entries()]
-    .map(([id, name]) => ({ id, name, n: all.filter((k) => k.ctv_id === id).length }))
+  const owners = [...new Set(all.map((k) => k.owner).filter(Boolean))]
+    .map((name) => ({ name, n: all.filter((k) => k.owner === name).length }))
     .sort((a, b) => a.name.localeCompare(b.name, 'vi'))
-  const by = (kind) => rows.filter((k) => k.kind === kind).length
+  // đếm theo loại công trình (Nhà phố, Biệt thự, Căn hộ...), nhiều nhất trước
+  const kinds = [...new Set(rows.map((k) => k.kind || 'Chưa xác định'))]
+    .map((kd) => [kd, rows.filter((k) => (k.kind || 'Chưa xác định') === kd).length])
+    .sort((a, b) => b[1] - a[1])
+  if (!all.length) {
+    return (
+      <p className="muted ex-empty">
+        Chưa có khách hàng. Khách hàng lấy tự động từ pipeline Kinh doanh của Dezon Pro (dezon.tech) mỗi 15 phút, sau khi máy chủ có khoá kết nối.
+      </p>
+    )
+  }
   return (
     <>
       <div className="cus-head">
         <p className="muted">
-          {rows.length} khách hàng · {Object.entries(CUSTOMER_KINDS).map(([k, l]) => `${by(k)} ${l.toLowerCase()}`).join(', ')}
+          {rows.length} khách hàng{kinds.length ? ' · ' + kinds.map(([kd, n]) => `${n} ${kd.toLowerCase()}`).join(', ') : ''}
         </p>
         <label className={`cus-owner ${owner ? 'on' : ''}`}>
           <span>Phụ trách</span>
-          <b>{owner ? owners.find((o) => String(o.id) === owner)?.name || 'Tất cả' : 'Tất cả'}</b>
+          <b>{owner || 'Tất cả'}</b>
           <select value={owner} onChange={(e) => setOwner(e.target.value)} aria-label="Lọc theo người phụ trách">
             <option value="">Tất cả</option>
             {owners.map((o) => (
-              <option key={o.id} value={String(o.id)}>
+              <option key={o.name} value={o.name}>
                 {o.name} ({o.n})
               </option>
             ))}
@@ -128,16 +139,16 @@ export function CustomerList({ rows, all, owner, setOwner, onPick, active, onHov
                 <span className="ctv-main">
                   <span className="ctv-line">
                     <b>{k.name}</b>
-                    <span className="cus-tag">{CUSTOMER_KINDS[k.kind] || k.kind}</span>
+                    {k.kind && <span className="cus-tag">{k.kind}</span>}
                   </span>
                   <span className="ctv-addr">
-                    {k.address || 'Chưa có địa chỉ'}
+                    {[k.address, k.area].filter(Boolean).join(', ') || 'Chưa có địa chỉ'}
                     {k.lat == null ? ' · chưa có vị trí trên bản đồ' : ''}
                   </span>
                 </span>
                 <span className="cus-owner-col">
                   <small>Phụ trách</small>
-                  <b>{k.ctv_name || '—'}</b>
+                  <b>{k.owner || '—'}</b>
                 </span>
               </button>
             </li>

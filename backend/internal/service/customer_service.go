@@ -2,175 +2,137 @@ package service
 
 import (
 	"context"
-	"errors"
-	"fmt"
+	"log"
+	"strconv"
 	"strings"
 	"time"
 
+	"vuathau/backend/internal/integration/dezontech"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/repository"
 )
 
-// Khách hàng của CTV kinh doanh (layout bản đồ 21/11/2026, chọn: CTV kinh doanh thêm trong app + admin quản lý trên web).
-//   - CTV kinh doanh (chức năng có chữ "kinh doanh"): xem / thêm / sửa / xoá khách của mình.
-//   - Admin: mọi khách, thêm, sửa, đổi người phụ trách, xoá. Kế toán: xem (bản đồ).
-//   - Vị trí: app gửi toạ độ (ghim tại chỗ) hoặc máy chủ tìm theo địa chỉ khi lưu.
+// Khách hàng (layout bản đồ 21/11/2026, chọn: chỉ lấy từ pipeline Kinh doanh của Dezon Pro bằng khoá chỉ đọc).
+// Mỗi 15 phút: đọc toàn bộ khách bên dezon.tech -> lưu bảng customers (thêm / sửa / đánh dấu xoá), rồi tìm toạ độ
+// theo địa chỉ (chạy nền, lần lượt). Admin, kế toán xem trên bản đồ; Vua Thầu không sửa khách.
 
-var CustomerKinds = map[string]string{"nha_pho": "Nhà phố", "biet_thu": "Biệt thự", "can_ho": "Căn hộ"}
-
-type CustomerInput struct {
-	CTVID   *int64   `json:"ctv_id"` // admin chọn người phụ trách; CTV: bỏ qua (luôn là mình)
-	Name    string   `json:"name"`
-	Kind    string   `json:"kind"`
-	Phone   string   `json:"phone"`
-	Address string   `json:"address"`
-	Lat     *float64 `json:"lat"`
-	Lng     *float64 `json:"lng"`
-	Note    string   `json:"note"`
-}
-
-// SalesCTV: CTV có làm kinh doanh (được quản lý khách hàng trong app).
-func (s *houseService) SalesCTV(ctx context.Context, u *model.User) bool {
-	if u.Role != model.RoleCTV || s.customers == nil {
-		return false
-	}
-	k, err := s.customers.CTVKind(ctx, u.ID)
-	return err == nil && ctvType(k) == "sales"
+// LeadSource: nguồn khách hàng (dezon.tech; test dùng bản giả).
+type LeadSource interface {
+	Leads(ctx context.Context) ([]dezontech.Lead, error)
+	StaffNames(ctx context.Context) map[string]string
 }
 
 func (s *houseService) Customers(ctx context.Context, u *model.User) ([]repository.Customer, error) {
+	if u.Role != model.RoleAdmin && u.Role != model.RoleKetoan {
+		return nil, ErrForbidden
+	}
 	if s.customers == nil {
 		return []repository.Customer{}, nil
 	}
-	switch {
-	case u.Role == model.RoleAdmin || u.Role == model.RoleKetoan:
-		return s.customers.List(ctx, 0)
-	case s.SalesCTV(ctx, u):
-		return s.customers.List(ctx, u.ID)
-	}
-	return nil, ErrForbidden
+	return s.customers.List(ctx)
 }
 
-// canEdit: admin mọi khách; CTV kinh doanh chỉ khách của mình.
-func (s *houseService) customerFor(ctx context.Context, u *model.User, id int64) (*repository.Customer, error) {
-	if s.customers == nil {
-		return nil, fail(ErrNotFound, "Không tìm thấy khách hàng.")
+// SyncCustomers: 1 lượt lấy khách từ dezon.tech. Trả số khách đang có.
+func (s *houseService) SyncCustomers(ctx context.Context) (int, error) {
+	if s.leads == nil || s.customers == nil {
+		return 0, nil
 	}
-	c, err := s.customers.Get(ctx, id)
-	if errors.Is(err, repository.ErrNotFound) {
-		return nil, fail(ErrNotFound, "Không tìm thấy khách hàng.")
-	}
+	leads, err := s.leads.Leads(ctx)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	if u.Role == model.RoleAdmin {
-		return c, nil
+	names := s.leads.StaffNames(ctx)
+	keep := make([]string, 0, len(leads))
+	for _, l := range leads {
+		key := l.Key()
+		if key == "" {
+			continue
+		}
+		owner := l.Who()
+		if n, ok := names[owner]; ok {
+			owner = n
+		}
+		area := strings.Join(nonEmpty(l.Geo.Kv, l.Geo.Tinh), ", ")
+		name := strings.TrimSpace(l.Name)
+		if name == "" {
+			name = strings.TrimSpace(l.ProjName)
+		}
+		c := &repository.Customer{ExtID: key, Name: truncate(name, 200), Kind: truncate(l.ProjectType, 60), Scale: truncate(l.Scale, 60),
+			Phone: truncate(normPhone(l.Phone), 30), Email: truncate(l.Email, 120), Address: truncate(l.Address, 300), Area: truncate(area, 120),
+			Stage: truncate(l.Stage, 60), Source: truncate(l.Source, 60), Owner: truncate(owner, 120), Note: truncate(l.Notes, 1000)}
+		if v, err := strconv.ParseFloat(l.ValueVnd.String(), 64); err == nil {
+			c.ValueVnd = int64(v)
+		}
+		for _, f := range []string{time.RFC3339Nano, "2006-01-02T15:04:05", "2006-01-02"} {
+			if t, err := time.Parse(f, l.CreatedAt); err == nil {
+				c.LeadAt = &t
+				break
+			}
+		}
+		if err := s.customers.Upsert(ctx, c); err != nil {
+			return 0, err
+		}
+		keep = append(keep, key)
 	}
-	if u.Role == model.RoleCTV && c.CTVID != nil && *c.CTVID == u.ID && s.SalesCTV(ctx, u) {
-		return c, nil
+	// danh sách rỗng bất thường (lỗi bên kia trả []): không xoá hàng loạt
+	if len(keep) > 0 {
+		if n, err := s.customers.Prune(ctx, keep); err != nil {
+			return 0, err
+		} else if n > 0 {
+			log.Printf("khách hàng dezon.tech: %d khách không còn, đã ẩn", n)
+		}
 	}
-	return nil, fail(ErrNotFound, "Không tìm thấy khách hàng.")
+	s.geocodeCustomers(ctx)
+	return len(keep), nil
 }
 
-func (s *houseService) cleanCustomer(ctx context.Context, u *model.User, in CustomerInput, c *repository.Customer) error {
-	c.Name = truncate(in.Name, 120)
-	c.Phone = truncate(normPhone(in.Phone), 20)
-	c.Address = truncate(in.Address, 300)
-	c.Note = truncate(in.Note, 1000)
-	c.Kind = in.Kind
-	if _, ok := CustomerKinds[c.Kind]; !ok {
-		c.Kind = "nha_pho"
+// geocodeCustomers: tìm toạ độ khách mới / đổi địa chỉ (tối đa 60 khách mỗi lượt, dịch vụ bản đồ giới hạn tốc độ).
+func (s *houseService) geocodeCustomers(ctx context.Context) {
+	if s.geo == nil {
+		return
 	}
-	if c.Name == "" {
-		return fail(ErrInvalidInput, "Chưa lưu: cần tên khách hàng.")
+	todo, err := s.customers.NeedGeo(ctx, 60)
+	if err != nil {
+		log.Printf("khách hàng: %v", err)
+		return
 	}
-	if c.Phone != "" && !ValidPhone(c.Phone) {
-		return fail(ErrInvalidInput, "Chưa lưu: SĐT khách hàng chưa đúng (10-11 số).")
+	for _, c := range todo {
+		q := strings.Join(nonEmpty(c.Address, c.Area), ", ")
+		var lat, lng *float64
+		// địa chỉ đủ -> chính xác; không được thì thử khu vực / tỉnh (gần đúng)
+		for _, try := range nonEmpty(q, c.Area) {
+			gctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+			ps, err := s.geo.Search(gctx, try)
+			cancel()
+			if err == nil && len(ps) > 0 {
+				lat, lng = ptr(ps[0].Lat), ptr(ps[0].Lng)
+				break
+			}
+		}
+		if err := s.customers.SetGeo(ctx, c.ID, q, lat, lng); err != nil {
+			log.Printf("khách hàng #%d: %v", c.ID, err)
+		}
 	}
-	if u.Role == model.RoleAdmin {
-		c.CTVID = nil
-		if in.CTVID != nil && *in.CTVID > 0 {
-			k, err := s.customers.CTVKind(ctx, *in.CTVID)
+}
+
+// StartCustomerSync: lấy khách từ dezon.tech mỗi every (không có khoá: không chạy).
+func (s *houseService) StartCustomerSync(every time.Duration) {
+	if s.leads == nil || s.customers == nil {
+		log.Printf("Khách hàng dezon.tech: tắt (chưa có DEZON_TECH_KEY)")
+		return
+	}
+	log.Printf("Khách hàng dezon.tech: bật, mỗi %s", every)
+	go func() {
+		for {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			n, err := s.SyncCustomers(ctx)
+			cancel()
 			if err != nil {
-				return err
+				log.Printf("khách hàng dezon.tech: %v", err)
+			} else {
+				log.Printf("khách hàng dezon.tech: %d khách", n)
 			}
-			if k == "" {
-				return fail(ErrInvalidInput, "Chưa lưu: người phụ trách phải là cộng tác viên đang hoạt động.")
-			}
-			c.CTVID = in.CTVID
+			time.Sleep(every)
 		}
-	} else {
-		c.CTVID = ptr(u.ID)
-	}
-	// vị trí: toạ độ gửi kèm (hợp lệ, trong VN) > tìm theo địa chỉ (đổi địa chỉ thì tìm lại)
-	if in.Lat != nil && in.Lng != nil && *in.Lat > 7 && *in.Lat < 24 && *in.Lng > 101 && *in.Lng < 118 {
-		c.Lat, c.Lng = in.Lat, in.Lng
-	} else if c.Address != "" && s.geo != nil {
-		gctx, cancel := context.WithTimeout(ctx, 12*time.Second)
-		ps, err := s.geo.Search(gctx, c.Address)
-		cancel()
-		if err == nil && len(ps) > 0 {
-			c.Lat, c.Lng = ptr(ps[0].Lat), ptr(ps[0].Lng)
-		}
-	}
-	return nil
-}
-
-func (s *houseService) CreateCustomer(ctx context.Context, u *model.User, in CustomerInput) (*repository.Customer, string, error) {
-	if s.customers == nil || !(u.Role == model.RoleAdmin || s.SalesCTV(ctx, u)) {
-		return nil, "", ErrForbidden
-	}
-	c := &repository.Customer{}
-	if err := s.cleanCustomer(ctx, u, in, c); err != nil {
-		return nil, "", err
-	}
-	if err := s.customers.Create(ctx, c, u.ID); err != nil {
-		return nil, "", err
-	}
-	_ = s.logs.Add(ctx, u.ID, ActCustomer, nil, nil, "Thêm "+c.Name)
-	got, err := s.customers.Get(ctx, c.ID)
-	return got, s.customerMsg("Đã thêm", got), err
-}
-
-func (s *houseService) UpdateCustomer(ctx context.Context, u *model.User, id int64, in CustomerInput) (*repository.Customer, string, error) {
-	c, err := s.customerFor(ctx, u, id)
-	if err != nil {
-		return nil, "", err
-	}
-	oldAddr, oldLat, oldLng := c.Address, c.Lat, c.Lng
-	keepPos := in.Lat == nil && strings.TrimSpace(in.Address) == oldAddr // địa chỉ không đổi, không gửi toạ độ: giữ vị trí cũ
-	if keepPos {
-		in.Lat, in.Lng = oldLat, oldLng
-	}
-	if err := s.cleanCustomer(ctx, u, in, c); err != nil {
-		return nil, "", err
-	}
-	if err := s.customers.Update(ctx, c); err != nil {
-		return nil, "", err
-	}
-	_ = s.logs.Add(ctx, u.ID, ActCustomer, nil, nil, "Sửa "+c.Name)
-	got, err := s.customers.Get(ctx, id)
-	return got, s.customerMsg("Đã lưu", got), err
-}
-
-func (s *houseService) DeleteCustomer(ctx context.Context, u *model.User, id int64) (string, error) {
-	c, err := s.customerFor(ctx, u, id)
-	if err != nil {
-		return "", err
-	}
-	if err := s.customers.Delete(ctx, id); err != nil {
-		return "", err
-	}
-	_ = s.logs.Add(ctx, u.ID, ActCustomer, nil, nil, "Xoá "+c.Name)
-	return fmt.Sprintf("Đã xoá khách hàng %s.", c.Name), nil
-}
-
-func (s *houseService) customerMsg(verb string, c *repository.Customer) string {
-	if c == nil {
-		return verb + " khách hàng."
-	}
-	if c.Lat == nil {
-		return fmt.Sprintf("%s khách hàng %s. Chưa tìm được vị trí theo địa chỉ: ghim vị trí hoặc ghi rõ địa chỉ hơn để hiện trên bản đồ.", verb, c.Name)
-	}
-	return fmt.Sprintf("%s khách hàng %s.", verb, c.Name)
+	}()
 }

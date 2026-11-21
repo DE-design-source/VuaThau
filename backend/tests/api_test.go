@@ -61,6 +61,7 @@ type envSettings struct {
 	ai           ai.Reader  // nil: tắt AI
 	ocr          ocr.Finder // nil: không che SĐT
 	inbox        inbox.Source
+	leads        service.LeadSource // khách hàng Dezon Pro (nil: tắt)
 	cfg          *config.Config
 	healthChecks map[string]router.HealthCheck
 }
@@ -130,7 +131,7 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 	houseSvc := service.NewHouseService(service.HouseDeps{Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo,
 		Payments: payRepo, Settings: settingsRepo, Files: files, Public: "http://test",
 		Inbox: settings.inbox, Auth: authRepo, Sync: repository.NewSyncRepository(db), AI: settings.ai, OCR: settings.ocr,
-		Customers: repository.NewCustomerRepository(db)})
+		Customers: repository.NewCustomerRepository(db), Leads: settings.leads})
 	paySvc := service.NewPaymentService(payRepo, houseRepo, photoRepo, userRepo, logRepo, settingsRepo, files)
 
 	deps := router.Deps{

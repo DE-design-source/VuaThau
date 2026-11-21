@@ -10,8 +10,8 @@ export const LAYER_META = {
   customer: { label: 'Khách hàng', color: '#EA580C' },
 }
 export const ALL_LAYERS = { pending: true, shoot: true, dezon: true, ctvUpdate: true, ctvSales: true, ctvActive: true, ctvReg: true, customer: true }
-/** Loại khách hàng (máy chủ: nha_pho | biet_thu | can_ho) */
-export const CUSTOMER_KINDS = { nha_pho: 'Nhà phố', biet_thu: 'Biệt thự', can_ho: 'Căn hộ' }
+/** Khách hàng: lấy từ pipeline Kinh doanh của Dezon Pro (dezon.tech) */
+export const DEZON_PRO = 'https://dezon.tech'
 const KEY = 'vuathau.mapLayers'
 
 /** Lớp đang bật, nhớ theo trình duyệt (mở lại trang vẫn giữ). */

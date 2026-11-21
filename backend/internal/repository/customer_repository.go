@@ -2,58 +2,62 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Customer: khách hàng của CTV kinh doanh (bảng customers).
+// Customer: khách hàng lấy từ pipeline Kinh doanh của Dezon Pro (bảng customers, chỉ đọc bên Vua Thầu).
 type Customer struct {
-	ID        int64     `json:"id"`
-	CTVID     *int64    `json:"ctv_id"`
-	CTVName   string    `json:"ctv_name"`
-	Name      string    `json:"name"`
-	Kind      string    `json:"kind"` // nha_pho | biet_thu | can_ho
-	Phone     string    `json:"phone"`
-	Address   string    `json:"address"`
-	Lat       *float64  `json:"lat"`
-	Lng       *float64  `json:"lng"`
-	Note      string    `json:"note"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID       int64      `json:"id"`
+	ExtID    string     `json:"ext_id"`
+	Name     string     `json:"name"`
+	Kind     string     `json:"kind"` // loại công trình: Nhà phố, Biệt thự, Căn hộ...
+	Scale    string     `json:"scale"`
+	Phone    string     `json:"phone"`
+	Email    string     `json:"email"`
+	Address  string     `json:"address"`
+	Area     string     `json:"area"`
+	Stage    string     `json:"stage"`
+	Source   string     `json:"source"`
+	Owner    string     `json:"owner"` // người phụ trách bên Dezon
+	ValueVnd int64      `json:"value_vnd"`
+	Note     string     `json:"note"`
+	Lat      *float64   `json:"lat"`
+	Lng      *float64   `json:"lng"`
+	LeadAt   *time.Time `json:"lead_at"`
+	SyncedAt time.Time  `json:"synced_at"`
+	GeoQ     string     `json:"-"`
 }
 
 type CustomerRepository interface {
-	// List: ctv > 0 chỉ khách của CTV đó.
-	List(ctx context.Context, ctv int64) ([]Customer, error)
-	Get(ctx context.Context, id int64) (*Customer, error)
-	Create(ctx context.Context, c *Customer, by int64) error
-	Update(ctx context.Context, c *Customer) error
-	Delete(ctx context.Context, id int64) error
-	// CTVKind: chức năng của CTV (users.kind), '' nếu không phải CTV.
-	CTVKind(ctx context.Context, id int64) (string, error)
+	List(ctx context.Context) ([]Customer, error)
+	// Upsert: thêm / cập nhật theo ExtID (giữ toạ độ cũ nếu chuỗi tìm toạ độ không đổi).
+	Upsert(ctx context.Context, c *Customer) error
+	// Prune: đánh dấu xoá khách không còn bên Dezon Pro (keep: ExtID còn).
+	Prune(ctx context.Context, keep []string) (int64, error)
+	// NeedGeo: khách có địa chỉ nhưng chưa tìm toạ độ theo chuỗi hiện tại.
+	NeedGeo(ctx context.Context, limit int) ([]Customer, error)
+	SetGeo(ctx context.Context, id int64, q string, lat, lng *float64) error
 }
 
 type customerRepository struct{ db *pgxpool.Pool }
 
 func NewCustomerRepository(db *pgxpool.Pool) CustomerRepository { return &customerRepository{db: db} }
 
-const customerCols = `c.id, c.ctv_id, COALESCE(u.name, ''), c.name, c.kind, c.phone, c.address, c.lat, c.lng, c.note, c.created_at, c.updated_at`
+const customerCols = `id, ext_id, name, kind, scale, phone, email, address, area, stage, source, owner, value_vnd, note, lat, lng, lead_at, synced_at, geo_q`
 
-func scanCustomer(row pgx.Row) (*Customer, error) {
+type rowScanner interface{ Scan(dest ...any) error }
+
+func scanCustomer(row rowScanner) (Customer, error) {
 	var c Customer
-	err := row.Scan(&c.ID, &c.CTVID, &c.CTVName, &c.Name, &c.Kind, &c.Phone, &c.Address, &c.Lat, &c.Lng, &c.Note, &c.CreatedAt, &c.UpdatedAt)
-	if err != nil {
-		return nil, err
-	}
-	return &c, nil
+	err := row.Scan(&c.ID, &c.ExtID, &c.Name, &c.Kind, &c.Scale, &c.Phone, &c.Email, &c.Address, &c.Area, &c.Stage, &c.Source, &c.Owner,
+		&c.ValueVnd, &c.Note, &c.Lat, &c.Lng, &c.LeadAt, &c.SyncedAt, &c.GeoQ)
+	return c, err
 }
 
-func (r *customerRepository) List(ctx context.Context, ctv int64) ([]Customer, error) {
-	rows, err := r.db.Query(ctx, `SELECT `+customerCols+` FROM customers c LEFT JOIN users u ON u.id = c.ctv_id
-		WHERE c.deleted_at IS NULL AND ($1 = 0 OR c.ctv_id = $1) ORDER BY c.updated_at DESC, c.id DESC`, ctv)
+func (r *customerRepository) query(ctx context.Context, sql string, args ...any) ([]Customer, error) {
+	rows, err := r.db.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -64,49 +68,41 @@ func (r *customerRepository) List(ctx context.Context, ctv int64) ([]Customer, e
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, *c)
+		out = append(out, c)
 	}
 	return out, rows.Err()
 }
 
-func (r *customerRepository) Get(ctx context.Context, id int64) (*Customer, error) {
-	c, err := scanCustomer(r.db.QueryRow(ctx, `SELECT `+customerCols+` FROM customers c LEFT JOIN users u ON u.id = c.ctv_id
-		WHERE c.id = $1 AND c.deleted_at IS NULL`, id))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	return c, err
+func (r *customerRepository) List(ctx context.Context) ([]Customer, error) {
+	return r.query(ctx, `SELECT `+customerCols+` FROM customers WHERE deleted_at IS NULL ORDER BY lead_at DESC NULLS LAST, id DESC`)
 }
 
-func (r *customerRepository) Create(ctx context.Context, c *Customer, by int64) error {
-	return r.db.QueryRow(ctx, `INSERT INTO customers (ctv_id, name, kind, phone, address, lat, lng, note, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, created_at, updated_at`,
-		c.CTVID, c.Name, c.Kind, c.Phone, c.Address, c.Lat, c.Lng, c.Note, by).Scan(&c.ID, &c.CreatedAt, &c.UpdatedAt)
-}
-
-func (r *customerRepository) Update(ctx context.Context, c *Customer) error {
-	tag, err := r.db.Exec(ctx, `UPDATE customers SET ctv_id = $2, name = $3, kind = $4, phone = $5, address = $6, lat = $7, lng = $8,
-		note = $9, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`,
-		c.ID, c.CTVID, c.Name, c.Kind, c.Phone, c.Address, c.Lat, c.Lng, c.Note)
-	if err == nil && tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
+func (r *customerRepository) Upsert(ctx context.Context, c *Customer) error {
+	_, err := r.db.Exec(ctx, `INSERT INTO customers (ext_id, name, kind, scale, phone, email, address, area, stage, source, owner, value_vnd, note, lead_at, synced_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+		ON CONFLICT (ext_id) DO UPDATE SET name = EXCLUDED.name, kind = EXCLUDED.kind, scale = EXCLUDED.scale, phone = EXCLUDED.phone,
+			email = EXCLUDED.email, address = EXCLUDED.address, area = EXCLUDED.area, stage = EXCLUDED.stage, source = EXCLUDED.source,
+			owner = EXCLUDED.owner, value_vnd = EXCLUDED.value_vnd, note = EXCLUDED.note, lead_at = EXCLUDED.lead_at, synced_at = NOW(),
+			deleted_at = NULL`,
+		c.ExtID, c.Name, c.Kind, c.Scale, c.Phone, c.Email, c.Address, c.Area, c.Stage, c.Source, c.Owner, c.ValueVnd, c.Note, c.LeadAt)
 	return err
 }
 
-func (r *customerRepository) Delete(ctx context.Context, id int64) error {
-	tag, err := r.db.Exec(ctx, `UPDATE customers SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, id)
-	if err == nil && tag.RowsAffected() == 0 {
-		return ErrNotFound
+func (r *customerRepository) Prune(ctx context.Context, keep []string) (int64, error) {
+	tag, err := r.db.Exec(ctx, `UPDATE customers SET deleted_at = NOW() WHERE deleted_at IS NULL AND NOT (ext_id = ANY($1))`, keep)
+	if err != nil {
+		return 0, err
 	}
-	return err
+	return tag.RowsAffected(), nil
 }
 
-func (r *customerRepository) CTVKind(ctx context.Context, id int64) (string, error) {
-	var k string
-	err := r.db.QueryRow(ctx, `SELECT COALESCE(kind, '') FROM users WHERE id = $1 AND role = 'ctv' AND locked <> 2`, id).Scan(&k)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil
-	}
-	return k, err
+func (r *customerRepository) NeedGeo(ctx context.Context, limit int) ([]Customer, error) {
+	return r.query(ctx, `SELECT `+customerCols+` FROM customers
+		WHERE deleted_at IS NULL AND (address <> '' OR area <> '') AND geo_q <> concat_ws(', ', NULLIF(address, ''), NULLIF(area, ''))
+		ORDER BY id LIMIT $1`, limit)
+}
+
+func (r *customerRepository) SetGeo(ctx context.Context, id int64, q string, lat, lng *float64) error {
+	_, err := r.db.Exec(ctx, `UPDATE customers SET geo_q = $2, lat = $3, lng = $4 WHERE id = $1`, id, q, lat, lng)
+	return err
 }

@@ -36,7 +36,7 @@ function PinMark({ kind = '' }) {
  * ctvPins (admin / kế toán, layout 21/11/2026): có thì thêm tab Công trình | Cộng tác viên, ghim CTV và bảng Lớp bản đồ;
  *   ô tìm lọc ngay danh sách (địa chỉ, công ty, nhà thầu, CTV, SĐT), Enter thì tìm địa điểm trên bản đồ.
  */
-export default function Explorer({ points: allPoints, provinces, staleDays = 30, selects = [], selectedProvince, onProvince, fitKey, pop, card, fresh, filterPanel, filterCount = 0, footer, busy, dezon = NONE, ctvPins, customers, canEditCustomer = false }) {
+export default function Explorer({ points: allPoints, provinces, staleDays = 30, selects = [], selectedProvince, onProvince, fitKey, pop, card, fresh, filterPanel, filterCount = 0, footer, busy, dezon = NONE, ctvPins, customers }) {
   const [addr, setAddr] = useState('')
   const layered = Array.isArray(ctvPins)
   const [layers, setLayers] = useLayers()
@@ -91,11 +91,11 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
   // khách hàng: lớp Khách hàng + ô Phụ trách + ô tìm
   const [owner, setOwner] = useState('')
   const allCus = layered ? customers || NONE : NONE
-  const cus = layered && layers.customer ? allCus.filter((k) => (!owner || String(k.ctv_id) === owner) && (hit(k.name, k.address, k.ctv_name, k.note) || phoneHit(k.phone))) : NONE
+  const cus = layered && layers.customer ? allCus.filter((k) => (!owner || k.owner === owner) && (hit(k.name, k.address, k.area, k.owner, k.kind) || phoneHit(k.phone))) : NONE
   if (counts) counts.customer = allCus.length
   const pickCus = (k) => {
     if (k.lat == null) {
-      if (canEditCustomer) navigate(`/customers?edit=${k.id}`)
+      window.open(`https://dezon.tech/kinh-doanh?lead=${encodeURIComponent(k.ext_id)}`, '_blank', 'noopener') // chưa có vị trí: mở bên Dezon Pro
       return
     }
     setFocus({ id: `kh${k.id}`, n: (focus?.n || 0) + 1 })
@@ -268,7 +268,7 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
             ctvPins={layered ? ctvs : undefined}
             ctvPop={ctvTip}
             customers={layered ? cus : undefined}
-            cusPop={(k) => cusTip(k, { edit: canEditCustomer })}
+            cusPop={cusTip}
             overlay={layered ? <LayerPanel layers={layers} set={setLayers} counts={counts} /> : null}
           />
         </aside>

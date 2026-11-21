@@ -72,8 +72,6 @@ type UserRepository interface {
 	CTVFacets(ctx context.Context) (regions, kinds map[string]int, err error)
 	Profile(ctx context.Context, id int64) (*CTVProfile, error)
 	SetProfile(ctx context.Context, id int64, region, kind, note string) error
-	// KindOf: chức năng của người dùng (users.kind), '' nếu chưa đặt.
-	KindOf(ctx context.Context, id int64) (string, error)
 	// InboxCTVs: CTV đã ghép với người gửi bên Messenger (để đồng bộ thông tin).
 	InboxCTVs(ctx context.Context) ([]InboxCTV, error)
 	// SetInboxInfo: lưu bản thông tin Messenger (JSON) của CTV.
@@ -331,12 +329,6 @@ func (r *userRepository) SetLogin(ctx context.Context, id int64, login string) e
 		return ErrDuplicate
 	}
 	return err
-}
-
-func (r *userRepository) KindOf(ctx context.Context, id int64) (string, error) {
-	var k string
-	err := r.db.QueryRow(ctx, `SELECT COALESCE(kind, '') FROM users WHERE id = $1`, id).Scan(&k)
-	return k, err
 }
 
 func (r *userRepository) SetProfile(ctx context.Context, id int64, region, kind, note string) error {

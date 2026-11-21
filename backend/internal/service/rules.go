@@ -279,7 +279,6 @@ const (
 	ActCTVLogin   = "Đặt SĐT đăng nhập CTV"
 	ActCTVBank    = "Admin đổi ngân hàng CTV"
 	ActAIRules    = "Sửa quy tắc duyệt ảnh cho AI"
-	ActCustomer   = "Khách hàng"
 )
 
 // Money định dạng "35.000đ".

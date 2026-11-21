@@ -1,18 +1,26 @@
--- Khách hàng của CTV kinh doanh (layout bản đồ 21/11/2026): CTV kinh doanh thêm trong app, admin quản lý trên web.
--- Loại: nha_pho | biet_thu | can_ho. Vị trí: CTV ghim tại chỗ (GPS) hoặc máy chủ tìm theo địa chỉ. Xoá mềm (deleted_at).
+-- Khách hàng (layout bản đồ 21/11/2026): lấy từ pipeline Kinh doanh của Dezon Pro (dezon.tech, /api/v1/sales/leads)
+-- bằng khoá chỉ đọc (DEZON_TECH_KEY), mỗi 15 phút. Chỉ đọc bên Vua Thầu; vị trí: máy chủ tìm theo địa chỉ.
+-- Khách bị xoá bên dezon.tech: đánh dấu deleted_at.
 CREATE TABLE IF NOT EXISTS customers (
     id          BIGSERIAL PRIMARY KEY,
-    ctv_id      BIGINT REFERENCES users(id),
-    name        TEXT NOT NULL,
-    kind        TEXT NOT NULL DEFAULT 'nha_pho',
+    ext_id      TEXT NOT NULL UNIQUE,          -- id khách bên dezon.tech
+    name        TEXT NOT NULL DEFAULT '',
+    kind        TEXT NOT NULL DEFAULT '',      -- loại công trình (Nhà phố, Biệt thự, Căn hộ...)
+    scale       TEXT NOT NULL DEFAULT '',
     phone       TEXT NOT NULL DEFAULT '',
+    email       TEXT NOT NULL DEFAULT '',
     address     TEXT NOT NULL DEFAULT '',
+    area        TEXT NOT NULL DEFAULT '',      -- khu vực / tỉnh bên dezon.tech
+    stage       TEXT NOT NULL DEFAULT '',
+    source      TEXT NOT NULL DEFAULT '',
+    owner       TEXT NOT NULL DEFAULT '',      -- người phụ trách (nhân viên kinh doanh Dezon)
+    value_vnd   BIGINT NOT NULL DEFAULT 0,
+    note        TEXT NOT NULL DEFAULT '',
     lat         DOUBLE PRECISION,
     lng         DOUBLE PRECISION,
-    note        TEXT NOT NULL DEFAULT '',
-    created_by  BIGINT REFERENCES users(id),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    geo_q       TEXT NOT NULL DEFAULT '',      -- chuỗi đã dùng để tìm toạ độ (đổi địa chỉ thì tìm lại)
+    lead_at     TIMESTAMPTZ,                   -- ngày tạo bên dezon.tech
+    synced_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at  TIMESTAMPTZ
 );
-CREATE INDEX IF NOT EXISTS idx_customers_ctv ON customers (ctv_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customers_live ON customers (deleted_at) WHERE deleted_at IS NULL;
