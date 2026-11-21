@@ -3829,3 +3829,385 @@ details.card > summary strong {
   font-size: 13px;
   min-height: 0;
 }
+
+/* ---- Bản đồ admin: tab Công trình | Cộng tác viên, Lớp bản đồ, ghim CTV (layout 21/11/2026) ---- */
+.ex-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  background: var(--color-soft, #f4f4f4);
+}
+.ex-tabs button {
+  flex: 1;
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ex-tabs button.on {
+  background: var(--color-surface, #fff);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.1);
+}
+.ex-tabs button span {
+  color: var(--color-muted);
+  font-weight: 500;
+}
+.ex-ctv-cap {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.ctv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ctv-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ctv-item:hover,
+.ctv-item.on {
+  background: var(--color-soft, #fafafa);
+}
+.ctv-av {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--c);
+  background: #fff;
+  color: var(--c);
+  font-weight: 700;
+  font-size: 14px;
+}
+.ctv-av.solid {
+  background: var(--c);
+  color: #fff;
+}
+.ctv-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.ctv-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ctv-line b {
+  font-size: 14px;
+}
+.ctv-tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 12%, transparent);
+}
+.ctv-st {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.ctv-st i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--c);
+}
+.ctv-st i.solid {
+  background: var(--c);
+}
+.ctv-addr {
+  font-size: 12px;
+  color: var(--color-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ctv-count {
+  flex: none;
+  text-align: right;
+  display: grid;
+}
+.ctv-count b {
+  font-size: 15px;
+}
+.ctv-count small {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+/* bảng Lớp bản đồ: nổi góc trên trái bản đồ (kết quả tìm địa điểm nổi đè lên trên) */
+.lp {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 550;
+  width: 280px;
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  border-radius: 14px;
+  background: var(--color-surface, #fff);
+  color: var(--color-text);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.14);
+  font-size: 13px;
+}
+.lp-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lp-head span {
+  flex: 1;
+  text-align: left;
+}
+.lp-head small {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+.lp-body {
+  border-top: 1px solid var(--color-border);
+  padding: 6px 0 12px;
+}
+.lp-group {
+  padding: 4px 0;
+}
+.lp-ghead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+}
+.lp-ghead b {
+  flex: 1;
+  font-size: 13.5px;
+}
+.lp-n {
+  font-size: 12px;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+.lp-switch {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  border: 0;
+  border-radius: 999px;
+  background: #d4d4d4;
+  cursor: pointer;
+  flex: none;
+  transition: background 0.15s;
+}
+.lp-switch i {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+  transition: left 0.15s;
+}
+.lp-switch.on {
+  background: #0b2a6e;
+}
+.lp-switch.on i {
+  left: 16px;
+}
+.lp-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.lp-row:hover {
+  background: var(--color-soft, #fafafa);
+}
+.lp-row.off {
+  opacity: 0.55;
+}
+.lp-row input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #0b2a6e;
+}
+.lp-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  background: var(--c);
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px var(--c);
+}
+.lp-dot.round {
+  border-radius: 50%;
+  transform: none;
+}
+.lp-name {
+  flex: 1;
+}
+.lp-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 6px 14px 2px;
+}
+.lp-chips > span {
+  width: 100%;
+  font-size: 11.5px;
+  color: var(--color-muted);
+}
+.lp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.lp-chip i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+}
+.lp-chip i.solid {
+  background: currentColor;
+}
+.lp-chip em {
+  font-style: normal;
+  opacity: 0.6;
+}
+.lp-chip.on {
+  background: #eef2fb;
+  border-color: #c9d3ea;
+  color: #0b2a6e;
+}
+.lp-actions {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px 0;
+}
+.lp-actions button {
+  flex: 1;
+  padding: 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface, #fff);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lp-actions button:hover {
+  background: var(--color-soft, #fafafa);
+}
+
+/* ghim cộng tác viên: tròn, hình người; đặc = tích cực, rỗng = đã đăng ký; hồng = cập nhật, đỏ = kinh doanh */
+.ctv-pin {
+  --c: #ec4899;
+  position: absolute;
+  left: -14px;
+  top: -14px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: var(--c);
+  border: 2.5px solid var(--c);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.25);
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+.ctv-pin.sales {
+  --c: #dc2626;
+}
+.ctv-pin.solid {
+  background: var(--c);
+  color: #fff;
+  border-color: #fff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 30%, transparent), 0 2px 6px rgb(0 0 0 / 0.3);
+}
+.ctv-pin.approx {
+  border-style: dashed;
+}
+.ctv-pin svg {
+  display: block;
+}
+.ctv-pin:hover,
+.ctv-pin.on {
+  transform: scale(1.25);
+}
+.ctv-pin .site-pin-label {
+  top: calc(100% + 2px);
+}
+.zoom-near .ctv-pin .site-pin-label {
+  display: none;
+}
+.ctv-pin:hover .site-pin-label,
+.ctv-pin.on .site-pin-label {
+  display: block;
+}
+.ctv-tip-type {
+  color: #ec4899;
+  font-weight: 700;
+}
+.ctv-tip-type.sales {
+  color: #dc2626;
+}
+@media (max-width: 640px) {
+  .lp {
+    width: min(260px, calc(100% - 24px));
+  }
+}

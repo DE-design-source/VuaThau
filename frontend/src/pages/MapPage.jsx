@@ -1,4 +1,5 @@
-// Bản đồ công trình (/map, admin + kế toán), kiểu Airbnb: thanh tìm (Địa chỉ | Tỉnh thành | Cộng tác viên | Trạng thái),
+// Bản đồ công trình (/map, admin + kế toán), kiểu Airbnb: thanh tìm (ô tìm | Tỉnh thành) + Bộ lọc (CTV, trạng thái, ngày...),
+// tab Công trình | Cộng tác viên, bảng Lớp bản đồ (layout 21/11/2026).
 // lưới thẻ công trình có ảnh bên trái, bản đồ nhãn mã hồ sơ bên phải. Nút Bộ lọc: cập nhật theo thời gian thực,
 // lọc theo lịch sử (từ ngày - đến ngày). Cuối danh sách: số liệu + thống kê theo CTV.
 import { useEffect, useRef, useState } from 'react'
@@ -69,8 +70,30 @@ export default function MapPage() {
   const sum = (k) => ctvs.reduce((n, c) => n + (c[k] || 0), 0)
   const days = d.dup_days
 
+  const sel = (label, value, onChange, options) => (
+    <label className="field">
+      <span>{label}</span>
+      <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
   const filterPanel = (
     <div className="ex-panel">
+      <div>
+        <b>Lọc công trình</b>
+        {sel('Cộng tác viên', cur.ctv, (v) => set({ ctv: v }), [{ value: '', label: 'Tất cả' }, ...ctvs.map((c) => ({ value: String(c.id), label: `${c.name} (${c.total})` }))])}
+        {sel('Trạng thái hồ sơ', cur.status, (v) => set({ status: v }), [
+          { value: '', label: 'Tất cả' },
+          ...Object.entries(statuses)
+            .filter(([k]) => k !== 'nhap')
+            .map(([k, st]) => ({ value: k, label: st.label })),
+        ])}
+      </div>
       <div>
         <b>Cập nhật theo thời gian thực</b>
         <p className="muted">Tự tải lại mỗi {LIVE_MS / 1000} giây; công trình mới có nhãn đỏ.</p>
@@ -128,7 +151,8 @@ export default function MapPage() {
       selectedProvince={cur.province}
       onProvince={(code) => set({ province: code === cur.province ? '' : code })}
       filterPanel={filterPanel}
-      filterCount={[cur.from, cur.to, live].filter(Boolean).length}
+      filterCount={[cur.from, cur.to, live, cur.ctv, cur.status].filter(Boolean).length}
+      ctvPins={d.ctv_pins || []}
       selects={[
         {
           key: 'province',
@@ -138,25 +162,6 @@ export default function MapPage() {
           options: [
             { value: '', label: 'Cả nước' },
             ...[...provinces].sort((a, b) => a.name.localeCompare(b.name, 'vi')).map((p) => ({ value: p.code, label: `${p.name} (${p.total})` })),
-          ],
-        },
-        {
-          key: 'ctv',
-          label: 'Cộng tác viên',
-          value: cur.ctv,
-          onChange: (v) => set({ ctv: v }),
-          options: [{ value: '', label: 'Tất cả' }, ...ctvs.map((c) => ({ value: String(c.id), label: `${c.name} (${c.total})` }))],
-        },
-        {
-          key: 'status',
-          label: 'Trạng thái',
-          value: cur.status,
-          onChange: (v) => set({ status: v }),
-          options: [
-            { value: '', label: 'Tất cả' },
-            ...Object.entries(statuses)
-              .filter(([k]) => k !== 'nhap')
-              .map(([k, s]) => ({ value: k, label: s.label })),
           ],
         },
       ]}

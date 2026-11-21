@@ -253,6 +253,7 @@ type houseService struct {
 	inbox    *inboxSync // nil: không lấy hồ sơ Messenger
 	mediaKey []byte     // ký link xem video
 	pub      publicMapCache // bản đồ công khai: nhớ tạm theo tỉnh
+	ctvGeo   ctvGeoCache    // toạ độ địa chỉ CTV (lớp Cộng tác viên trên bản đồ)
 
 	bg      sync.WaitGroup
 	aiSem   chan struct{} // giới hạn số lượt AI chạy cùng lúc

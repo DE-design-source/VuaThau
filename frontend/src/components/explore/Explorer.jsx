@@ -4,8 +4,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import SiteMap from './SiteMap'
 import SiteCard from './SiteCard'
-import { distM, distText } from '@/utils/format'
-import { dezonCard } from '@/utils/siteTip'
+import { useNavigate } from 'react-router-dom'
+import { ctvTip, dezonCard } from '@/utils/siteTip'
+import { distM, distText, hsId, isStale as stale } from '@/utils/format'
+import { CtvList, LayerPanel } from './layers'
+import { ctvKey, ctvVisible, useLayers } from '@/utils/mapLayers'
 
 const PAGE = 24
 const NONE = []
@@ -30,9 +33,24 @@ function PinMark({ kind = '' }) {
  * footer: phần cuối danh sách (số liệu...); busy: đang tải
  * dezon: công trình nhà thầu đăng trên dezon.vn: dùng chung với hồ sơ CTV (ghim xanh dương + thẻ trong danh sách),
  *   trừ công trình đã có CTV chụp (cách hồ sơ CTV dưới SAME_SITE_M). Truyền [] khi đang lọc theo CTV / trạng thái.
+ * ctvPins (admin / kế toán, layout 21/11/2026): có thì thêm tab Công trình | Cộng tác viên, ghim CTV và bảng Lớp bản đồ;
+ *   ô tìm lọc ngay danh sách (địa chỉ, công ty, nhà thầu, CTV, SĐT), Enter thì tìm địa điểm trên bản đồ.
  */
-export default function Explorer({ points, provinces, staleDays = 30, selects = [], selectedProvince, onProvince, fitKey, pop, card, fresh, filterPanel, filterCount = 0, footer, busy, dezon = NONE }) {
+export default function Explorer({ points: allPoints, provinces, staleDays = 30, selects = [], selectedProvince, onProvince, fitKey, pop, card, fresh, filterPanel, filterCount = 0, footer, busy, dezon = NONE, ctvPins }) {
   const [addr, setAddr] = useState('')
+  const layered = Array.isArray(ctvPins)
+  const [layers, setLayers] = useLayers()
+  const [tab, setTab] = useState('projects')
+  const navigate = useNavigate()
+  // tìm nhanh trong danh sách (chỉ trang có lớp CTV): bỏ dấu, chữ thường
+  const fold = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase()
+  const q = layered ? fold(addr.trim()) : ''
+  const hit = (...xs) => !q || fold(xs.join(' ')).includes(q)
+  const digits = q.replace(/\D/g, '')
+  const phoneHit = (p) => digits.length >= 4 && (p || '').replace(/\D/g, '').includes(digits)
+  const points = layered
+    ? allPoints.filter((p) => layers[stale(p.last_at || p.at, staleDays) ? 'shoot' : 'pending'] && hit(p.address, p.contractor, p.ctv_name, p.stage, hsId(p.id)))
+    : allPoints
   const search = useRef(null) // MapSearch: search.current.find(chữ)
   const [active, setActive] = useState(null)
   const [focus, setFocus] = useState(null)
@@ -52,10 +70,31 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
   }, [open])
 
   // Dezon chưa có CTV chụp (không trùng chỗ hồ sơ nào)
-  const dz = useMemo(
-    () => (dezon || NONE).filter((d) => d.lat != null && !points.some((p) => distM(d.lat, d.lng, p.lat, p.lng) < SAME_SITE_M)),
-    [dezon, points],
+  const dzAll = useMemo(
+    () => (dezon || NONE).filter((d) => d.lat != null && !allPoints.some((p) => distM(d.lat, d.lng, p.lat, p.lng) < SAME_SITE_M)),
+    [dezon, allPoints],
   )
+  const dz = layered ? (layers.dezon ? dzAll.filter((d) => hit(d.title, d.contractor, d.address)) : NONE) : dzAll
+  // cộng tác viên theo lớp đang bật + ô tìm
+  const ctvs = layered ? ctvPins.filter((c) => ctvVisible(c, layers) && (hit(c.name, c.address, c.kind) || phoneHit(c.phone))) : NONE
+  const counts = layered
+    ? {
+        pending: allPoints.filter((p) => !stale(p.last_at || p.at, staleDays)).length,
+        shoot: allPoints.filter((p) => stale(p.last_at || p.at, staleDays)).length,
+        dezon: dzAll.length,
+        ctvUpdate: ctvPins.filter((c) => ctvKey(c) === 'ctvUpdate').length,
+        ctvSales: ctvPins.filter((c) => ctvKey(c) === 'ctvSales').length,
+        ctvActive: ctvPins.filter((c) => c.status === 'active').length,
+        ctvReg: ctvPins.filter((c) => c.status !== 'active').length,
+      }
+    : null
+  const pickCtv = (c) => {
+    if (c.lat == null) {
+      navigate(`/ctvs/${c.id}`) // chưa rõ vị trí: mở hồ sơ CTV
+      return
+    }
+    setFocus({ id: `ctv${c.id}`, n: (focus?.n || 0) + 1 })
+  }
   // 1 danh sách chung: hồ sơ CTV (khoá = id) + Dezon (khoá = "dz" + id), mới nhất trước
   const items = [
     ...points.map((p) => ({ key: p.id, p, at: p.last_at || p.at })),
@@ -79,7 +118,12 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
         >
           <label className="ex-seg ex-seg-addr">
             <span>Địa chỉ</span>
-            <input value={addr} onChange={(e) => setAddr(e.target.value)} placeholder="Địa chỉ, công ty, nhà thầu, SĐT…" aria-label="Tìm địa chỉ, công ty, nhà thầu" />
+            <input
+              value={addr}
+              onChange={(e) => setAddr(e.target.value)}
+              placeholder={layered ? 'Tìm địa chỉ, công ty, nhà thầu, CTV, SĐT…' : 'Địa chỉ, công ty, nhà thầu, SĐT…'}
+              aria-label="Tìm địa chỉ, công ty, nhà thầu"
+            />
           </label>
           {selects.map((s) => (
             <label key={s.key} className="ex-seg">
@@ -114,6 +158,26 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
 
       <div className="ex-body">
         <section className="ex-list">
+          {layered && (
+            <div className="ex-tabs" role="tablist">
+              <button type="button" role="tab" aria-selected={tab === 'projects'} className={tab === 'projects' ? 'on' : ''} onClick={() => setTab('projects')}>
+                Công trình <span>{rows.length}</span>
+              </button>
+              <button type="button" role="tab" aria-selected={tab === 'ctv'} className={tab === 'ctv' ? 'on' : ''} onClick={() => setTab('ctv')}>
+                Cộng tác viên <span>{ctvs.length}</span>
+              </button>
+            </div>
+          )}
+          {tab === 'ctv' && layered ? (
+            <>
+              <p className="muted ex-ctv-cap">
+                {ctvs.length} cộng tác viên · {ctvs.filter((c) => c.type !== 'sales').length} cập nhật, {ctvs.filter((c) => c.type === 'sales').length} kinh doanh · bấm để xem trên bản
+                đồ
+              </p>
+              <CtvList ctvs={ctvs} onPick={pickCtv} active={active} onHover={setActive} />
+            </>
+          ) : (
+            <>
           <div className="ex-head">
             <h2>
               {rows.length} công trình {busy && <span className="muted ex-busy">· đang tải…</span>}
@@ -165,6 +229,8 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
             </div>
           )}
           {footer}
+            </>
+          )}
         </section>
         <aside className="ex-map">
           <SiteMap
@@ -182,6 +248,9 @@ export default function Explorer({ points, provinces, staleDays = 30, selects = 
             search={search}
             onPlace={setNear}
             dezon={dz}
+            ctvPins={layered ? ctvs : undefined}
+            ctvPop={ctvTip}
+            overlay={layered ? <LayerPanel layers={layers} set={setLayers} counts={counts} /> : null}
           />
         </aside>
       </div>

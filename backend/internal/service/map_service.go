@@ -12,6 +12,7 @@ import (
 type MapData struct {
 	Points    []repository.MapPoint `json:"points"`
 	CTVs      []repository.CTVSites `json:"ctvs"`
+	CTVPins   []CTVPin              `json:"ctv_pins"`  // lớp Cộng tác viên: mọi CTV, vị trí, loại, trạng thái
 	Provinces []ProvinceSites       `json:"provinces"` // đủ 34 tỉnh (kể cả chưa có công trình), theo bộ lọc CTV / ngày
 	DupDays   int                   `json:"dup_days"`
 	Filter    OverviewQuery         `json:"filter"`
@@ -82,6 +83,9 @@ func (s *houseService) Map(ctx context.Context, q OverviewQuery) (*MapData, erro
 		}
 	}
 	if res.CTVs, err = s.houses.SiteCounts(ctx, since); err != nil {
+		return nil, err
+	}
+	if res.CTVPins, err = s.ctvPins(ctx, st.DupDays); err != nil {
 		return nil, err
 	}
 	return res, nil

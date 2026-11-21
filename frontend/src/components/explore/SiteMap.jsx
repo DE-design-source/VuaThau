@@ -56,7 +56,8 @@ function loadProvinces() {
  * focus: { id, n } bay tới công trình và mở thẻ. fresh: Set id mới xuất hiện (thời gian thực).
  * search: tay cầm (useRef) để thanh tìm phía trên trang gọi search.current.find(chữ).
  */
-export default function SiteMap({ points, provinces = [], selected, onProvince, fitKey, pop, staleDays = 30, active, onHover, focus, fresh, search, onPlace, dezon = [] }) {
+export default function SiteMap({ points, provinces = [], selected, onProvince, fitKey, pop, staleDays = 30, active, onHover, focus, fresh, search, onPlace, dezon = [], ctvPins, ctvPop, overlay }) {
+  const ctvLayer = useRef(null) // lớp cộng tác viên (ghim tròn hình người, nằm trên ghim công trình)
   const el = useRef(null)
   const map = useRef(null)
   const pins = useRef(null)
@@ -127,6 +128,7 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
     areas.current = L.layerGroup().addTo(m)
     dzPins.current = L.layerGroup().addTo(m)
     pins.current = L.layerGroup().addTo(m)
+    ctvLayer.current = L.layerGroup().addTo(m)
     map.current = m
     // Link trong thẻ: chuyển trang trong app (không tải lại cả trang)
     const onClick = (e) => {
@@ -237,14 +239,40 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
     }
   }, [dezon, provinces, points])
 
+  // Cộng tác viên: ghim tròn hình người, màu theo loại (hồng: cập nhật, đỏ: kinh doanh); đặc: tích cực, rỗng: đã đăng ký
+  useEffect(() => {
+    const g = ctvLayer.current
+    if (!g) return
+    g.clearLayers()
+    for (const k of [...marks.current.keys()]) if (String(k).startsWith('ctv')) marks.current.delete(k)
+    for (const c of ctvPins || []) {
+      if (c.lat == null || c.lng == null) continue
+      const cls = ['ctv-pin', c.type === 'sales' ? 'sales' : '', c.status === 'active' ? 'solid' : '', c.approx ? 'approx' : ''].join(' ')
+      const icon = L.divIcon({
+        className: 'site-pin-icon',
+        html: `<span class="${cls}" title="${esc(c.name)}"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="12" cy="8" r="4.2" fill="currentColor"/><path d="M4 21c0-4.4 3.6-7.5 8-7.5s8 3.1 8 7.5Z" fill="currentColor"/></svg><span class="site-pin-label">${esc(c.name)}</span></span>`,
+        iconSize: null,
+        popupAnchor: [0, -16],
+      })
+      const key = `ctv${c.id}`
+      const mk = L.marker([c.lat, c.lng], { icon, riseOnHover: true, keyboard: false, zIndexOffset: c.status === 'active' ? 1100 : 1000 })
+      if (ctvPop) mk.bindPopup(ctvPop(c), { className: 'site-pop', minWidth: 260, maxWidth: 280, autoPanPadding: [24, 24] })
+      mk.on('mouseover', () => hover.current?.(key))
+      mk.on('mouseout', () => hover.current?.(null))
+      mk.addTo(g)
+      marks.current.set(key, mk)
+    }
+  }, [ctvPins, ctvPop, points])
+
   // Rê chuột ở danh sách: nhãn tương ứng đậm lên, nổi lên trên
   useEffect(() => {
     for (const [id, mk] of marks.current) {
       const on = id === active
-      mk.getElement()?.querySelector('.site-pin')?.classList.toggle('on', on)
-      mk.setZIndexOffset(on ? 1000 : 0)
+      mk.getElement()?.querySelector('.site-pin, .ctv-pin')?.classList.toggle('on', on)
+      if (String(id).startsWith('ctv')) mk.setZIndexOffset(on ? 1500 : 1000)
+      else mk.setZIndexOffset(on ? 1000 : 0)
     }
-  }, [active, points])
+  }, [active, points, ctvPins])
 
   // Bấm "Xem trên bản đồ": bay tới, mở thẻ
   useEffect(() => {
@@ -257,6 +285,7 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
   return (
     <div className="site-map-wrap">
       <div ref={el} className="site-map" role="region" aria-label="Bản đồ công trình" />
+      {overlay}
       <MapSearch getMap={getMap} points={points} staleDays={staleDays} handle={search} onPlace={onPlace} />
     </div>
   )

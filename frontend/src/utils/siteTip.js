@@ -54,6 +54,25 @@ export function siteTip(p, { staleDays = 30, prov = '', status = '', ctvLink = f
   )
 }
 
+/** Thẻ của 1 cộng tác viên trên bản đồ (lớp Cộng tác viên, admin / kế toán). */
+export function ctvTip(c) {
+  const type = c.type === 'sales' ? 'CTV kinh doanh' : 'CTV cập nhật'
+  const st = c.status === 'active' ? 'Tích cực' : 'Đã đăng ký'
+  const tel = (c.phone || '').replace(/[^\d+]/g, '')
+  return (
+    `<div class="site-tip ctv-tip"><div class="site-tip-body">` +
+    `<div class="site-tip-top"><span class="ctv-tip-type ${c.type === 'sales' ? 'sales' : ''}">${type}</span> · ${st}</div>` +
+    `<b class="site-tip-addr">${esc(c.name)}</b>` +
+    (c.address ? `<div class="site-tip-row"><span>Địa chỉ</span>${esc(c.address)}${c.approx ? ' <i class="muted">(vị trí gần đúng)</i>' : ''}</div>` : '') +
+    (/^\+?\d{9,12}$/.test(tel) ? `<div class="site-tip-row"><span>SĐT</span><a href="tel:${tel}">${esc(c.phone)}</a></div>` : '') +
+    `<div class="site-tip-row"><span>Đã gửi</span>${c.count} công trình${c.last ? ` · lần cuối ${esc(vnDate(c.last))}` : ''}</div>` +
+    `</div></div>` +
+    `<div class="site-pop-actions"><a href="/ctvs/${c.id}" data-to="/ctvs/${c.id}">Hồ sơ CTV</a>` +
+    (c.count ? `<a href="/map?ctv=${c.id}" data-to="/map?ctv=${c.id}">Công trình của CTV</a>` : '') +
+    `</div>`
+  )
+}
+
 /** Thẻ của 1 công trình Dezon (nhà thầu đăng trên dezon.vn). Ảnh là link công khai của dezon.vn. */
 export function dezonTip(p, { prov = '' } = {}) {
   const row = (label, v) => (v ? `<div class="site-tip-row"><span>${label}</span>${esc(v)}</div>` : '')

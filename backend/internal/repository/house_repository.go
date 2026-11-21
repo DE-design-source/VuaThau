@@ -90,6 +90,7 @@ type HouseRepository interface {
 	NoProvince(ctx context.Context, afterID int64, limit int) ([]GeoRow, error)
 	ProvinceSites(ctx context.Context, f HouseFilter, since time.Time) (map[string][2]int, error)
 	SiteCounts(ctx context.Context, since time.Time) ([]CTVSites, error)
+	CTVPins(ctx context.Context) ([]CTVPinRow, error)
 
 	Create(ctx context.Context, ctvID int64) (int64, error)
 	// Split: chuyển ảnh / video đã chọn của hồ sơ from sang 1 hồ sơ mới (cùng CTV, nguồn, ngày gửi, loại chụp),
