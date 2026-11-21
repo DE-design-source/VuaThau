@@ -53,6 +53,7 @@ type testEnv struct {
 	srv   *httptest.Server
 	db    *pgxpool.Pool
 	house service.HouseService
+	user  service.UserService
 	data  string // DATA_DIR của máy chủ test
 	seq   atomic.Int64
 }
@@ -62,6 +63,7 @@ type envSettings struct {
 	ocr          ocr.Finder // nil: không che SĐT
 	inbox        inbox.Source
 	leads        service.LeadSource // khách hàng Dezon Pro (nil: tắt)
+	lark         service.LarkCTVSource // form tuyển CTV trên Lark (nil: tắt)
 	cfg          *config.Config
 	healthChecks map[string]router.HealthCheck
 }
@@ -128,6 +130,9 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 
 	authSvc := service.NewAuthService(authRepo, noGoogle{}, cfg.JWTSecret, cfg.JWTExpiry)
 	userSvc := service.NewUserService(userRepo, authRepo, houseRepo, photoRepo, payRepo, logRepo, settingsRepo)
+	if settings.lark != nil {
+		userSvc.SetLarkSource(settings.lark)
+	}
 	houseSvc := service.NewHouseService(service.HouseDeps{Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo,
 		Payments: payRepo, Settings: settingsRepo, Files: files, Public: "http://test",
 		Inbox: settings.inbox, Auth: authRepo, Sync: repository.NewSyncRepository(db), AI: settings.ai, OCR: settings.ocr,
@@ -149,7 +154,7 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 		srv.Close()
 		houseSvc.Wait()
 	})
-	return &testEnv{t: t, srv: srv, db: db, house: houseSvc, data: cfg.DataDir}
+	return &testEnv{t: t, srv: srv, db: db, house: houseSvc, user: userSvc, data: cfg.DataDir}
 }
 
 type noGoogle struct{}

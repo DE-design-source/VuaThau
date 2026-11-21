@@ -135,8 +135,8 @@ const PHONE_RE = /^\+?\d[\d\s.]{7,}$/
 
 export default function CtvListPage() {
   const [sp, setSp] = useSearchParams()
-  const cur = { q: sp.get('q') || '', region: sp.get('region') || '', kind: sp.get('kind') || '', bank: sp.get('bank') || '', page: sp.get('page') || '' }
-  const { data: d, err, busy, reload } = usePage(() => ctvApi.list(cur), [cur.q, cur.region, cur.kind, cur.bank, cur.page])
+  const cur = { q: sp.get('q') || '', region: sp.get('region') || '', kind: sp.get('kind') || '', bank: sp.get('bank') || '', status: sp.get('status') || '', page: sp.get('page') || '' }
+  const { data: d, err, busy, reload } = usePage(() => ctvApi.list(cur), [cur.q, cur.region, cur.kind, cur.bank, cur.status, cur.page])
   const [q, setQ] = useState(cur.q)
   const { role } = useAuth()
   const cfg = useCfg()
@@ -155,8 +155,18 @@ export default function CtvListPage() {
     { key: 'region', label: 'Khu vực', options: opts(facets.regions, 'Mọi khu vực') },
     { key: 'kind', label: 'Chức năng', options: opts(facets.kinds, 'Mọi chức năng') },
     { key: 'bank', label: 'Tài khoản NH', options: BANK_OPTS },
+    // Tích cực: từ 10 công trình trong 30 ngày; Đã đăng ký: còn lại (đăng ký qua Messenger / form tuyển, có SĐT)
+    {
+      key: 'status',
+      label: 'Trạng thái',
+      options: [
+        { value: '', label: 'Tất cả' },
+        { value: 'tich_cuc', label: 'Tích cực (từ 10 công trình / 30 ngày)' },
+        { value: 'dang_ky', label: 'Đã đăng ký' },
+      ],
+    },
   ]
-  const filtered = Boolean(cur.q || cur.region || cur.kind || cur.bank)
+  const filtered = Boolean(cur.q || cur.region || cur.kind || cur.bank || cur.status)
 
   return (
     <section className="stack">
@@ -212,6 +222,8 @@ export default function CtvListPage() {
                 <tr>
                   <th>CTV</th>
                   <th>Số điện thoại</th>
+                  <th>Trạng thái</th>
+                  <th>Địa chỉ</th>
                   <th>Khu vực</th>
                   <th>Chức năng</th>
                   <th>Số tài khoản</th>
@@ -238,6 +250,13 @@ export default function CtvListPage() {
                         {r.email && <small className="muted d-block">{r.email}</small>}
                       </td>
                       <td className="nowrap">{PHONE_RE.test(r.username) ? r.username : <span className="muted">{r.username}</span>}</td>
+                      <td className="nowrap">
+                        {r.active ? <Pill tone="ok">Tích cực</Pill> : <Pill>Đã đăng ký</Pill>}
+                        <small className="muted d-block">{r.recent} hồ sơ / 30 ngày</small>
+                      </td>
+                      <td className="ctv-addr-col" title={r.address || ''}>
+                        {r.address || <span className="muted">—</span>}
+                      </td>
                       <td className="nowrap">
                         {r.region ? (
                           <span title={r.region_auto ? 'Tự tính: tỉnh CTV chụp nhiều công trình nhất' : 'Admin chọn'}>

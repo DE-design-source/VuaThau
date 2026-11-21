@@ -32,11 +32,21 @@ type CTVRow struct {
 	RegionAut bool       `json:"region_auto"` // Region là tự tính (admin chưa chọn)
 	Kind      string     `json:"kind"`        // chức năng / loại CTV
 	Note      string     `json:"note"`        // ghi chú nội bộ của admin
+	Address   string     `json:"address"`     // địa chỉ: bên Messenger / form tuyển, không thì công trình gần nhất, khu vực
+	Recent    int        `json:"recent"`      // hồ sơ gửi trong ActiveDays ngày
+	Active    bool       `json:"active"`      // tích cực: Recent >= ActiveHouses
 }
 
+// CTV tích cực (góp ý 21/11/2026): từ ActiveHouses công trình trong ActiveDays ngày gần nhất; còn lại là "đã đăng ký".
+const (
+	ActiveHouses = 10
+	ActiveDays   = 30
+)
+
 // CTVFilter: bộ lọc danh sách CTV. Region: mã tỉnh, "-" = chưa rõ khu vực. Bank: "co" | "chua".
+// Status: "tich_cuc" | "dang_ky" (xem ActiveHouses).
 type CTVFilter struct {
-	Q, Region, Kind, Bank string
+	Q, Region, Kind, Bank, Status string
 }
 
 // InboxCTV: CTV có liên kết Messenger và các ô có thể điền từ Messenger.
@@ -195,21 +205,28 @@ func autoRegionSQL(ctv string) string {
 // ctvCTE: bảng tạm c = CTV kèm khu vực đang dùng (reg) và cờ admin đã chọn (manual).
 var ctvCTE = `WITH c AS (
 	SELECT u.id, u.username, u.name, COALESCE(u.email, '') AS email, u.locked, u.created_at, u.bank, u.kind, u.note,
-		u.region <> '' AS manual, COALESCE(NULLIF(u.region, ''), ` + autoRegionSQL("u.id") + `, '') AS reg
+		u.region <> '' AS manual, COALESCE(NULLIF(u.region, ''), ` + autoRegionSQL("u.id") + `, '') AS reg,
+		COALESCE(NULLIF(u.inbox_info->'fields'->>'dia_chi', ''),
+			(SELECT h.address FROM houses h WHERE h.ctv_id = u.id AND h.address <> '' AND h.status NOT IN ('nhap', 'tu_choi')
+				ORDER BY h.submitted_at DESC NULLS LAST, h.id DESC LIMIT 1),
+			NULLIF(u.inbox_info->'fields'->>'khu_vuc', ''), '') AS addr,
+		(SELECT COUNT(*) FROM houses h WHERE h.ctv_id = u.id AND h.status NOT IN ('nhap', 'tu_choi')
+			AND h.submitted_at >= NOW() - make_interval(days => ` + fmt.Sprint(ActiveDays) + `))::int AS recent
 	FROM users u WHERE u.role = 'ctv') `
 
 func (r *userRepository) ListCTVs(ctx context.Context, f CTVFilter, limit, offset int) ([]CTVRow, int, error) {
-	const where = `($1 = '' OR c.name ILIKE '%' || $1 || '%' OR c.email ILIKE '%' || $1 || '%' OR c.note ILIKE '%' || $1 || '%'
+	where := `($1 = '' OR c.name ILIKE '%' || $1 || '%' OR c.email ILIKE '%' || $1 || '%' OR c.note ILIKE '%' || $1 || '%' OR c.addr ILIKE '%' || $1 || '%'
 		OR c.username LIKE '%' || $2 || '%')
 		AND ($3 = '' OR c.reg = $3 OR ($3 = '-' AND c.reg = ''))
 		AND ($4 = '' OR c.kind = $4)
-		AND ($5 = '' OR ($5 = 'co') = (c.bank <> ''))`
+		AND ($5 = '' OR ($5 = 'co') = (c.bank <> ''))
+		AND ($6 = '' OR ($6 = 'tich_cuc') = (c.recent >= ` + fmt.Sprint(ActiveHouses) + `))`
 	q := f.Q
 	digits := spacesRE.ReplaceAllString(q, "")
 	if digits == "" {
 		digits = q
 	}
-	args := []any{q, digits, f.Region, f.Kind, f.Bank}
+	args := []any{q, digits, f.Region, f.Kind, f.Bank, f.Status}
 	var found int
 	if err := r.db.QueryRow(ctx, ctvCTE+`SELECT COUNT(*) FROM c WHERE `+where, args...).Scan(&found); err != nil {
 		return nil, 0, err
@@ -221,12 +238,12 @@ func (r *userRepository) ListCTVs(ctx context.Context, f CTVFilter, limit, offse
 			COUNT(h.id) FILTER (WHERE h.status = 'cho_duyet'), COUNT(h.id) FILTER (WHERE h.status = 'da_duyet'),
 			COALESCE(SUM(h.amount) FILTER (WHERE h.status = 'da_chi'), 0) + `+paid+`,
 			COALESCE(SUM(h.amount) FILTER (WHERE h.status = 'da_duyet'), 0) + `+pend+`,
-			MAX(h.created_at), c.bank, c.reg, NOT c.manual AND c.reg <> '', c.kind, c.note
+			MAX(h.created_at), c.bank, c.reg, NOT c.manual AND c.reg <> '', c.kind, c.note, c.addr, c.recent
 		FROM c LEFT JOIN houses h ON h.ctv_id = c.id
 		WHERE `+where+`
-		GROUP BY c.id, c.username, c.name, c.email, c.locked, c.created_at, c.bank, c.reg, c.manual, c.kind, c.note
+		GROUP BY c.id, c.username, c.name, c.email, c.locked, c.created_at, c.bank, c.reg, c.manual, c.kind, c.note, c.addr, c.recent
 		ORDER BY COALESCE(MAX(h.id), 0) DESC, c.id DESC
-		LIMIT $6 OFFSET $7`, append(args, limit, offset)...)
+		LIMIT $7 OFFSET $8`, append(args, limit, offset)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -235,9 +252,10 @@ func (r *userRepository) ListCTVs(ctx context.Context, f CTVFilter, limit, offse
 	for rows.Next() {
 		var c CTVRow
 		if err := rows.Scan(&c.ID, &c.Username, &c.Name, &c.Email, &c.Locked, &c.CreatedAt, &c.Houses, &c.Waiting,
-			&c.Approved, &c.Paid, &c.Owed, &c.LastAt, &c.Bank, &c.Region, &c.RegionAut, &c.Kind, &c.Note); err != nil {
+			&c.Approved, &c.Paid, &c.Owed, &c.LastAt, &c.Bank, &c.Region, &c.RegionAut, &c.Kind, &c.Note, &c.Address, &c.Recent); err != nil {
 			return nil, 0, err
 		}
+		c.Active = c.Recent >= ActiveHouses
 		out = append(out, c)
 	}
 	return out, found, rows.Err()

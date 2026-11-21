@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -16,6 +17,7 @@ type CTVPinRow struct {
 	Area     string     // khu vực bên Messenger (khu_vuc)
 	Total    int        // hồ sơ đã gửi (không tính nháp, từ chối)
 	Last     *time.Time // lần gửi gần nhất
+	Recent   int        // hồ sơ gửi trong ActiveDays ngày
 	HouseLat *float64   // công trình gần nhất CTV chụp (có toạ độ)
 	HouseLng *float64
 	HouseAt  string // địa chỉ công trình đó
@@ -27,6 +29,8 @@ func (r *houseRepository) CTVPins(ctx context.Context) ([]CTVPinRow, error) {
 			COALESCE(u.inbox_info->'fields'->>'dia_chi', ''), COALESCE(u.inbox_info->'fields'->>'khu_vuc', ''),
 			(SELECT COUNT(*) FROM houses h WHERE h.ctv_id = u.id AND h.status NOT IN ('nhap', 'tu_choi')),
 			(SELECT MAX(h.submitted_at) FROM houses h WHERE h.ctv_id = u.id AND h.status NOT IN ('nhap', 'tu_choi')),
+			(SELECT COUNT(*) FROM houses h WHERE h.ctv_id = u.id AND h.status NOT IN ('nhap', 'tu_choi')
+				AND h.submitted_at >= NOW() - make_interval(days => `+fmt.Sprint(ActiveDays)+`))::int,
 			lh.lat, lh.lng, COALESCE(lh.address, '')
 		FROM users u
 		LEFT JOIN LATERAL (SELECT h.lat, h.lng, h.address FROM houses h
@@ -41,7 +45,7 @@ func (r *houseRepository) CTVPins(ctx context.Context) ([]CTVPinRow, error) {
 	out := []CTVPinRow{}
 	for rows.Next() {
 		var c CTVPinRow
-		if err := rows.Scan(&c.ID, &c.Name, &c.Phone, &c.Kind, &c.Region, &c.Addr, &c.Area, &c.Total, &c.Last, &c.HouseLat, &c.HouseLng, &c.HouseAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Phone, &c.Kind, &c.Region, &c.Addr, &c.Area, &c.Total, &c.Last, &c.Recent, &c.HouseLat, &c.HouseLng, &c.HouseAt); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

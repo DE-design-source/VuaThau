@@ -4356,3 +4356,11 @@ details.card > summary strong {
 .cus-pin.on .site-pin-label {
   display: block;
 }
+
+/* Danh sách CTV: cột địa chỉ (số nhà, tên đường...) */
+.ctv-addr-col {
+  min-width: 180px;
+  max-width: 260px;
+  font-size: 13px;
+  line-height: 1.35;
+}

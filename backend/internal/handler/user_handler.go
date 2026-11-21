@@ -159,7 +159,7 @@ func (h *UserHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 // CTVs handles GET /api/v1/ctvs?q=&page=
 func (h *UserHandler) CTVs(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	f := repository.CTVFilter{Q: q.Get("q"), Region: q.Get("region"), Kind: q.Get("kind"), Bank: q.Get("bank")}
+	f := repository.CTVFilter{Q: q.Get("q"), Region: q.Get("region"), Kind: q.Get("kind"), Bank: q.Get("bank"), Status: q.Get("status")}
 	rows, found, page, err := h.svc.ListCTVs(r.Context(), f, queryInt(r, "page", 1))
 	if err != nil {
 		writeServiceError(w, err)

@@ -16,6 +16,7 @@ import (
 	"vuathau/backend/internal/integration/ai"
 	"vuathau/backend/internal/integration/dezon"
 	"vuathau/backend/internal/integration/dezontech"
+	"vuathau/backend/internal/integration/lark"
 	"vuathau/backend/internal/integration/gdrive"
 	"vuathau/backend/internal/integration/geo"
 	"vuathau/backend/internal/integration/google"
@@ -86,6 +87,9 @@ func run() error {
 
 	authSvc := service.NewAuthService(authRepo, gVerifier, cfg.JWTSecret, cfg.JWTExpiry)
 	userSvc := service.NewUserService(userRepo, authRepo, houseRepo, photoRepo, payRepo, logRepo, settingsRepo)
+	if lc := lark.New(cfg.LarkAPI, cfg.LarkAppID, cfg.LarkAppSecret, cfg.LarkCTVWiki, cfg.LarkCTVTable); lc != nil {
+		userSvc.SetLarkSource(lc)
+	}
 	// Hồ sơ Messenger từ dezon-inbox (chỉ đọc DB + kho ảnh S3)
 	var inboxSrc inbox.Source
 	if cfg.InboxDatabaseURL != "" {
@@ -119,6 +123,7 @@ func run() error {
 	go houseSvc.RunPhoneMaskScan(maskCtx) // che SĐT trên ảnh (ảnh cũ + ảnh mới)
 	houseSvc.StartInboxSync(cfg.InboxSyncEvery)
 	houseSvc.StartCustomerSync(15 * time.Minute)
+	userSvc.StartLarkCTVSync(15 * time.Minute)
 	// Công trình nhà thầu mới đăng trên dezon.vn -> lớp ghim Dezon trên bản đồ (tra toạ độ: Google nếu có key)
 	dezonRepo := repository.NewDezonRepository(db)
 	log.Printf("Công trình Dezon: tra toạ độ bằng %s, mỗi 6h", map[bool]string{true: "Google", false: "OpenStreetMap"}[geocoder.Google()])

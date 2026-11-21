@@ -62,6 +62,10 @@ type AddCTVInput struct {
 }
 
 type UserService interface {
+	// CTV từ form tuyển trên Lark (dòng tích Duyệt tham gia)
+	SetLarkSource(src LarkCTVSource)
+	SyncLarkCTVs(ctx context.Context) (created, approved int, err error)
+	StartLarkCTVSync(every time.Duration)
 	Me(ctx context.Context, u *model.User) (*MeResult, error)
 	UpdateBank(ctx context.Context, u *model.User, name, no, owner string) (*model.User, error)
 	ChangePassword(ctx context.Context, u *model.User, old, new string) (*model.User, error)
@@ -102,6 +106,7 @@ type CTVProfileInput struct {
 }
 
 type userService struct {
+	lark     LarkCTVSource // form tuyển CTV trên Lark (nil: tắt)
 	repo     repository.UserRepository
 	auth     repository.AuthRepository
 	houses   repository.HouseRepository
@@ -116,6 +121,8 @@ func NewUserService(repo repository.UserRepository, auth repository.AuthReposito
 	settings repository.SettingsRepository) UserService {
 	return &userService{repo: repo, auth: auth, houses: houses, photos: photos, payments: payments, logs: logs, settings: settings}
 }
+
+func (s *userService) SetLarkSource(src LarkCTVSource) { s.lark = src }
 
 // Todo: số việc đang chờ vai trò này (CTV: nháp + trả lại; admin: chờ duyệt; kế toán: CTV đủ điều kiện).
 func todoOf(ctx context.Context, u *model.User, houses repository.HouseRepository, payments repository.PaymentRepository,
@@ -355,6 +362,9 @@ func (s *userService) ListCTVs(ctx context.Context, f repository.CTVFilter, page
 	f.Q = strings.TrimSpace(f.Q)
 	if f.Bank != "co" && f.Bank != "chua" {
 		f.Bank = ""
+	}
+	if f.Status != "tich_cuc" && f.Status != "dang_ky" {
+		f.Status = ""
 	}
 	rows, found, err := s.repo.ListCTVs(ctx, f, PageSize, (page-1)*PageSize)
 	return rows, found, page, err

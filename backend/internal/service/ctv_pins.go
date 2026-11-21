@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"vuathau/backend/internal/province"
+	"vuathau/backend/internal/repository"
 )
 
 // Lớp Cộng tác viên trên bản đồ admin / kế toán (layout 21/11/2026): mỗi CTV 1 ghim tròn.
 //   - Loại: "sales" (CTV kinh doanh: chức năng có chữ "kinh doanh" / "sale"), còn lại "update" (CTV cập nhật công trình).
-//   - Trạng thái: "active" (tích cực: có hồ sơ gửi trong số ngày chặn trùng gần đây), "registered" (đã đăng ký, chưa / lâu chưa chụp).
+//   - Trạng thái: "active" (tích cực: từ 10 công trình trong 30 ngày), "registered" (đã đăng ký).
 //   - Vị trí: địa chỉ CTV bên Messenger (tìm toạ độ) > công trình gần nhất CTV chụp > khu vực / tỉnh của CTV (gần đúng).
 //     Tìm toạ độ theo chữ chạy nền, nhớ lại; lần đầu CTV chưa có toạ độ thì chỉ hiện trong danh sách.
 
@@ -28,6 +29,7 @@ type CTVPin struct {
 	Lng     *float64   `json:"lng"`
 	Approx  bool       `json:"approx"` // vị trí theo khu vực / tỉnh, không chính xác
 	Count   int        `json:"count"`
+	Recent  int        `json:"recent"` // hồ sơ gửi trong 30 ngày
 	Last    *time.Time `json:"last"`
 }
 
@@ -46,12 +48,11 @@ func ctvType(kind string) string {
 	return "update"
 }
 
-func (s *houseService) ctvPins(ctx context.Context, recentDays int) ([]CTVPin, error) {
+func (s *houseService) ctvPins(ctx context.Context, _ int) ([]CTVPin, error) {
 	rows, err := s.houses.CTVPins(ctx)
 	if err != nil {
 		return nil, err
 	}
-	since := s.now().AddDate(0, 0, -recentDays)
 	out := make([]CTVPin, 0, len(rows))
 	var todo []string
 	s.ctvGeo.mu.Lock()
@@ -72,8 +73,8 @@ func (s *houseService) ctvPins(ctx context.Context, recentDays int) ([]CTVPin, e
 		return 0, 0, false
 	}
 	for _, r := range rows {
-		p := CTVPin{ID: r.ID, Name: r.Name, Phone: r.Phone, Kind: r.Kind, Type: ctvType(r.Kind), Status: "registered", Count: r.Total, Last: r.Last}
-		if r.Last != nil && r.Last.After(since) {
+		p := CTVPin{ID: r.ID, Name: r.Name, Phone: r.Phone, Kind: r.Kind, Type: ctvType(r.Kind), Status: "registered", Count: r.Total, Last: r.Last, Recent: r.Recent}
+		if r.Recent >= repository.ActiveHouses { // tích cực: từ 10 công trình trong 30 ngày (góp ý 21/11)
 			p.Status = "active"
 		}
 		prov := ""

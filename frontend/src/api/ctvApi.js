@@ -2,7 +2,8 @@ import axiosClient, { cleanParams } from './axiosClient'
 
 const ctvApi = {
   /** Lọc: q, region (mã tỉnh, "-" = chưa rõ), kind (chức năng), bank ("co" | "chua") -> { rows, found, page, pages, facets } */
-  list: ({ q, region, kind, bank, page } = {}) => axiosClient.get('/ctvs', { params: cleanParams({ q, region, kind, bank, page }) }),
+  /** status: 'tich_cuc' (từ 10 công trình trong 30 ngày) | 'dang_ky' */
+  list: ({ q, region, kind, bank, status, page } = {}) => axiosClient.get('/ctvs', { params: cleanParams({ q, region, kind, bank, status, page }) }),
 
   /** Admin: khu vực (mã tỉnh, '' = tự tính), chức năng, ghi chú -> { message } */
   setProfile: (id, { region, kind, note }) => axiosClient.put(`/ctvs/${id}/profile`, { region, kind, note }),
