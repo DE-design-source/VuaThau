@@ -3,7 +3,7 @@
 //   Cộng tác viên: CTV cập nhật (hồng) · CTV kinh doanh (đỏ); trạng thái: Tích cực (ghim đặc) · Đã đăng ký (ghim rỗng)
 import { useState } from 'react'
 import { initials } from '@/utils/format'
-import { ALL_LAYERS, LAYER_META, ctvKey, ctvStatusLabel, ctvTypeLabel } from '@/utils/mapLayers'
+import { CUSTOMER_KINDS, LAYER_META, ctvKey, ctvStatusLabel, ctvTypeLabel } from '@/utils/mapLayers'
 
 function Switch({ on, onClick, label }) {
   return (
@@ -13,12 +13,12 @@ function Switch({ on, onClick, label }) {
   )
 }
 
-function Row({ k, on, count, round, onToggle }) {
+function Row({ k, on, count, round, square, onToggle }) {
   const m = LAYER_META[k]
   return (
     <label className={`lp-row ${on ? '' : 'off'}`}>
       <input type="checkbox" checked={on} onChange={onToggle} />
-      <span className={`lp-dot ${round ? 'round' : ''}`} style={{ '--c': m.color }} />
+      <span className={`lp-dot ${round ? 'round' : square ? 'square' : ''}`} style={{ '--c': m.color }} />
       <span className="lp-name">{m.label}</span>
       <span className="lp-n">{count}</span>
     </label>
@@ -40,7 +40,7 @@ export function LayerPanel({ layers: L, set, counts }) {
           <path d="m12 3 9 5-9 5-9-5 9-5ZM3 13l9 5 9-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
         </svg>
         <span>Lớp bản đồ</span>
-        <small>{open ? 'Thu gọn' : `${nOn}/7 bật`}</small>
+        <small>{open ? 'Thu gọn' : `${nOn}/8 bật`}</small>
       </button>
       {open && (
         <div className="lp-body">
@@ -73,17 +73,80 @@ export function LayerPanel({ layers: L, set, counts }) {
               </button>
             </div>
           </div>
-          <div className="lp-actions">
-            <button type="button" onClick={() => set(ALL_LAYERS)}>
-              Hiện tất cả
-            </button>
-            <button type="button" onClick={() => set({ ...ALL_LAYERS, pending: false, shoot: false, dezon: false })}>
-              Chỉ CTV
-            </button>
+          <div className="lp-group">
+            <div className="lp-ghead">
+              <b>Khách hàng</b>
+              <span className="lp-n">{counts.customer}</span>
+              <Switch on={L.customer} label="Bật / tắt khách hàng" onClick={() => set({ customer: !L.customer })} />
+            </div>
+            <Row k="customer" square on={L.customer} count={counts.customer} onToggle={() => set({ customer: !L.customer })} />
           </div>
         </div>
       )}
     </div>
+  )
+}
+
+/** Danh sách khách hàng (tab Khách hàng) + ô lọc Phụ trách. onPick(k): bay tới ghim khách. */
+export function CustomerList({ rows, all, owner, setOwner, onPick, active, onHover }) {
+  // người phụ trách có khách (đếm theo toàn bộ khách, không theo ô tìm)
+  const owners = [...new Map(all.filter((k) => k.ctv_id).map((k) => [k.ctv_id, k.ctv_name])).entries()]
+    .map(([id, name]) => ({ id, name, n: all.filter((k) => k.ctv_id === id).length }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+  const by = (kind) => rows.filter((k) => k.kind === kind).length
+  return (
+    <>
+      <div className="cus-head">
+        <p className="muted">
+          {rows.length} khách hàng · {Object.entries(CUSTOMER_KINDS).map(([k, l]) => `${by(k)} ${l.toLowerCase()}`).join(', ')}
+        </p>
+        <label className={`cus-owner ${owner ? 'on' : ''}`}>
+          <span>Phụ trách</span>
+          <b>{owner ? owners.find((o) => String(o.id) === owner)?.name || 'Tất cả' : 'Tất cả'}</b>
+          <select value={owner} onChange={(e) => setOwner(e.target.value)} aria-label="Lọc theo người phụ trách">
+            <option value="">Tất cả</option>
+            {owners.map((o) => (
+              <option key={o.id} value={String(o.id)}>
+                {o.name} ({o.n})
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {rows.length ? (
+        <ul className="ctv-list">
+          {rows.map((k) => (
+            <li key={k.id}>
+              <button
+                type="button"
+                className={`ctv-item ${active === `kh${k.id}` ? 'on' : ''}`}
+                onClick={() => onPick(k)}
+                onMouseEnter={() => onHover?.(`kh${k.id}`)}
+                onMouseLeave={() => onHover?.(null)}
+              >
+                <span className="cus-av">KH</span>
+                <span className="ctv-main">
+                  <span className="ctv-line">
+                    <b>{k.name}</b>
+                    <span className="cus-tag">{CUSTOMER_KINDS[k.kind] || k.kind}</span>
+                  </span>
+                  <span className="ctv-addr">
+                    {k.address || 'Chưa có địa chỉ'}
+                    {k.lat == null ? ' · chưa có vị trí trên bản đồ' : ''}
+                  </span>
+                </span>
+                <span className="cus-owner-col">
+                  <small>Phụ trách</small>
+                  <b>{k.ctv_name || '—'}</b>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted ex-empty">Chưa có khách hàng nào theo lớp đang bật / ô tìm.</p>
+      )}
+    </>
   )
 }
 

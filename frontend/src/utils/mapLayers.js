@@ -7,8 +7,11 @@ export const LAYER_META = {
   dezon: { label: 'Dezon', color: '#1A56DB' },
   ctvUpdate: { label: 'CTV cập nhật', color: '#EC4899' },
   ctvSales: { label: 'CTV kinh doanh', color: '#DC2626' },
+  customer: { label: 'Khách hàng', color: '#EA580C' },
 }
-export const ALL_LAYERS = { pending: true, shoot: true, dezon: true, ctvUpdate: true, ctvSales: true, ctvActive: true, ctvReg: true }
+export const ALL_LAYERS = { pending: true, shoot: true, dezon: true, ctvUpdate: true, ctvSales: true, ctvActive: true, ctvReg: true, customer: true }
+/** Loại khách hàng (máy chủ: nha_pho | biet_thu | can_ho) */
+export const CUSTOMER_KINDS = { nha_pho: 'Nhà phố', biet_thu: 'Biệt thự', can_ho: 'Căn hộ' }
 const KEY = 'vuathau.mapLayers'
 
 /** Lớp đang bật, nhớ theo trình duyệt (mở lại trang vẫn giữ). */

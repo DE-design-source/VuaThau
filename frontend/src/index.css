@@ -4225,3 +4225,134 @@ details.card > summary strong {
     width: min(260px, calc(100% - 24px));
   }
 }
+
+/* ---- Khách hàng (tab Khách hàng, ghim KH cam) ---- */
+.cus-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.cus-head p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+}
+.cus-owner {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  max-width: 220px;
+  padding: 0 28px 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  flex: none;
+}
+.cus-owner::after {
+  content: '';
+  position: absolute;
+  right: 11px;
+  top: 12px;
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid var(--color-muted);
+  border-bottom: 2px solid var(--color-muted);
+  transform: rotate(45deg);
+}
+.cus-owner span {
+  color: var(--color-muted);
+}
+.cus-owner b {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cus-owner.on {
+  background: #eef2fb;
+  border-color: #c9d3ea;
+  color: #0b2a6e;
+}
+.cus-owner select {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.cus-av {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #ea580c;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  border: 2.5px solid #fff;
+  box-shadow: 0 0 0 1px #f3c4a8, 0 2px 6px rgb(234 88 12 / 0.25);
+}
+.cus-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid #0b2a6e;
+  background: #eef2fb;
+  color: #0b2a6e;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.cus-owner-col {
+  flex: none;
+  max-width: 130px;
+  text-align: right;
+  display: grid;
+}
+.cus-owner-col small {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.cus-owner-col b {
+  font-size: 12px;
+  color: #0b2a6e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cus-tip-name {
+  font-size: 14px;
+  color: var(--color-text);
+}
+.lp-dot.square {
+  border-radius: 4px;
+  transform: none;
+}
+.cus-pin {
+  position: absolute;
+  left: -13px;
+  top: -33px;
+  width: 26px;
+  height: 34px;
+  color: #ea580c;
+  filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.3));
+  transform-origin: 50% 100%;
+  transition: transform 0.12s;
+  cursor: pointer;
+}
+.cus-pin svg {
+  display: block;
+  font-family: inherit;
+}
+.cus-pin:hover,
+.cus-pin.on {
+  transform: scale(1.2);
+}
+.cus-pin:hover .site-pin-label,
+.cus-pin.on .site-pin-label {
+  display: block;
+}

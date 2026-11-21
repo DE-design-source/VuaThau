@@ -5,9 +5,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import SiteMap from './SiteMap'
 import SiteCard from './SiteCard'
 import { useNavigate } from 'react-router-dom'
-import { ctvTip, dezonCard } from '@/utils/siteTip'
+import { ctvTip, cusTip, dezonCard } from '@/utils/siteTip'
 import { distM, distText, hsId, isStale as stale } from '@/utils/format'
-import { CtvList, LayerPanel } from './layers'
+import { CtvList, CustomerList, LayerPanel } from './layers'
 import { ctvKey, ctvVisible, useLayers } from '@/utils/mapLayers'
 
 const PAGE = 24
@@ -36,7 +36,7 @@ function PinMark({ kind = '' }) {
  * ctvPins (admin / kế toán, layout 21/11/2026): có thì thêm tab Công trình | Cộng tác viên, ghim CTV và bảng Lớp bản đồ;
  *   ô tìm lọc ngay danh sách (địa chỉ, công ty, nhà thầu, CTV, SĐT), Enter thì tìm địa điểm trên bản đồ.
  */
-export default function Explorer({ points: allPoints, provinces, staleDays = 30, selects = [], selectedProvince, onProvince, fitKey, pop, card, fresh, filterPanel, filterCount = 0, footer, busy, dezon = NONE, ctvPins }) {
+export default function Explorer({ points: allPoints, provinces, staleDays = 30, selects = [], selectedProvince, onProvince, fitKey, pop, card, fresh, filterPanel, filterCount = 0, footer, busy, dezon = NONE, ctvPins, customers, canEditCustomer = false }) {
   const [addr, setAddr] = useState('')
   const layered = Array.isArray(ctvPins)
   const [layers, setLayers] = useLayers()
@@ -88,6 +88,18 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
         ctvReg: ctvPins.filter((c) => c.status !== 'active').length,
       }
     : null
+  // khách hàng: lớp Khách hàng + ô Phụ trách + ô tìm
+  const [owner, setOwner] = useState('')
+  const allCus = layered ? customers || NONE : NONE
+  const cus = layered && layers.customer ? allCus.filter((k) => (!owner || String(k.ctv_id) === owner) && (hit(k.name, k.address, k.ctv_name, k.note) || phoneHit(k.phone))) : NONE
+  if (counts) counts.customer = allCus.length
+  const pickCus = (k) => {
+    if (k.lat == null) {
+      if (canEditCustomer) navigate(`/customers?edit=${k.id}`)
+      return
+    }
+    setFocus({ id: `kh${k.id}`, n: (focus?.n || 0) + 1 })
+  }
   const pickCtv = (c) => {
     if (c.lat == null) {
       navigate(`/ctvs/${c.id}`) // chưa rõ vị trí: mở hồ sơ CTV
@@ -166,9 +178,14 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
               <button type="button" role="tab" aria-selected={tab === 'ctv'} className={tab === 'ctv' ? 'on' : ''} onClick={() => setTab('ctv')}>
                 Cộng tác viên <span>{ctvs.length}</span>
               </button>
+              <button type="button" role="tab" aria-selected={tab === 'cus'} className={tab === 'cus' ? 'on' : ''} onClick={() => setTab('cus')}>
+                Khách hàng <span>{cus.length}</span>
+              </button>
             </div>
           )}
-          {tab === 'ctv' && layered ? (
+          {tab === 'cus' && layered ? (
+            <CustomerList rows={cus} all={allCus} owner={owner} setOwner={setOwner} onPick={pickCus} active={active} onHover={setActive} />
+          ) : tab === 'ctv' && layered ? (
             <>
               <p className="muted ex-ctv-cap">
                 {ctvs.length} cộng tác viên · {ctvs.filter((c) => c.type !== 'sales').length} cập nhật, {ctvs.filter((c) => c.type === 'sales').length} kinh doanh · bấm để xem trên bản
@@ -250,6 +267,8 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
             dezon={dz}
             ctvPins={layered ? ctvs : undefined}
             ctvPop={ctvTip}
+            customers={layered ? cus : undefined}
+            cusPop={(k) => cusTip(k, { edit: canEditCustomer })}
             overlay={layered ? <LayerPanel layers={layers} set={setLayers} counts={counts} /> : null}
           />
         </aside>

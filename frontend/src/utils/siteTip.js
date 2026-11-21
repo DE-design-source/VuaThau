@@ -54,6 +54,26 @@ export function siteTip(p, { staleDays = 30, prov = '', status = '', ctvLink = f
   )
 }
 
+const KH_KINDS = { nha_pho: 'Nhà phố', biet_thu: 'Biệt thự', can_ho: 'Căn hộ' }
+
+/** Thẻ của 1 khách hàng trên bản đồ (lớp Khách hàng, admin / kế toán). edit: có link sửa (admin). */
+export function cusTip(k, { edit = false } = {}) {
+  const tel = (k.phone || '').replace(/[^\d+]/g, '')
+  return (
+    `<div class="site-tip"><div class="site-tip-body">` +
+    `<div class="site-tip-top"><b class="cus-tip-name">${esc(k.name)}</b> <span class="cus-tag">${esc(KH_KINDS[k.kind] || k.kind)}</span></div>` +
+    (k.address ? `<div class="site-tip-row"><span>Địa chỉ</span>${esc(k.address)}</div>` : '') +
+    (/^\+?\d{9,12}$/.test(tel) ? `<div class="site-tip-row"><span>SĐT</span><a href="tel:${tel}">${esc(k.phone)}</a></div>` : '') +
+    `<div class="site-tip-row"><span>Phụ trách</span><b>${esc(k.ctv_name || '—')}</b></div>` +
+    (k.note ? `<div class="site-tip-row"><span>Ghi chú</span>${esc(k.note)}</div>` : '') +
+    `</div></div>` +
+    `<div class="site-pop-actions">` +
+    (edit ? `<a href="/customers?edit=${k.id}" data-to="/customers?edit=${k.id}">Sửa khách hàng</a>` : '') +
+    (k.ctv_id ? `<a href="/ctvs/${k.ctv_id}" data-to="/ctvs/${k.ctv_id}">CTV phụ trách</a>` : '') +
+    `</div>`
+  )
+}
+
 /** Thẻ của 1 cộng tác viên trên bản đồ (lớp Cộng tác viên, admin / kế toán). */
 export function ctvTip(c) {
   const type = c.type === 'sales' ? 'CTV kinh doanh' : 'CTV cập nhật'
