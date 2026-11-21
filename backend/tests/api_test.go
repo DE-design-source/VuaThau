@@ -129,7 +129,8 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 	userSvc := service.NewUserService(userRepo, authRepo, houseRepo, photoRepo, payRepo, logRepo, settingsRepo)
 	houseSvc := service.NewHouseService(service.HouseDeps{Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo,
 		Payments: payRepo, Settings: settingsRepo, Files: files, Public: "http://test",
-		Inbox: settings.inbox, Auth: authRepo, Sync: repository.NewSyncRepository(db), AI: settings.ai, OCR: settings.ocr})
+		Inbox: settings.inbox, Auth: authRepo, Sync: repository.NewSyncRepository(db), AI: settings.ai, OCR: settings.ocr,
+		Customers: repository.NewCustomerRepository(db)})
 	paySvc := service.NewPaymentService(payRepo, houseRepo, photoRepo, userRepo, logRepo, settingsRepo, files)
 
 	deps := router.Deps{

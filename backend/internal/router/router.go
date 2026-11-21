@@ -120,6 +120,11 @@ func New(d Deps) http.Handler {
 	mux.Handle("GET /api/v1/admin/inbox", role(h.InboxStatus, admin))
 	mux.Handle("POST /api/v1/admin/inbox/sync", role(h.InboxSync, admin))
 	mux.Handle("PUT /api/v1/settings", role(p.SaveSettings, admin))
+	// Khách hàng của CTV kinh doanh: CTV kinh doanh (app) khách của mình; admin quản lý; kế toán xem
+	mux.Handle("GET /api/v1/customers", role(h.Customers, ctv, admin, ketoan))
+	mux.Handle("POST /api/v1/customers", role(h.CreateCustomer, ctv, admin))
+	mux.Handle("PUT /api/v1/customers/{id}", role(h.UpdateCustomer, ctv, admin))
+	mux.Handle("DELETE /api/v1/customers/{id}", role(h.DeleteCustomer, ctv, admin))
 	// Quy tắc duyệt ảnh cho AI (admin viết, gửi kèm mỗi lượt AI đọc ảnh)
 	mux.Handle("GET /api/v1/settings/ai-rules", role(h.AIRules, admin))
 	mux.Handle("PUT /api/v1/settings/ai-rules", role(h.SaveAIRules, admin))

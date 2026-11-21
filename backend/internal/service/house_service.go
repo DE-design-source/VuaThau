@@ -213,6 +213,12 @@ type HouseService interface {
 
 	// Trang sale (sale_service.go): không CTV, không tiền.
 	SaleMap(ctx context.Context, province string, ctv int64) (*SaleMapData, error)
+	// Khách hàng của CTV kinh doanh
+	SalesCTV(ctx context.Context, u *model.User) bool
+	Customers(ctx context.Context, u *model.User) ([]repository.Customer, error)
+	CreateCustomer(ctx context.Context, u *model.User, in CustomerInput) (*repository.Customer, string, error)
+	UpdateCustomer(ctx context.Context, u *model.User, id int64, in CustomerInput) (*repository.Customer, string, error)
+	DeleteCustomer(ctx context.Context, u *model.User, id int64) (string, error)
 	// Quy tắc duyệt ảnh cho AI (admin viết ở trang Cấu hình)
 	AIRules(ctx context.Context) (*AIRules, error)
 	SaveAIRules(ctx context.Context, by *model.User, rules string) (string, *AIRules, error)
@@ -241,24 +247,25 @@ type HouseService interface {
 }
 
 type houseService struct {
-	houses   repository.HouseRepository
-	photos   repository.PhotoRepository
-	logs     repository.LogRepository
-	users    repository.UserRepository
-	payments repository.PaymentRepository
-	settings repository.SettingsRepository
-	files    *storage.Files
-	ai       ai.Reader
-	ocr      ocr.Finder
-	geo      Geocoder
-	drive    *gdrive.Client // nil: tắt
-	public   string
-	inbox    *inboxSync                // nil: không lấy hồ sơ Messenger
-	mediaKey []byte                    // ký link xem video
-	pub      publicMapCache            // bản đồ công khai: nhớ tạm theo tỉnh
-	ctvGeo   ctvGeoCache               // toạ độ địa chỉ CTV (lớp Cộng tác viên trên bản đồ)
-	sync     repository.SyncRepository // quy tắc duyệt ảnh của admin (khoá ai_rules)
-	rules    aiRulesCache
+	houses    repository.HouseRepository
+	photos    repository.PhotoRepository
+	logs      repository.LogRepository
+	users     repository.UserRepository
+	payments  repository.PaymentRepository
+	settings  repository.SettingsRepository
+	files     *storage.Files
+	ai        ai.Reader
+	ocr       ocr.Finder
+	geo       Geocoder
+	drive     *gdrive.Client // nil: tắt
+	public    string
+	inbox     *inboxSync                // nil: không lấy hồ sơ Messenger
+	mediaKey  []byte                    // ký link xem video
+	pub       publicMapCache            // bản đồ công khai: nhớ tạm theo tỉnh
+	ctvGeo    ctvGeoCache               // toạ độ địa chỉ CTV (lớp Cộng tác viên trên bản đồ)
+	sync      repository.SyncRepository // quy tắc duyệt ảnh của admin (khoá ai_rules)
+	rules     aiRulesCache
+	customers repository.CustomerRepository // khách hàng của CTV kinh doanh (nil: tắt)
 
 	bg      sync.WaitGroup
 	aiSem   chan struct{} // giới hạn số lượt AI chạy cùng lúc
@@ -290,6 +297,8 @@ type HouseDeps struct {
 	Inbox inbox.Source
 	Auth  repository.AuthRepository
 	Sync  repository.SyncRepository
+	// Customers: khách hàng của CTV kinh doanh (nil: tắt)
+	Customers repository.CustomerRepository
 	// MediaKey: khoá ký link xem video (trống: khoá ngẫu nhiên, link hết hiệu lực khi khởi động lại).
 	MediaKey string
 }
@@ -300,7 +309,7 @@ func NewHouseService(d HouseDeps) HouseService {
 	}
 	s := &houseService{houses: d.Houses, photos: d.Photos, logs: d.Logs, users: d.Users, payments: d.Payments,
 		settings: d.Settings, files: d.Files, ai: d.AI, ocr: d.OCR, geo: d.Geo, drive: d.Drive, public: d.Public,
-		aiSem: make(chan struct{}, 4), now: time.Now, mediaKey: newMediaKey(d.MediaKey), sync: d.Sync}
+		aiSem: make(chan struct{}, 4), now: time.Now, mediaKey: newMediaKey(d.MediaKey), sync: d.Sync, customers: d.Customers}
 	if d.Inbox != nil {
 		s.inbox = &inboxSync{src: d.Inbox, users: d.Users, auth: d.Auth, state: d.Sync}
 	}

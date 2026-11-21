@@ -16,10 +16,10 @@ import (
 	"vuathau/backend/internal/integration/ai"
 	"vuathau/backend/internal/integration/dezon"
 	"vuathau/backend/internal/integration/gdrive"
-	"vuathau/backend/internal/integration/inbox"
-	"vuathau/backend/internal/integration/ocr"
 	"vuathau/backend/internal/integration/geo"
 	"vuathau/backend/internal/integration/google"
+	"vuathau/backend/internal/integration/inbox"
+	"vuathau/backend/internal/integration/ocr"
 	"vuathau/backend/internal/repository"
 	"vuathau/backend/internal/router"
 	"vuathau/backend/internal/service"
@@ -101,7 +101,7 @@ func run() error {
 		Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo, Payments: payRepo, Settings: settingsRepo,
 		Files: files, AI: ai.New(cfg.AIEnabled, cfg.AIModel, cfg.AIWorkspace), Geo: geocoder, OCR: ocr.New(),
 		Drive: drive, Public: cfg.PublicURL, MediaKey: cfg.JWTSecret,
-		Inbox: inboxSrc, Auth: authRepo, Sync: repository.NewSyncRepository(db),
+		Inbox: inboxSrc, Auth: authRepo, Sync: repository.NewSyncRepository(db), Customers: repository.NewCustomerRepository(db),
 	})
 	paySvc := service.NewPaymentService(payRepo, houseRepo, photoRepo, userRepo, logRepo, settingsRepo, files)
 

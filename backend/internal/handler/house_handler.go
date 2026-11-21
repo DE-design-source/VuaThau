@@ -368,6 +368,62 @@ func (h *HouseHandler) PublicSearchPlace(w http.ResponseWriter, r *http.Request)
 	ok(w, res)
 }
 
+// Customers handles GET /api/v1/customers: admin, kế toán mọi khách; CTV kinh doanh khách của mình
+func (h *HouseHandler) Customers(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.svc.Customers(r.Context(), me(r))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"rows": rows, "kinds": service.CustomerKinds})
+}
+
+// CreateCustomer handles POST /api/v1/customers
+func (h *HouseHandler) CreateCustomer(w http.ResponseWriter, r *http.Request) {
+	var in service.CustomerInput
+	if !bodyOr400(w, r, &in) {
+		return
+	}
+	c, m, err := h.svc.CreateCustomer(r.Context(), me(r), in)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"message": m, "customer": c})
+}
+
+// UpdateCustomer handles PUT /api/v1/customers/{id}
+func (h *HouseHandler) UpdateCustomer(w http.ResponseWriter, r *http.Request) {
+	id, valid := idOr400(w, r, "id")
+	if !valid {
+		return
+	}
+	var in service.CustomerInput
+	if !bodyOr400(w, r, &in) {
+		return
+	}
+	c, m, err := h.svc.UpdateCustomer(r.Context(), me(r), id, in)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"message": m, "customer": c})
+}
+
+// DeleteCustomer handles DELETE /api/v1/customers/{id}
+func (h *HouseHandler) DeleteCustomer(w http.ResponseWriter, r *http.Request) {
+	id, valid := idOr400(w, r, "id")
+	if !valid {
+		return
+	}
+	m, err := h.svc.DeleteCustomer(r.Context(), me(r), id)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"message": m})
+}
+
 // AIRules handles GET /api/v1/settings/ai-rules (admin): { rules, at, default_prompt }
 func (h *HouseHandler) AIRules(w http.ResponseWriter, r *http.Request) {
 	res, err := h.svc.AIRules(r.Context())
