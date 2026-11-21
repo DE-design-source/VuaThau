@@ -8,9 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"runtime"
 	"log"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -126,23 +126,23 @@ type Issue struct {
 }
 
 type HouseDetail struct {
-	House     *model.House  `json:"house"`
-	Photos    []model.Photo `json:"photos"`
-	Videos    []model.Video `json:"videos"`
-	Logs      []model.Log   `json:"logs"`
-	Steps     []model.Step  `json:"steps"`
-	Checklist []CheckItem   `json:"checklist"`
-	Todo      []string      `json:"todo"`
-	BadFields []string      `json:"bad_fields"`
-	Issues    []Issue       `json:"issues"`
-	AIFields  []string      `json:"ai_fields"`
-	Valid     int           `json:"valid"`
-	Pay       int64         `json:"pay"`
+	House      *model.House     `json:"house"`
+	Photos     []model.Photo    `json:"photos"`
+	Videos     []model.Video    `json:"videos"`
+	Logs       []model.Log      `json:"logs"`
+	Steps      []model.Step     `json:"steps"`
+	Checklist  []CheckItem      `json:"checklist"`
+	Todo       []string         `json:"todo"`
+	BadFields  []string         `json:"bad_fields"`
+	Issues     []Issue          `json:"issues"`
+	AIFields   []string         `json:"ai_fields"`
+	Valid      int              `json:"valid"`
+	Pay        int64            `json:"pay"`
 	PayScope   map[string]int64 `json:"pay_scope"`   // tiền theo từng loại chụp (nút chọn ở trang duyệt), đã gồm thưởng video
 	VideoBonus int64            `json:"video_bonus"` // thưởng hồ sơ có video (Cấu hình)
-	Editable  bool          `json:"editable"`
-	QueueLeft int           `json:"queue_left"`
-	Journal   []JournalSet  `json:"journal"` // nhật ký ảnh công trình: bộ ảnh đã duyệt cùng công trình, theo giai đoạn
+	Editable   bool             `json:"editable"`
+	QueueLeft  int              `json:"queue_left"`
+	Journal    []JournalSet     `json:"journal"` // nhật ký ảnh công trình: bộ ảnh đã duyệt cùng công trình, theo giai đoạn
 }
 
 type ReviewResult struct {
@@ -153,13 +153,13 @@ type ReviewResult struct {
 
 // OverviewQuery: bộ lọc trang Hồ sơ (admin, kế toán).
 type OverviewQuery struct {
-	Status string `json:"status"`
-	Q      string `json:"q"`
-	CTV    int64  `json:"ctv"`
+	Status   string `json:"status"`
+	Q        string `json:"q"`
+	CTV      int64  `json:"ctv"`
 	Province string `json:"province"`
-	From   string `json:"from"`
-	To     string `json:"to"`
-	Page   int    `json:"-"`
+	From     string `json:"from"`
+	To       string `json:"to"`
+	Page     int    `json:"-"`
 }
 
 type Overview struct {
@@ -213,6 +213,9 @@ type HouseService interface {
 
 	// Trang sale (sale_service.go): không CTV, không tiền.
 	SaleMap(ctx context.Context, province string, ctv int64) (*SaleMapData, error)
+	// Quy tắc duyệt ảnh cho AI (admin viết ở trang Cấu hình)
+	AIRules(ctx context.Context) (*AIRules, error)
+	SaveAIRules(ctx context.Context, by *model.User, rules string) (string, *AIRules, error)
 	// Bản đồ công khai (chưa đăng nhập): như sale, không tên CTV; ảnh đại diện qua link có chữ ký.
 	PublicMap(ctx context.Context, province string) (*SaleMapData, error)
 	PublicPhoto(ctx context.Context, pid int64, sig string) ([]byte, error)
@@ -250,10 +253,12 @@ type houseService struct {
 	geo      Geocoder
 	drive    *gdrive.Client // nil: tắt
 	public   string
-	inbox    *inboxSync // nil: không lấy hồ sơ Messenger
-	mediaKey []byte     // ký link xem video
-	pub      publicMapCache // bản đồ công khai: nhớ tạm theo tỉnh
-	ctvGeo   ctvGeoCache    // toạ độ địa chỉ CTV (lớp Cộng tác viên trên bản đồ)
+	inbox    *inboxSync                // nil: không lấy hồ sơ Messenger
+	mediaKey []byte                    // ký link xem video
+	pub      publicMapCache            // bản đồ công khai: nhớ tạm theo tỉnh
+	ctvGeo   ctvGeoCache               // toạ độ địa chỉ CTV (lớp Cộng tác viên trên bản đồ)
+	sync     repository.SyncRepository // quy tắc duyệt ảnh của admin (khoá ai_rules)
+	rules    aiRulesCache
 
 	bg      sync.WaitGroup
 	aiSem   chan struct{} // giới hạn số lượt AI chạy cùng lúc
@@ -278,9 +283,9 @@ type HouseDeps struct {
 	AI       ai.Reader
 	Geo      Geocoder
 	// OCR: tìm SĐT trên ảnh để che (nil: không che)
-	OCR      ocr.Finder
-	Drive    *gdrive.Client
-	Public   string
+	OCR    ocr.Finder
+	Drive  *gdrive.Client
+	Public string
 	// Hồ sơ Messenger: Inbox nil thì tắt; Auth (tạo CTV) và Sync (con trỏ đồng bộ) cần khi bật.
 	Inbox inbox.Source
 	Auth  repository.AuthRepository
@@ -295,7 +300,7 @@ func NewHouseService(d HouseDeps) HouseService {
 	}
 	s := &houseService{houses: d.Houses, photos: d.Photos, logs: d.Logs, users: d.Users, payments: d.Payments,
 		settings: d.Settings, files: d.Files, ai: d.AI, ocr: d.OCR, geo: d.Geo, drive: d.Drive, public: d.Public,
-		aiSem: make(chan struct{}, 4), now: time.Now, mediaKey: newMediaKey(d.MediaKey)}
+		aiSem: make(chan struct{}, 4), now: time.Now, mediaKey: newMediaKey(d.MediaKey), sync: d.Sync}
 	if d.Inbox != nil {
 		s.inbox = &inboxSync{src: d.Inbox, users: d.Users, auth: d.Auth, state: d.Sync}
 	}
@@ -606,8 +611,6 @@ func takeSlot(ctx context.Context) (func(), error) {
 	}
 }
 
-
-
 // cachedOrRead: kết quả AI đọc 1 ảnh, dùng lại theo sha256 nếu đã đọc. Tắt AI / lỗi: nil, false.
 func (s *houseService) cachedOrRead(ctx context.Context, sha string, img image.Image) (*ai.Read, bool) {
 	if c, err := s.photos.CacheGet(ctx, []string{sha}); err == nil {
@@ -632,7 +635,7 @@ func (s *houseService) cachedOrRead(ctx context.Context, sha string, img image.I
 	}
 	actx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	r, err := s.ai.ReadPhotos(actx, [][]byte{small})
+	r, err := s.ai.ReadPhotos(ai.WithRules(actx, s.aiRules(actx)), [][]byte{small})
 	if err != nil {
 		log.Printf("AI kiểm 1 ảnh: %v", err)
 		return nil, false
@@ -1098,7 +1101,7 @@ func (s *houseService) runAI(ctx context.Context, hid int64) error {
 	var r *ai.Read
 	ok := len(todo) == 0
 	if len(images) > 0 {
-		if r, err = s.ai.ReadPhotos(ctx, images); err != nil {
+		if r, err = s.ai.ReadPhotos(ai.WithRules(ctx, s.aiRules(ctx)), images); err != nil {
 			log.Printf("AI hồ sơ #%d: %v", hid, err)
 		} else {
 			ok = true

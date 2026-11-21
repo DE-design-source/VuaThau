@@ -22,14 +22,16 @@ type fakeAI struct {
 	calls int
 	sizes []int // cạnh dài từng ảnh nhận
 	bad   int   // ảnh không đọc được
+	rules string // quy tắc admin gửi kèm lượt gần nhất
 }
 
 func (f *fakeAI) Enabled() bool { return true }
 
-func (f *fakeAI) ReadPhotos(_ context.Context, images [][]byte) (*ai.Read, error) {
+func (f *fakeAI) ReadPhotos(ctx context.Context, images [][]byte) (*ai.Read, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
+	f.rules = ai.RulesFrom(ctx)
 	r := &ai.Read{ContractorName: "CÔNG TY XÂY DỰNG AI ĐỌC", ContractorPhone: "0909123456", Floors: 3, Stage: model.Stages[3]}
 	for i, b := range images {
 		cfg, _, err := image.DecodeConfig(bytes.NewReader(b))

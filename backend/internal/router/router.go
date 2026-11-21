@@ -120,6 +120,9 @@ func New(d Deps) http.Handler {
 	mux.Handle("GET /api/v1/admin/inbox", role(h.InboxStatus, admin))
 	mux.Handle("POST /api/v1/admin/inbox/sync", role(h.InboxSync, admin))
 	mux.Handle("PUT /api/v1/settings", role(p.SaveSettings, admin))
+	// Quy tắc duyệt ảnh cho AI (admin viết, gửi kèm mỗi lượt AI đọc ảnh)
+	mux.Handle("GET /api/v1/settings/ai-rules", role(h.AIRules, admin))
+	mux.Handle("PUT /api/v1/settings/ai-rules", role(h.SaveAIRules, admin))
 
 	// Admin + kế toán
 	mux.Handle("PUT /api/v1/houses/{id}/amount", role(h.SetAmount, admin, ketoan))

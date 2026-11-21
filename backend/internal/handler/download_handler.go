@@ -156,7 +156,6 @@ ol{margin:6px 0 0;padding-left:22px}li{margin:6px 0}
 <header class="top">
   <img class="mark" src="/app/icons/Icon-192.png" width="88" height="88" alt="Vua Thầu Map">
   <h1>Vua Thầu Map</h1>
-  <p>App cho cộng tác viên: chụp ảnh công trình, nộp hồ sơ, xem tiền về</p>
 </header>
 <main>
 {{if and .Zalo (not .IPhone)}}<div class="alert"><b>Zalo không tải được app.</b> Bấm nút bên dưới để mở bằng Chrome. Không được thì bấm <b>⋯</b> góc trên bên phải, chọn <b>Mở bằng trình duyệt</b>.</div>{{end}}
@@ -180,7 +179,7 @@ ol{margin:6px 0 0;padding-left:22px}li{margin:6px 0}
     <li>Mở file <b>VuaThauMap</b> trong thông báo hoặc thư mục <b>Tải xuống</b>.</li>
     <li>Máy hỏi <b>Cài ứng dụng không rõ nguồn gốc</b>: chọn <b>Cài đặt</b>, bật <b>Cho phép từ nguồn này</b>, rồi quay lại.</li>
     <li>Máy <b>OPPO, realme, OnePlus</b> báo <b>Enhanced installation protection</b>: bấm <b>⋮</b> góc trên bên phải, chọn <b>Deep scan</b>, quét xong chọn tiếp tục cài.</li>
-    <li>Bấm <b>Cài đặt</b>, xong bấm <b>Mở</b>. Đăng nhập bằng số điện thoại và mật khẩu đã đăng ký.</li>
+    <li>Bấm <b>Cài đặt</b>, xong bấm <b>Mở</b>. Nhập số điện thoại là vào, chưa có tài khoản thì app chuyển sang đăng ký.</li>
   </ol></div>
   <div class="card"><h2>Đang dùng app cũ?</h2><p style="margin:0;color:var(--muted)">App mới cài thành một app riêng, tài khoản và hồ sơ vẫn giữ nguyên. Cài xong, gỡ app cũ đi để khỏi nhầm.</p></div>
   <p class="muted">Có bản mới, app tự báo để bạn tải lại tại trang này.</p>

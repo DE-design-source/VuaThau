@@ -1,4 +1,4 @@
-// Cấu hình (/settings, chỉ admin): giá hồ sơ, số ảnh tối thiểu, số hồ sơ để được thanh toán.
+// Cấu hình (/settings, chỉ admin): quy tắc duyệt ảnh cho AI, giá hồ sơ, số ảnh tối thiểu, số hồ sơ để được thanh toán.
 // Lưu xong app CTV đọc giá mới qua GET /config ở lần mở tới.
 import { useState } from 'react'
 import usePage from '@/hooks/usePage'
@@ -69,6 +69,7 @@ function Form({ vals, reload }) {
   return (
     <section className="stack">
       <PageHead title="Cấu hình" sub="Giá mới áp dụng cho hồ sơ gửi duyệt từ lúc lưu; hồ sơ đã gửi giữ giá cũ. App CTV tự cập nhật." />
+      <AiRulesBox />
       <InboxBox />
       <KindsBox />
       <form
@@ -95,6 +96,59 @@ function Form({ vals, reload }) {
 }
 
 /** Danh sách chức năng CTV (cột Chức năng, ô lọc ở trang Cộng tác viên): mỗi dòng 1 chức năng. */
+/** Quy tắc duyệt ảnh cho AI (góp ý 21/11/2026): admin viết thêm, AI nhận kèm lời dặn mặc định từ lượt đọc ảnh tiếp theo.
+ *  Lời dặn mặc định (khung kết quả, cách đọc giờ / địa chỉ) giữ nguyên, chỉ xem để tham khảo. */
+function AiRulesBox() {
+  const { data: d, err, reload } = usePage(() => configApi.getAiRules())
+  const [act, busy] = useAct(reload)
+  const [v, setV] = useState(null) // null: chưa sửa
+  if (!d) return err ? <div className="card narrow text-bad">{err}</div> : null
+  const text = v ?? d.rules ?? ''
+  const max = d.max || 8000
+  return (
+    <form
+      className="card stack"
+      onSubmit={(e) => {
+        e.preventDefault()
+        act('ai', () => configApi.saveAiRules(text)).then((j) => j && setV(null))
+      }}
+    >
+      <h2>Quy tắc duyệt ảnh cho AI</h2>
+      <p className="muted">
+        Viết thêm quy tắc để AI đọc và đánh giá ảnh (ảnh có phải công trình không, chụp trong hay ngoài, giai đoạn, nhà thầu...). AI làm theo quy tắc này
+        từ lượt đọc ảnh tiếp theo; nếu mâu thuẫn với lời dặn mặc định thì ưu tiên quy tắc ở đây. Để trống: AI dùng lời dặn mặc định.
+      </p>
+      <textarea
+        className="input mono-ish"
+        rows={10}
+        maxLength={max}
+        value={text}
+        placeholder={'Ví dụ:\n- Ảnh chụp bảng giấy phép xây dựng cũng tính là ảnh công trình.\n- Ảnh chụp từ trên cao (flycam) vẫn tính là chụp ngoài.'}
+        onChange={(e) => setV(e.target.value)}
+      />
+      <div className="row-between">
+        <small className="muted">
+          {text.length}/{max} ký tự{d.at ? ` · sửa lần cuối ${vnTime(d.at)}` : ''}
+        </small>
+        <div className="row-wrap">
+          {v !== null && (
+            <Button variant="ghost" type="button" onClick={() => setV(null)}>
+              Huỷ sửa
+            </Button>
+          )}
+          <Button type="submit" loading={busy === 'ai'} disabled={v === null || v.trim() === (d.rules || '')}>
+            Lưu quy tắc
+          </Button>
+        </div>
+      </div>
+      <details>
+        <summary className="muted">Xem lời dặn mặc định AI đang dùng</summary>
+        <pre className="ai-prompt">{d.default_prompt}</pre>
+      </details>
+    </form>
+  )
+}
+
 function KindsBox() {
   const cfg = useCfg()
   const [act, busy] = useAct(reloadCfg)

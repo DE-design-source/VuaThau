@@ -3810,6 +3810,20 @@ details.card > summary strong {
   text-underline-offset: 2px;
 }
 
+/* Cấu hình: lời dặn mặc định của AI (xem tham khảo) */
+.ai-prompt {
+  margin: 10px 0 0;
+  padding: 12px;
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 12.5px;
+  line-height: 1.5;
+  border-radius: var(--radius-sm);
+  background: var(--color-soft, #f6f6f6);
+  border: 1px solid var(--color-border);
+}
+
 /* Khách (chưa đăng nhập): mục cần đăng nhập mờ đi, có ổ khoá */
 .side-locked {
   opacity: 0.55;

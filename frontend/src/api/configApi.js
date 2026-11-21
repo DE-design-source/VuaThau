@@ -10,6 +10,12 @@ const configApi = {
   /** Admin: cùng dạng -> { message, settings } */
   saveSettings: (s) => axiosClient.put('/settings', s),
 
+  /** Admin: quy tắc duyệt ảnh cho AI -> { rules, at, default_prompt, max } */
+  getAiRules: () => axiosClient.get('/settings/ai-rules'),
+
+  /** Admin: lưu quy tắc ('' = bỏ, dùng lời dặn mặc định) -> { message, rules } */
+  saveAiRules: (rules) => axiosClient.put('/settings/ai-rules', { rules }),
+
   /** Admin: danh sách chức năng CTV -> { message, kinds } */
   saveKinds: (kinds) => axiosClient.put('/ctv-kinds', { kinds }),
 }

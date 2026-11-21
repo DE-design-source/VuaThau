@@ -368,6 +368,32 @@ func (h *HouseHandler) PublicSearchPlace(w http.ResponseWriter, r *http.Request)
 	ok(w, res)
 }
 
+// AIRules handles GET /api/v1/settings/ai-rules (admin): { rules, at, default_prompt }
+func (h *HouseHandler) AIRules(w http.ResponseWriter, r *http.Request) {
+	res, err := h.svc.AIRules(r.Context())
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, res)
+}
+
+// SaveAIRules handles PUT /api/v1/settings/ai-rules (admin): { rules }
+func (h *HouseHandler) SaveAIRules(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Rules string `json:"rules"`
+	}
+	if !bodyOr400(w, r, &in) {
+		return
+	}
+	m, res, err := h.svc.SaveAIRules(r.Context(), me(r), in.Rules)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"message": m, "rules": res})
+}
+
 // Queue handles GET /api/v1/admin/queue
 func (h *HouseHandler) Queue(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.svc.Queue(r.Context())

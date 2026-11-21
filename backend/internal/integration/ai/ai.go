@@ -106,6 +106,17 @@ var schema = map[string]any{
 	},
 }
 
+// system: lời dặn mặc định + quy tắc admin (nếu có). Đánh dấu lưu đệm ở khối cuối (lưu cả hai).
+func system(rules string) []anthropic.BetaTextBlockParam {
+	blocks := []anthropic.BetaTextBlockParam{{Text: prompt}}
+	if rules != "" {
+		blocks = append(blocks, anthropic.BetaTextBlockParam{Text: "Quy tắc thêm của admin Vua Thầu khi đọc và duyệt ảnh. " +
+			"Làm theo các quy tắc này; nếu mâu thuẫn với hướng dẫn ở trên thì ưu tiên quy tắc này. Vẫn trả đúng JSON theo schema.\n\n" + rules})
+	}
+	blocks[len(blocks)-1].CacheControl = anthropic.NewBetaCacheControlEphemeralParam()
+	return blocks
+}
+
 var prompt = fmt.Sprintf(`Đây là các ảnh nghiệm thu của MỘT căn nhà đang xây ở Việt Nam, chụp bằng app Timemark (có dải chữ in trên ảnh: ngày giờ, địa chỉ, có thể có toạ độ).
 Đọc và trả JSON theo schema:
 - photos: mỗi ảnh một phần tử, index bắt đầu từ 0 theo thứ tự ảnh gửi.
@@ -131,6 +142,28 @@ Hai ô dưới thì KHÔNG có chữ in sẵn: nhìn công trình trên tất c�
   %q: nhà xong hết, đã tháo giàn giáo, sạch sẽ hoặc có người ở.`,
 	model.Stages, model.Stages[0], model.Stages[1], model.Stages[2], model.Stages[3], model.Stages[4], model.Stages[5], model.Stages[6], model.Stages[7])
 
+// Quy tắc duyệt ảnh admin tự viết (trang Cấu hình): gửi kèm sau lời dặn mặc định, ưu tiên hơn khi mâu thuẫn.
+type rulesKey struct{}
+
+// WithRules: gắn quy tắc admin vào ctx cho lượt đọc ảnh.
+func WithRules(ctx context.Context, rules string) context.Context {
+	if strings.TrimSpace(rules) == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, rulesKey{}, strings.TrimSpace(rules))
+}
+
+func RulesFrom(ctx context.Context) string {
+	r, _ := ctx.Value(rulesKey{}).(string)
+	return r
+}
+
+// DefaultPrompt: lời dặn mặc định (trang Cấu hình hiện để admin tham khảo khi viết quy tắc thêm).
+func DefaultPrompt() string { return prompt }
+
+// MaxRules: độ dài tối đa quy tắc admin (ký tự).
+const MaxRules = 8000
+
 func (c *claudeReader) ReadPhotos(ctx context.Context, images [][]byte) (*Read, error) {
 	if len(images) == 0 {
 		return &Read{}, nil
@@ -147,11 +180,8 @@ func (c *claudeReader) ReadPhotos(ctx context.Context, images [][]byte) (*Read, 
 	params := anthropic.BetaMessageNewParams{
 		Model:     c.model,
 		MaxTokens: 16000,
-		// Lời dặn giống hệt mọi lượt: đánh dấu lưu đệm để chỉ tính đủ tiền lần đầu
-		System: []anthropic.BetaTextBlockParam{{
-			Text:         prompt,
-			CacheControl: anthropic.NewBetaCacheControlEphemeralParam(),
-		}},
+		// Lời dặn giống hệt mọi lượt (kèm quy tắc admin): đánh dấu lưu đệm để chỉ tính đủ tiền lần đầu
+		System:   system(RulesFrom(ctx)),
 		Thinking: anthropic.BetaThinkingConfigParamUnion{OfAdaptive: &anthropic.BetaThinkingConfigAdaptiveParam{}},
 		OutputConfig: anthropic.BetaOutputConfigParam{
 			Effort: anthropic.BetaOutputConfigEffortMedium,
