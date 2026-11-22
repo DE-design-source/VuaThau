@@ -86,6 +86,10 @@ func (s *houseService) ctvPins(ctx context.Context, _ int) ([]CTVPin, error) {
 			area = strings.TrimSpace(area[:i])
 		}
 		set := func(lat, lng float64, approx bool) {
+			if approx { // vị trí gần đúng (tâm tỉnh / khu vực): lệch nhẹ theo mã CTV cho ghim khỏi đè lên nhau (tối đa ~3 km)
+				lat += float64(r.ID*7919%61-30) * 0.001
+				lng += float64(r.ID*104729%61-30) * 0.001
+			}
 			p.Lat, p.Lng, p.Approx = ptr(lat), ptr(lng), approx
 		}
 		switch {
@@ -106,6 +110,12 @@ func (s *houseService) ctvPins(ctx context.Context, _ int) ([]CTVPin, error) {
 					set(lat, lng, true)
 					break
 				}
+			}
+		}
+		// chưa có toạ độ (chưa tìm xong / không tìm được): đặt gần đúng ở giữa tỉnh của CTV (vd CTV từ form tuyển Lark)
+		if p.Lat == nil {
+			if lat, lng, ok := province.Center(r.Region); ok {
+				set(lat, lng, true)
 			}
 		}
 		out = append(out, p)

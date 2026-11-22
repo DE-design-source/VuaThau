@@ -242,7 +242,7 @@ func (r *userRepository) ListCTVs(ctx context.Context, f CTVFilter, limit, offse
 		FROM c LEFT JOIN houses h ON h.ctv_id = c.id
 		WHERE `+where+`
 		GROUP BY c.id, c.username, c.name, c.email, c.locked, c.created_at, c.bank, c.reg, c.manual, c.kind, c.note, c.addr, c.recent
-		ORDER BY COALESCE(MAX(h.id), 0) DESC, c.id DESC
+		ORDER BY GREATEST(MAX(h.created_at), c.created_at) DESC, c.id DESC -- hoạt động / đăng ký gần nhất trước (CTV mới từ form Lark lên đầu)
 		LIMIT $7 OFFSET $8`, append(args, limit, offset)...)
 	if err != nil {
 		return nil, 0, err

@@ -6,6 +6,7 @@ package province
 import (
 	_ "embed"
 	"encoding/json"
+	"math"
 	"regexp"
 	"sort"
 	"strings"
@@ -65,8 +66,8 @@ var aliases = map[string]string{
 type ring [][2]float64
 
 type shape struct {
-	p     *Province
-	polys [][]ring // [đa giác][vòng 0 = viền ngoài, còn lại = lỗ]
+	p                      *Province
+	polys                  [][]ring // [đa giác][vòng 0 = viền ngoài, còn lại = lỗ]
 	minX, minY, maxX, maxY float64
 }
 
@@ -207,4 +208,63 @@ func Find(lat, lng *float64, addr string) *Province {
 		}
 	}
 	return FromAddress(addr)
+}
+
+// Center: điểm giữa tỉnh (trọng tâm đa giác lớn nhất), dùng đặt ghim gần đúng khi chỉ biết tỉnh.
+// Trọng tâm rơi ra ngoài tỉnh (tỉnh hình cong): lấy 1 đỉnh của viền gần trọng tâm nhất. ok = false nếu không có mã.
+func Center(code string) (lat, lng float64, ok bool) {
+	once.Do(load)
+	for _, s := range shapes {
+		if s.p.Code != code {
+			continue
+		}
+		var best ring
+		bestA := 0.0
+		for _, poly := range s.polys {
+			if len(poly) == 0 {
+				continue
+			}
+			if a := math.Abs(area(poly[0])); a > bestA {
+				best, bestA = poly[0], a
+			}
+		}
+		if len(best) < 3 || bestA == 0 {
+			return (s.minY + s.maxY) / 2, (s.minX + s.maxX) / 2, true
+		}
+		var cx, cy, a2 float64
+		for i := 0; i < len(best)-1; i++ {
+			x0, y0, x1, y1 := best[i][0], best[i][1], best[i+1][0], best[i+1][1]
+			cr := x0*y1 - x1*y0
+			a2 += cr
+			cx += (x0 + x1) * cr
+			cy += (y0 + y1) * cr
+		}
+		cx, cy = cx/(3*a2), cy/(3*a2)
+		if p := At(cy, cx); p != nil && p.Code == code {
+			return cy, cx, true
+		}
+		// tìm điểm trong tỉnh gần trọng tâm nhất (lưới 60x60 trên khung bao)
+		d, bx, by := math.MaxFloat64, cx, cy
+		for i := 0; i <= 60; i++ {
+			for j := 0; j <= 60; j++ {
+				x := s.minX + (s.maxX-s.minX)*float64(i)/60
+				y := s.minY + (s.maxY-s.minY)*float64(j)/60
+				if dd := (x-cx)*(x-cx) + (y-cy)*(y-cy); dd < d {
+					if p := At(y, x); p != nil && p.Code == code {
+						d, bx, by = dd, x, y
+					}
+				}
+			}
+		}
+		return by, bx, true
+	}
+	return 0, 0, false
+}
+
+func area(r ring) float64 {
+	a := 0.0
+	for i := 0; i < len(r)-1; i++ {
+		a += r[i][0]*r[i+1][1] - r[i+1][0]*r[i][1]
+	}
+	return a / 2
 }
