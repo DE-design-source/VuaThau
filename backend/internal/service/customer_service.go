@@ -9,6 +9,7 @@ import (
 
 	"vuathau/backend/internal/integration/dezontech"
 	"vuathau/backend/internal/model"
+	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/repository"
 )
 
@@ -91,22 +92,36 @@ func (s *houseService) geocodeCustomers(ctx context.Context) {
 	if s.geo == nil {
 		return
 	}
-	todo, err := s.customers.NeedGeo(ctx, 60)
+	todo, err := s.customers.NeedGeo(ctx, 200)
 	if err != nil {
 		log.Printf("khách hàng: %v", err)
 		return
 	}
+	// trung tâm tỉnh của chữ địa chỉ / khu vực, lệch nhẹ theo mã khách (tối đa ~3 km) cho ghim khỏi đè nhau
+	center := func(id int64, texts ...string) (*float64, *float64) {
+		for _, t := range texts {
+			if p := province.FromAddress(t); p != nil {
+				if lat, lng, ok := province.Center(p.Code); ok {
+					return ptr(lat + float64(id*7919%61-30)*0.001), ptr(lng + float64(id*104729%61-30)*0.001)
+				}
+			}
+		}
+		return nil, nil
+	}
 	for _, c := range todo {
 		q := strings.Join(nonEmpty(c.Address, c.Area), ", ")
 		var lat, lng *float64
-		// địa chỉ đủ -> chính xác; không được thì thử khu vực / tỉnh (gần đúng)
-		for _, try := range nonEmpty(q, c.Area) {
+		if strings.TrimSpace(c.Address) == "" {
+			// chỉ có khu vực (đọc từ ghi chú): đặt ở trung tâm tỉnh, không tra địa chỉ (góp ý 22/11/2026)
+			lat, lng = center(c.ID, c.Area)
+		} else {
 			gctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-			ps, err := s.geo.Search(gctx, try)
+			ps, err := s.geo.Search(gctx, c.Address)
 			cancel()
 			if err == nil && len(ps) > 0 {
 				lat, lng = ptr(ps[0].Lat), ptr(ps[0].Lng)
-				break
+			} else {
+				lat, lng = center(c.ID, c.Address, c.Area) // địa chỉ không tra được: trung tâm tỉnh
 			}
 		}
 		if err := s.customers.SetGeo(ctx, c.ID, q, lat, lng); err != nil {

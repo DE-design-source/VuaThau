@@ -62,7 +62,7 @@ export function cusTip(k) {
   return (
     `<div class="site-tip"><div class="site-tip-body">` +
     `<div class="site-tip-top"><b class="cus-tip-name">${esc(k.name || 'Khách hàng')}</b>${k.kind ? ` <span class="cus-tag">${esc(k.kind)}</span>` : ''}</div>` +
-    (addr ? `<div class="site-tip-row"><span>Địa chỉ</span>${esc(addr)}</div>` : '') +
+    (addr ? `<div class="site-tip-row"><span>${k.address ? 'Địa chỉ' : 'Khu vực'}</span>${esc(addr)}${k.address ? '' : ' <i class="muted">(ghim ở trung tâm khu vực)</i>'}</div>` : '') +
     (/^\+?\d{9,12}$/.test(tel) ? `<div class="site-tip-row"><span>SĐT</span><a href="tel:${tel}">${esc(k.phone)}</a></div>` : '') +
     `<div class="site-tip-row"><span>Phụ trách</span><b>${esc(k.owner || '—')}</b></div>` +
     (k.stage ? `<div class="site-tip-row"><span>Giai đoạn</span>${esc(k.stage)}</div>` : '') +
