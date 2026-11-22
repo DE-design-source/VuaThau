@@ -52,7 +52,7 @@ type Config struct {
 	DezonTechURL string
 	DezonTechKey string
 	// CTV từ form tuyển trên Lark Base (dòng tích "Duyệt tham gia"). Trống app id / secret: tắt.
-	LarkAPI, LarkAppID, LarkAppSecret, LarkCTVWiki, LarkCTVTable string
+	LarkAPI, LarkAppID, LarkAppSecret, LarkCTVWiki, LarkCTVBase, LarkCTVTable string
 
 	// Đăng nhập / đăng ký bằng Google trong app: OAuth client loại Web (id đầu tiên gửi cho app).
 	GoogleClientIDs []string
@@ -102,6 +102,7 @@ func Load() (*Config, error) {
 		LarkAppID:          getEnv("LARK_APP_ID", ""),
 		LarkAppSecret:      getEnv("LARK_APP_SECRET", ""),
 		LarkCTVWiki:        getEnv("LARK_CTV_WIKI", "IHe0wydh5iKw86kKlxulFtaWgSd"),
+		LarkCTVBase:        getEnv("LARK_CTV_BASE", ""),
 		LarkCTVTable:       getEnv("LARK_CTV_TABLE", "tbl99o12jAXbRDpc"),
 		GoogleClientIDs:    splitCSV(getEnv("GOOGLE_CLIENT_IDS", "")),
 		GDriveClientID:     getEnv("GDRIVE_CLIENT_ID", ""),

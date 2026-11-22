@@ -27,13 +27,14 @@ type Client struct {
 	appToken string // mã Base (đổi từ trang wiki 1 lần)
 }
 
-// New: thiếu app id / secret thì trả nil (tắt).
-func New(api, appID, secret, wiki, table string) *Client {
-	if strings.TrimSpace(appID) == "" || strings.TrimSpace(secret) == "" || wiki == "" || table == "" {
+// New: thiếu app id / secret thì trả nil (tắt). base: mã Base (link /base/<mã>); có thì không cần đổi từ trang wiki
+// (app không cần quyền đọc Wiki), trống thì đổi từ wiki.
+func New(api, appID, secret, wiki, base, table string) *Client {
+	if strings.TrimSpace(appID) == "" || strings.TrimSpace(secret) == "" || (wiki == "" && base == "") || table == "" {
 		return nil
 	}
 	return &Client{api: strings.TrimRight(api, "/"), appID: strings.TrimSpace(appID), secret: strings.TrimSpace(secret),
-		wiki: wiki, table: table, http: &http.Client{Timeout: 30 * time.Second}}
+		wiki: wiki, table: table, appToken: strings.TrimSpace(base), http: &http.Client{Timeout: 30 * time.Second}}
 }
 
 type envelope struct {

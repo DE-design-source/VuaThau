@@ -87,7 +87,7 @@ func run() error {
 
 	authSvc := service.NewAuthService(authRepo, gVerifier, cfg.JWTSecret, cfg.JWTExpiry)
 	userSvc := service.NewUserService(userRepo, authRepo, houseRepo, photoRepo, payRepo, logRepo, settingsRepo)
-	if lc := lark.New(cfg.LarkAPI, cfg.LarkAppID, cfg.LarkAppSecret, cfg.LarkCTVWiki, cfg.LarkCTVTable); lc != nil {
+	if lc := lark.New(cfg.LarkAPI, cfg.LarkAppID, cfg.LarkAppSecret, cfg.LarkCTVWiki, cfg.LarkCTVBase, cfg.LarkCTVTable); lc != nil {
 		userSvc.SetLarkSource(lc)
 	}
 	// Hồ sơ Messenger từ dezon-inbox (chỉ đọc DB + kho ảnh S3)
