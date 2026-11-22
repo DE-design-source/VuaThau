@@ -61,6 +61,14 @@ func (s *houseService) SyncCustomers(ctx context.Context) (int, error) {
 		c := &repository.Customer{ExtID: key, Name: truncate(name, 200), Kind: truncate(l.ProjectType, 60), Scale: truncate(l.Scale, 60),
 			Phone: truncate(normPhone(l.Phone), 30), Email: truncate(l.Email, 120), Address: truncate(l.Address, 300), Area: truncate(area, 120),
 			Stage: truncate(l.Stage, 60), Source: truncate(l.Source, 60), Owner: truncate(owner, 120), Note: truncate(l.Notes, 1000)}
+		c.Rating = l.Rating
+		// tỉnh thành (bộ lọc): ô Tỉnh thành bên Dezon Pro, không có thì theo địa chỉ / khu vực
+		for _, t := range []string{l.Geo.Tinh, c.Address, c.Area} {
+			if p := province.FromAddress(t); p != nil {
+				c.Province = p.Name
+				break
+			}
+		}
 		if v, err := strconv.ParseFloat(l.ValueVnd.String(), 64); err == nil {
 			c.ValueVnd = int64(v)
 		}

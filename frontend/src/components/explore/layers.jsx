@@ -3,7 +3,7 @@
 //   Cộng tác viên: CTV cập nhật (hồng) · CTV kinh doanh (đỏ); trạng thái: Tích cực (ghim đặc) · Đã đăng ký (ghim rỗng)
 import { useState } from 'react'
 import { initials } from '@/utils/format'
-import { LAYER_META, ctvKey, ctvStatusLabel, ctvTypeLabel } from '@/utils/mapLayers'
+import { LAYER_META, NO_CUS_FILTER, RATING_LABEL, ctvKey, ctvStatusLabel, ctvTypeLabel } from '@/utils/mapLayers'
 
 function Switch({ on, onClick, label }) {
   return (
@@ -104,11 +104,49 @@ export function LayerPanel({ layers: L, set, counts }) {
 
 /** Danh sách khách hàng (tab Khách hàng, lấy từ Dezon Pro) + ô lọc Phụ trách. onPick(k): bay tới ghim khách.
  *  synced: false khi máy chủ chưa kết nối dezon.tech. */
-export function CustomerList({ rows, all, owner, setOwner, onPick, active, onHover }) {
-  // người phụ trách có khách (đếm theo toàn bộ khách, không theo ô tìm)
-  const owners = [...new Set(all.map((k) => k.owner).filter(Boolean))]
-    .map((name) => ({ name, n: all.filter((k) => k.owner === name).length }))
-    .sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+/** Ô lọc dạng viên thuốc: nhãn + giá trị đang chọn, bấm mở danh sách (select trong suốt phủ lên). */
+function Pill({ label, value, options, onChange }) {
+  const cur = options.find((o) => o.value === value)
+  return (
+    <label className={`cus-owner ${value ? 'on' : ''}`}>
+      <span>{label}</span>
+      <b>{value ? cur?.label?.replace(/ \(\d+\)$/, '') || value : 'Tất cả'}</b>
+      <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}>
+        <option value="">Tất cả</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+/** đếm khách theo 1 ô (cả danh sách), xếp nhiều trước; '' gom thành '-' (chưa rõ) */
+function facet(all, get, empty) {
+  const m = new Map()
+  for (const k of all) {
+    const v = get(k) || ''
+    m.set(v, (m.get(v) || 0) + 1)
+  }
+  return [...m.entries()]
+    .sort((a, b) => (a[0] === '') - (b[0] === '') || b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'vi'))
+    .map(([v, n]) => ({ value: v === '' ? '-' : String(v), label: `${v === '' ? empty : v} (${n})` }))
+}
+
+export function CustomerList({ rows, all, filter: f, setFilter, onPick, active, onHover }) {
+  const set = (patch) => setFilter({ ...f, ...patch })
+  const owners = facet(all, (k) => k.owner, 'Chưa có').filter((o) => o.value !== '-')
+  const provinces = facet(all, (k) => k.province, 'Chưa rõ tỉnh')
+  const sources = facet(all, (k) => k.source, 'Chưa ghi nguồn')
+  const ratings = [5, 4, 3, 2, 1, 0].map((r) => ({ value: String(r), label: `${r ? '★'.repeat(r) + ' ' : ''}${RATING_LABEL[r]} (${all.filter((k) => (k.rating || 0) === r).length})` }))
+  const dates = [
+    { value: 'week', label: 'Tuần này' },
+    { value: '30d', label: '30 ngày qua' },
+    { value: 'custom', label: 'Tuỳ chỉnh…' },
+  ]
+  const any = Object.entries(f).some(([k, v]) => v !== NO_CUS_FILTER[k])
   // đếm theo loại công trình (Nhà phố, Biệt thự, Căn hộ...), nhiều nhất trước
   const kinds = [...new Set(rows.map((k) => k.kind || 'Chưa xác định'))]
     .map((kd) => [kd, rows.filter((k) => (k.kind || 'Chưa xác định') === kd).length])
@@ -126,18 +164,25 @@ export function CustomerList({ rows, all, owner, setOwner, onPick, active, onHov
         <p className="muted">
           {rows.length} khách hàng{kinds.length ? ' · ' + kinds.map(([kd, n]) => `${n} ${kd.toLowerCase()}`).join(', ') : ''}
         </p>
-        <label className={`cus-owner ${owner ? 'on' : ''}`}>
-          <span>Phụ trách</span>
-          <b>{owner || 'Tất cả'}</b>
-          <select value={owner} onChange={(e) => setOwner(e.target.value)} aria-label="Lọc theo người phụ trách">
-            <option value="">Tất cả</option>
-            {owners.map((o) => (
-              <option key={o.name} value={o.name}>
-                {o.name} ({o.n})
-              </option>
-            ))}
-          </select>
-        </label>
+        <Pill label="Phụ trách" value={f.owner} options={owners} onChange={(v) => set({ owner: v })} />
+      </div>
+      <div className="cus-filters">
+        <Pill label="Tỉnh thành" value={f.province} options={provinces} onChange={(v) => set({ province: v })} />
+        <Pill label="Nguồn" value={f.source} options={sources} onChange={(v) => set({ source: v })} />
+        <Pill label="Giao tiếp" value={f.rating} options={ratings} onChange={(v) => set({ rating: v })} />
+        <Pill label="Ngày tạo" value={f.date} options={dates} onChange={(v) => set({ date: v, ...(v === 'custom' ? {} : { from: '', to: '' }) })} />
+        {f.date === 'custom' && (
+          <span className="cus-dates">
+            <input className="input input-sm" type="date" value={f.from} max={f.to || undefined} onChange={(e) => set({ from: e.target.value })} aria-label="Từ ngày" />
+            <span className="muted">→</span>
+            <input className="input input-sm" type="date" value={f.to} min={f.from || undefined} onChange={(e) => set({ to: e.target.value })} aria-label="Đến ngày" />
+          </span>
+        )}
+        {any && (
+          <button type="button" className="cus-clear" onClick={() => setFilter(NO_CUS_FILTER)}>
+            Bỏ lọc ✕
+          </button>
+        )}
       </div>
       {rows.length ? (
         <ul className="ctv-list">
@@ -155,6 +200,11 @@ export function CustomerList({ rows, all, owner, setOwner, onPick, active, onHov
                   <span className="ctv-line">
                     <b>{k.name}</b>
                     {k.kind && <span className="cus-tag">{k.kind}</span>}
+                    {k.rating > 0 && (
+                      <span className="cus-stars" title={`Trạng thái giao tiếp: ${RATING_LABEL[k.rating]}`}>
+                        {'★'.repeat(k.rating)}
+                      </span>
+                    )}
                   </span>
                   <span className="ctv-addr">
                     {[k.address, k.area].filter(Boolean).join(', ') || 'Chưa có địa chỉ'}

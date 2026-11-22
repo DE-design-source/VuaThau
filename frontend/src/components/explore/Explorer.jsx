@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { ctvTip, cusTip, dezonCard } from '@/utils/siteTip'
 import { distM, distText, hsId, isStale as stale } from '@/utils/format'
 import { CtvList, CustomerList, LayerPanel } from './layers'
-import { ctvKey, ctvVisible, useLayers } from '@/utils/mapLayers'
+import { NO_CUS_FILTER, ctvKey, cusMatch, ctvVisible, useLayers } from '@/utils/mapLayers'
 
 const PAGE = 24
 const NONE = []
@@ -89,9 +89,9 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
       }
     : null
   // khách hàng: lớp Khách hàng + ô Phụ trách + ô tìm
-  const [owner, setOwner] = useState('')
+  const [cf, setCf] = useState(NO_CUS_FILTER) // bộ lọc tab Khách hàng
   const allCus = layered ? customers || NONE : NONE
-  const cus = layered && layers.customer ? allCus.filter((k) => (!owner || k.owner === owner) && (hit(k.name, k.address, k.area, k.owner, k.kind) || phoneHit(k.phone))) : NONE
+  const cus = layered && layers.customer ? allCus.filter((k) => cusMatch(k, cf) && (hit(k.name, k.address, k.area, k.owner, k.kind) || phoneHit(k.phone))) : NONE
   if (counts) counts.customer = allCus.length
   const pickCus = (k) => {
     if (k.lat == null) {
@@ -184,7 +184,7 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
             </div>
           )}
           {tab === 'cus' && layered ? (
-            <CustomerList rows={cus} all={allCus} owner={owner} setOwner={setOwner} onPick={pickCus} active={active} onHover={setActive} />
+            <CustomerList rows={cus} all={allCus} filter={cf} setFilter={setCf} onPick={pickCus} active={active} onHover={setActive} />
           ) : tab === 'ctv' && layered ? (
             <>
               <p className="muted ex-ctv-cap">

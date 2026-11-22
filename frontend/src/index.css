@@ -4372,3 +4372,36 @@ details.card > summary strong {
   gap: 10px;
   padding: 10px 14px;
 }
+/* bộ lọc tab Khách hàng */
+.cus-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.cus-dates {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cus-dates .input {
+  height: 32px;
+  padding: 0 8px;
+  font-size: 12px;
+  width: 132px;
+}
+.cus-clear {
+  border: 0;
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.cus-stars {
+  color: #f5b301;
+  font-size: 12px;
+  letter-spacing: 1px;
+}

@@ -68,6 +68,7 @@ export function cusTip(k) {
     (k.stage ? `<div class="site-tip-row"><span>Giai đoạn</span>${esc(k.stage)}</div>` : '') +
     (k.scale || value ? `<div class="site-tip-row"><span>Quy mô</span>${esc([k.scale, value].filter(Boolean).join(' · '))}</div>` : '') +
     (k.source ? `<div class="site-tip-row"><span>Nguồn</span>${esc(k.source)}</div>` : '') +
+    (k.rating > 0 ? `<div class="site-tip-row"><span>Giao tiếp</span><span class="cus-stars">${'★'.repeat(k.rating)}</span></div>` : '') +
     `</div></div>` +
     `<div class="site-pop-actions"><a href="https://dezon.tech/kinh-doanh?lead=${encodeURIComponent(k.ext_id)}" target="_blank" rel="noreferrer">Mở trên Dezon Pro</a></div>`
   )

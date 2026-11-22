@@ -20,7 +20,9 @@ type Customer struct {
 	Area     string     `json:"area"`
 	Stage    string     `json:"stage"`
 	Source   string     `json:"source"`
-	Owner    string     `json:"owner"` // người phụ trách bên Dezon
+	Owner    string     `json:"owner"`    // người phụ trách bên Dezon
+	Province string     `json:"province"` // tỉnh thành (34 tỉnh mới) của khách: theo ô Tỉnh thành / địa chỉ
+	Rating   int        `json:"rating"`   // trạng thái giao tiếp 1-5, 0: chưa đánh giá
 	ValueVnd int64      `json:"value_vnd"`
 	Note     string     `json:"note"`
 	Lat      *float64   `json:"lat"`
@@ -45,14 +47,14 @@ type customerRepository struct{ db *pgxpool.Pool }
 
 func NewCustomerRepository(db *pgxpool.Pool) CustomerRepository { return &customerRepository{db: db} }
 
-const customerCols = `id, ext_id, name, kind, scale, phone, email, address, area, stage, source, owner, value_vnd, note, lat, lng, lead_at, synced_at, geo_q`
+const customerCols = `id, ext_id, name, kind, scale, phone, email, address, area, stage, source, owner, value_vnd, note, lat, lng, lead_at, synced_at, geo_q, province, rating`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
 func scanCustomer(row rowScanner) (Customer, error) {
 	var c Customer
 	err := row.Scan(&c.ID, &c.ExtID, &c.Name, &c.Kind, &c.Scale, &c.Phone, &c.Email, &c.Address, &c.Area, &c.Stage, &c.Source, &c.Owner,
-		&c.ValueVnd, &c.Note, &c.Lat, &c.Lng, &c.LeadAt, &c.SyncedAt, &c.GeoQ)
+		&c.ValueVnd, &c.Note, &c.Lat, &c.Lng, &c.LeadAt, &c.SyncedAt, &c.GeoQ, &c.Province, &c.Rating)
 	return c, err
 }
 
@@ -78,13 +80,14 @@ func (r *customerRepository) List(ctx context.Context) ([]Customer, error) {
 }
 
 func (r *customerRepository) Upsert(ctx context.Context, c *Customer) error {
-	_, err := r.db.Exec(ctx, `INSERT INTO customers (ext_id, name, kind, scale, phone, email, address, area, stage, source, owner, value_vnd, note, lead_at, synced_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+	_, err := r.db.Exec(ctx, `INSERT INTO customers (ext_id, name, kind, scale, phone, email, address, area, stage, source, owner, value_vnd, note, lead_at, synced_at, province, rating)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), $15, $16)
 		ON CONFLICT (ext_id) DO UPDATE SET name = EXCLUDED.name, kind = EXCLUDED.kind, scale = EXCLUDED.scale, phone = EXCLUDED.phone,
 			email = EXCLUDED.email, address = EXCLUDED.address, area = EXCLUDED.area, stage = EXCLUDED.stage, source = EXCLUDED.source,
 			owner = EXCLUDED.owner, value_vnd = EXCLUDED.value_vnd, note = EXCLUDED.note, lead_at = EXCLUDED.lead_at, synced_at = NOW(),
+			province = EXCLUDED.province, rating = EXCLUDED.rating,
 			deleted_at = NULL`,
-		c.ExtID, c.Name, c.Kind, c.Scale, c.Phone, c.Email, c.Address, c.Area, c.Stage, c.Source, c.Owner, c.ValueVnd, c.Note, c.LeadAt)
+		c.ExtID, c.Name, c.Kind, c.Scale, c.Phone, c.Email, c.Address, c.Area, c.Stage, c.Source, c.Owner, c.ValueVnd, c.Note, c.LeadAt, c.Province, c.Rating)
 	return err
 }
 

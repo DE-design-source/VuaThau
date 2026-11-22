@@ -43,6 +43,7 @@ type Lead struct {
 	Manager     any                       `json:"manager"`
 	Creator     any                       `json:"creator"`
 	Notes       string                    `json:"notes"`
+	Rating      int                       `json:"rating"` // trạng thái giao tiếp 1-5 (0: chưa đánh giá)
 	CreatedAt   string                    `json:"createdAt"`
 }
 
