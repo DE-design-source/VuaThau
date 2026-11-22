@@ -51,6 +51,8 @@ type Config struct {
 	// Khách hàng: pipeline Kinh doanh của Dezon Pro (dezon.tech). Trống key: tắt lớp khách hàng.
 	DezonTechURL string
 	DezonTechKey string
+	// DezonDBURL: đọc thẳng CSDL Dezon Pro bằng tài khoản chỉ đọc (ưu tiên hơn khoá API).
+	DezonDBURL string
 	// CTV từ form tuyển trên Lark Base (dòng tích "Duyệt tham gia"). Trống app id / secret: tắt.
 	LarkAPI, LarkAppID, LarkAppSecret, LarkCTVWiki, LarkCTVBase, LarkCTVTable string
 
@@ -98,6 +100,7 @@ func Load() (*Config, error) {
 		VietmapKey:         getEnv("VIETMAP_API_KEY", ""),
 		DezonTechURL:       getEnv("DEZON_TECH_URL", "https://dezon.tech"),
 		DezonTechKey:       getEnv("DEZON_TECH_KEY", ""),
+		DezonDBURL:         getEnv("DEZON_DB_URL", ""),
 		LarkAPI:            getEnv("LARK_API", "https://open.larksuite.com"),
 		LarkAppID:          getEnv("LARK_APP_ID", ""),
 		LarkAppSecret:      getEnv("LARK_APP_SECRET", ""),

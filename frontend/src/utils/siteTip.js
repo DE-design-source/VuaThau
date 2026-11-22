@@ -65,6 +65,7 @@ export function cusTip(k) {
     (addr ? `<div class="site-tip-row"><span>Địa chỉ</span>${esc(addr)}</div>` : '') +
     (/^\+?\d{9,12}$/.test(tel) ? `<div class="site-tip-row"><span>SĐT</span><a href="tel:${tel}">${esc(k.phone)}</a></div>` : '') +
     `<div class="site-tip-row"><span>Phụ trách</span><b>${esc(k.owner || '—')}</b></div>` +
+    (k.stage ? `<div class="site-tip-row"><span>Giai đoạn</span>${esc(k.stage)}</div>` : '') +
     (k.scale || value ? `<div class="site-tip-row"><span>Quy mô</span>${esc([k.scale, value].filter(Boolean).join(' · '))}</div>` : '') +
     (k.source ? `<div class="site-tip-row"><span>Nguồn</span>${esc(k.source)}</div>` : '') +
     `</div></div>` +

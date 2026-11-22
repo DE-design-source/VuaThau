@@ -118,7 +118,7 @@ func (s *houseService) geocodeCustomers(ctx context.Context) {
 // StartCustomerSync: lấy khách từ dezon.tech mỗi every (không có khoá: không chạy).
 func (s *houseService) StartCustomerSync(every time.Duration) {
 	if s.leads == nil || s.customers == nil {
-		log.Printf("Khách hàng dezon.tech: tắt (chưa có DEZON_TECH_KEY)")
+		log.Printf("Khách hàng dezon.tech: tắt (chưa có DEZON_DB_URL / DEZON_TECH_KEY)")
 		return
 	}
 	log.Printf("Khách hàng dezon.tech: bật, mỗi %s", every)

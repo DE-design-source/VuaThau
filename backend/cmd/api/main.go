@@ -104,7 +104,14 @@ func run() error {
 	geocoder := geo.New(cfg.GoogleMapsKey)
 	// Khách hàng: pipeline Kinh doanh của Dezon Pro (khoá chỉ đọc). Không có khoá: tắt.
 	var leads service.LeadSource
-	if c := dezontech.New(cfg.DezonTechURL, cfg.DezonTechKey); c != nil {
+	if cfg.DezonDBURL != "" { // CSDL Dezon Pro, tài khoản chỉ đọc
+		if d, err := dezontech.NewDB(context.Background(), cfg.DezonDBURL); err != nil {
+			log.Printf("khách hàng: không mở được CSDL Dezon Pro: %v", err)
+		} else {
+			defer d.Close()
+			leads = d
+		}
+	} else if c := dezontech.New(cfg.DezonTechURL, cfg.DezonTechKey); c != nil {
 		leads = c
 	}
 	houseSvc := service.NewHouseService(service.HouseDeps{
