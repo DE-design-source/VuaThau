@@ -41,12 +41,12 @@ func TestLarkCTVSync(t *testing.T) {
 	if err != nil || n != 1 || ok != 1 {
 		t.Fatalf("đồng bộ Lark: tạo %d, duyệt %d, %v", n, ok, err)
 	}
-	var region, note string
-	if err := e.db.QueryRow(ctx, `SELECT region, note FROM users WHERE username = '0985361339' AND role = 'ctv'`).Scan(&region, &note); err != nil {
+	var region, note, kind string
+	if err := e.db.QueryRow(ctx, `SELECT region, note, kind FROM users WHERE username = '0985361339' AND role = 'ctv'`).Scan(&region, &note, &kind); err != nil {
 		t.Fatalf("chưa tạo CTV: %v", err)
 	}
-	if region == "" || note == "" {
-		t.Fatalf("khu vực / ghi chú: %q %q", region, note)
+	if region == "" || note == "" || kind != "CTV kinh doanh" {
+		t.Fatalf("khu vực / ghi chú / chức năng: %q %q %q", region, note, kind)
 	}
 	var cnt int
 	_ = e.db.QueryRow(ctx, `SELECT count(*) FROM users WHERE username = '0986286764'`).Scan(&cnt)

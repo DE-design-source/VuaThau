@@ -4364,3 +4364,11 @@ details.card > summary strong {
   font-size: 13px;
   line-height: 1.35;
 }
+/* Lớp bản đồ thu gọn: chỉ 1 nút nhỏ, không che bản đồ */
+.lp.closed {
+  width: auto;
+}
+.lp.closed .lp-head {
+  gap: 10px;
+  padding: 10px 14px;
+}

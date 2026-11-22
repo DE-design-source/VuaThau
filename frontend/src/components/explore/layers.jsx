@@ -27,14 +27,29 @@ function Row({ k, on, count, round, square, onToggle }) {
 
 /** counts: { pending, shoot, dezon, ctvUpdate, ctvSales, ctvActive, ctvReg } */
 export function LayerPanel({ layers: L, set, counts }) {
-  const [open, setOpen] = useState(true)
+  // thu gọn sẵn (không che bản đồ, góp ý 22/11/2026); mở / gọn nhớ theo trình duyệt
+  const [open, setOpenState] = useState(() => {
+    try {
+      return localStorage.getItem('vuathau.layerPanel') === 'open'
+    } catch {
+      return false
+    }
+  })
+  const setOpen = (v) => {
+    setOpenState(v)
+    try {
+      localStorage.setItem('vuathau.layerPanel', v ? 'open' : 'closed')
+    } catch {
+      /* không lưu được: chỉ mất ghi nhớ */
+    }
+  }
   const P = ['pending', 'shoot', 'dezon']
   const C = ['ctvUpdate', 'ctvSales']
   const pOn = P.some((k) => L[k])
   const cOn = C.some((k) => L[k])
   const nOn = Object.values(L).filter(Boolean).length
   return (
-    <div className="lp" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+    <div className={`lp ${open ? '' : 'closed'}`} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
       <button type="button" className="lp-head" onClick={() => setOpen(!open)} aria-expanded={open}>
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
           <path d="m12 3 9 5-9 5-9-5 9-5ZM3 13l9 5 9-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />

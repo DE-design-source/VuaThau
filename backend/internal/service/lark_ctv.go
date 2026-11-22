@@ -15,9 +15,12 @@ import (
 )
 
 // CTV từ Lark (góp ý 21/11/2026): bảng "Form Tuyển CTV tư vấn công trình - Vua Thầu" trên Lark Base.
-// Dòng nào được tích "Duyệt tham gia" thì tạo tài khoản CTV (đăng nhập app bằng SĐT), trạng thái "đã đăng ký",
+// Dòng nào được tích "Duyệt tham gia" thì tạo tài khoản CTV kinh doanh (đăng nhập app bằng SĐT), trạng thái "đã đăng ký",
 // khu vực theo tỉnh / thành trong form. Đã có tài khoản (cùng SĐT): chỉ điền khu vực / ghi chú còn trống.
 // Bỏ tích sau đó: không xoá tài khoản (admin khoá trên web nếu cần).
+
+// LarkCTVKind: chức năng của CTV tạo từ form tuyển CTV tư vấn công trình (góp ý 22/11/2026).
+const LarkCTVKind = "CTV kinh doanh"
 
 // LarkCTVSource: nguồn dòng form tuyển CTV (Lark; test dùng bản giả).
 type LarkCTVSource interface {
@@ -79,6 +82,8 @@ func (s *userService) SyncLarkCTVs(ctx context.Context) (created, approved int, 
 				return created, approved, err
 			}
 			created++
+			// form tuyển CTV tư vấn công trình: CTV kinh doanh (ghim đỏ trên bản đồ)
+			_ = s.repo.SetProfile(ctx, u.ID, region, LarkCTVKind, note)
 			log.Printf("Lark: tạo CTV #%d %q (duyệt tham gia)", u.ID, name)
 		} else if u.Role != model.RoleCTV {
 			continue // SĐT của nhân viên: bỏ qua
