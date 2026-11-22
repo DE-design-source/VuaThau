@@ -3,8 +3,12 @@ package dezontech
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
+
+	"vuathau/backend/internal/province"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -58,12 +62,40 @@ func (d *DB) Leads(ctx context.Context) ([]Lead, error) {
 		if l, ok := stageLabel[stage]; ok {
 			stage = l
 		}
-		out = append(out, Lead{ID: json.RawMessage(strconv.FormatInt(id, 10)), Name: name, Phone: phone, Email: email, Address: addr,
+		l := Lead{ID: json.RawMessage(strconv.FormatInt(id, 10)), Name: name, Phone: phone, Email: email, Address: addr,
 			Source: src, Stage: stage, ProjectType: kind, Scale: scale, ValueVnd: json.Number(val), Notes: nt,
-			Creator: creator, Manager: manager, CreatedAt: at.Format(time.RFC3339Nano)})
+			Creator: creator, Manager: manager, CreatedAt: at.Format(time.RFC3339Nano)}
+		if strings.TrimSpace(addr) == "" {
+			l.Geo.Kv, l.Geo.Tinh = areaFromNote(nt)
+		}
+		out = append(out, l)
 	}
 	return out, rows.Err()
 }
 
 // StaffNames: bảng khách đã có tên người phụ trách (manager_name), không cần đổi mã.
 func (d *DB) StaffNames(context.Context) map[string]string { return map[string]string{} }
+
+// Khách chưa ghi địa chỉ: ghi chú thường có dòng "Địa chỉ: Hà Nội", "ĐC: TP.HCM", "Khu vực: ..." hoặc nhắc tên tỉnh
+// ("quán Cà phê Bắc Ninh"). Trả (khu vực theo dòng địa chỉ, tên tỉnh dò được) để đặt ghim gần đúng.
+var noteAddr = regexp.MustCompile(`(?im)^\s*(?:địa chỉ|đ/c|đc|khu vực|vị trí|tỉnh|thành phố)\s*[:\-–]\s*(.+)$`)
+
+func areaFromNote(note string) (kv, tinh string) {
+	if m := noteAddr.FindStringSubmatch(note); m != nil {
+		kv = strings.TrimSpace(strings.TrimRight(m[1], " .,;"))
+		if len([]rune(kv)) > 120 {
+			kv = string([]rune(kv)[:120])
+		}
+	}
+	src := kv
+	if src == "" {
+		src = note
+	}
+	if p := province.FromAddress(strings.ReplaceAll(src, "\n", ", ")); p != nil {
+		tinh = p.Name
+	}
+	if kv != "" && tinh != "" && strings.Contains(province.Key(kv), province.Key(strings.TrimPrefix(tinh, "TP. "))) {
+		tinh = "" // dòng địa chỉ đã có tên tỉnh
+	}
+	return kv, tinh
+}
