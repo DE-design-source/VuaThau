@@ -29,6 +29,7 @@ type Deps struct {
 	HealthChecks   map[string]HealthCheck // e.g. "postgres", "redis"
 	Tiles          *handler.TileHandler   // nền bản đồ qua máy chủ; nil: tạo mới theo DATA_DIR
 	Dezon          *handler.DezonHandler  // dữ liệu dezon.vn; nil: chỉ nhà thầu tiềm năng, không có công trình
+	NT             *handler.NTHandler     // tài khoản nhà thầu trên app; nil: tắt
 }
 
 func New(d Deps) http.Handler {
@@ -62,6 +63,24 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/login", a.Login)
 	mux.HandleFunc("POST /api/v1/auth/google", a.Google)
 	mux.HandleFunc("POST /api/v1/auth/phone", a.Phone)
+
+	// Nhà thầu trên app: hồ sơ công ty, dự án, nhật ký thi công (đợt 1, 23/11/2026)
+	if nt := d.NT; nt != nil {
+		nth := model.RoleNhaThau
+		mux.Handle("GET /api/v1/nt/home", role(nt.Home, nth))
+		mux.Handle("PUT /api/v1/nt/profile", role(nt.SaveProfile, nth))
+		mux.Handle("GET /api/v1/nt/projects", role(nt.Projects, nth))
+		mux.Handle("POST /api/v1/nt/projects", role(nt.CreateProject, nth))
+		mux.Handle("GET /api/v1/nt/projects/{id}", role(nt.Project, nth, model.RoleAdmin))
+		mux.Handle("PUT /api/v1/nt/projects/{id}", role(nt.UpdateProject, nth))
+		mux.Handle("DELETE /api/v1/nt/projects/{id}", role(nt.DeleteProject, nth))
+		mux.Handle("POST /api/v1/nt/projects/{id}/logs", role(nt.AddLog, nth))
+		mux.Handle("DELETE /api/v1/nt/projects/{id}/logs/{lid}", role(nt.DeleteLog, nth))
+		mux.Handle("GET /api/v1/nt/photos/{id}", role(nt.Photo, nth, model.RoleAdmin))
+		mux.HandleFunc("GET /api/v1/nt/videos/{id}", nt.Video)
+		mux.Handle("GET /api/v1/admin/nt", role(nt.Contractors, model.RoleAdmin))
+		mux.Handle("POST /api/v1/admin/nt", role(nt.AddContractor, model.RoleAdmin))
+	}
 
 	// Tài khoản (mọi vai trò)
 	mux.Handle("GET /api/v1/me", role(u.Me))

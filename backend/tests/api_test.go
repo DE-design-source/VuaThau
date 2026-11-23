@@ -145,6 +145,7 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 		UserHandler:    handler.NewUserHandler(userSvc, authSvc),
 		HouseHandler:   handler.NewHouseHandler(houseSvc),
 		PaymentHandler: handler.NewPaymentHandler(paySvc, ""),
+		NT:             handler.NewNTHandler(service.NewNTService(repository.NewNTRepository(db), authRepo, files, logRepo, cfg.JWTSecret)),
 		UserLookup:     userRepo.GetByID,
 		HealthChecks:   settings.healthChecks,
 	}
