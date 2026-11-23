@@ -151,7 +151,6 @@ func run() error {
 			UserHandler:    handler.NewUserHandler(userSvc, authSvc),
 			HouseHandler:   handler.NewHouseHandler(houseSvc),
 			PaymentHandler: handler.NewPaymentHandler(paySvc, gVerifier.ClientID()),
-			NT:             handler.NewNTHandler(service.NewNTService(repository.NewNTRepository(db), authRepo, files, logRepo, cfg.JWTSecret)),
 			Dezon:          handler.NewDezonHandler(dezon.ListURL, dezonRepo),
 			UserLookup:     userRepo.GetByID,
 			HealthChecks:   checks,
