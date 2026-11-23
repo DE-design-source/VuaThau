@@ -16,6 +16,9 @@ const configApi = {
   /** Admin: lưu quy tắc ('' = bỏ, dùng lời dặn mặc định) -> { message, rules } */
   saveAiRules: (rules) => axiosClient.put('/settings/ai-rules', { rules }),
 
+  /** Quy tắc xếp thứ tự ảnh công trình: sign_first | time | sent */
+  savePhotoOrder: (order) => axiosClient.put('/settings/photo-order', { order }),
+
   /** Admin: danh sách chức năng CTV -> { message, kinds } */
   saveKinds: (kinds) => axiosClient.put('/ctv-kinds', { kinds }),
 }

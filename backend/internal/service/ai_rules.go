@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +23,7 @@ type AIRules struct {
 	Rules         string     `json:"rules"`
 	At            *time.Time `json:"at"`             // lần sửa gần nhất
 	DefaultPrompt string     `json:"default_prompt"` // lời dặn mặc định (tham khảo)
+	PhotoOrder    string     `json:"photo_order"`    // quy tắc xếp thứ tự ảnh công trình (PhotoOrders)
 	Max           int        `json:"max"`
 }
 
@@ -59,6 +61,7 @@ func (s *houseService) AIRules(ctx context.Context) (*AIRules, error) {
 		return nil, err
 	}
 	res.Rules = v
+	res.PhotoOrder = s.photoOrder(ctx)
 	if !at.IsZero() {
 		res.At = &at
 	}
@@ -94,4 +97,71 @@ func (s *houseService) SaveAIRules(ctx context.Context, by *model.User, rules st
 		msg = "Đã xoá quy tắc thêm. AI dùng lời dặn mặc định."
 	}
 	return msg, res, err
+}
+
+// Quy tắc xếp thứ tự ảnh công trình (góp ý 23/11/2026, trang Cấu hình): áp dụng khi xem hồ sơ (admin, kế toán),
+// dự án của sale và trang công khai; ảnh đầu tiên là ảnh đại diện.
+const photoOrderKey = "photo_order"
+
+// PhotoOrders: mã -> mô tả (trang Cấu hình hiện theo thứ tự PhotoOrderList).
+var PhotoOrders = map[string]string{
+	"sign_first": "Ảnh bảng hiệu (có SĐT nhà thầu) lên đầu, còn lại theo giờ chụp",
+	"time":       "Theo giờ chụp, cũ trước mới sau",
+	"sent":       "Theo thứ tự CTV gửi",
+}
+var PhotoOrderList = []string{"sign_first", "time", "sent"}
+
+const defaultPhotoOrder = "sign_first"
+
+func (s *houseService) photoOrder(ctx context.Context) string {
+	if s.sync == nil {
+		return defaultPhotoOrder
+	}
+	v, _, err := s.sync.Get(ctx, photoOrderKey)
+	if _, ok := PhotoOrders[v]; err != nil || !ok {
+		return defaultPhotoOrder
+	}
+	return v
+}
+
+func (s *houseService) SavePhotoOrder(ctx context.Context, by *model.User, order string) (string, error) {
+	if _, ok := PhotoOrders[order]; !ok {
+		return "", fail(ErrInvalidInput, "Quy tắc xếp ảnh không hợp lệ.")
+	}
+	if s.sync == nil {
+		return "", fail(ErrUnavailable, "Máy chủ chưa bật lưu cấu hình.")
+	}
+	if err := s.sync.Set(ctx, photoOrderKey, order); err != nil {
+		return "", err
+	}
+	_ = s.logs.Add(ctx, by.ID, ActAIRules, nil, nil, "Xếp ảnh: "+PhotoOrders[order])
+	return "Đã lưu quy tắc xếp ảnh: " + PhotoOrders[order] + ".", nil
+}
+
+// photoTime: giờ chụp để xếp (EXIF, không có thì AI đọc trên ảnh); "" xếp sau cùng.
+func photoTime(p model.Photo) string {
+	if p.ExifTime != "" {
+		return p.ExifTime
+	}
+	return p.AITime
+}
+
+// sortPhotos: xếp ảnh theo quy tắc (giữ nguyên thứ tự gửi khi bằng nhau).
+func sortPhotos(ps []model.Photo, order string) {
+	if order == "sent" {
+		return
+	}
+	sort.SliceStable(ps, func(i, j int) bool {
+		if order == "sign_first" {
+			si, sj := ps[i].Masked > 0, ps[j].Masked > 0
+			if si != sj {
+				return si
+			}
+		}
+		ti, tj := photoTime(ps[i]), photoTime(ps[j])
+		if (ti == "") != (tj == "") {
+			return tj == ""
+		}
+		return ti < tj
+	})
 }

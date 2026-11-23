@@ -284,7 +284,8 @@ const SCOPES = [
 
 /** Loại chụp: chỉ bên ngoài công trình / cả trong lẫn ngoài (tiền khác nhau). AI gợi ý theo ảnh, admin chọn khi duyệt. */
 function Scope({ id, h, payScope = {}, editable, act, busy }) {
-  const cur = h.scope || h.scope_ai
+  // hồ sơ Messenger chưa ai chọn: tính như chỉ chụp ngoài (khớp máy chủ)
+  const cur = h.scope || h.scope_ai || (h.source === 'inbox' ? 'ngoai' : '')
   const ai = h.scope_ai && SCOPES.find(([k]) => k === h.scope_ai)?.[1]
   if (!cur && !editable) return null // hồ sơ cũ: tính tiền như trước
   return (

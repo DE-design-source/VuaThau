@@ -4805,3 +4805,20 @@ details.card > summary strong {
   align-items: center;
   gap: 6px;
 }
+/* Cấu hình: chọn quy tắc xếp ảnh */
+.radio-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.radio-row:has(input:checked) {
+  border-color: #c9d3ea;
+  background: #eef2fb;
+}
+.radio-row input {
+  margin-top: 3px;
+}

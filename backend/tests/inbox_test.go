@@ -124,6 +124,9 @@ func TestInboxSync(t *testing.T) {
 	src.add(t, "log-3", a, 5200, 5, site("P. Trường Vinh, Nghệ An", "0985329298", "18.660076°N, 105.685129°E"))
 	src.add(t, "log-4", c, 5300, 5, site("12 Lê Lợi, Huế", "0911222333", "16.463713°N, 107.590866°E"))
 	src.add(t, "log-5", a, 5400, 0, site("không có ảnh", "", "")) // không có ảnh: bỏ qua
+	// người chỉ có nhật ký không kèm ảnh (góp ý 23/11/2026): vẫn có tài khoản CTV trên web, không có hồ sơ
+	d := inbox.Contact{ID: "44444444-aaaa-4bbb-8ccc-000000000004", Name: "Sơn Huỳnh", Phone: "0707578271"}
+	src.add(t, "log-6", d, 5500, 0, site("Đà Nẵng", "", ""))
 
 	r := e.do(t, http.MethodPost, "/api/v1/admin/inbox/sync", admin.AccessToken, nil)
 	expectStatus(t, r, http.StatusOK)
@@ -131,6 +134,11 @@ func TestInboxSync(t *testing.T) {
 	decodeData(t, r, &st)
 	if !st.Enabled || st.Added != 4 || st.Rejected != 1 || st.Total != 4 || st.Error != "" {
 		t.Fatalf("sync: %s", r.Raw)
+	}
+	var dn int
+	_ = e.db.QueryRow(context.Background(), `SELECT count(*) FROM users WHERE username = '0707578271' AND role = 'ctv'`).Scan(&dn)
+	if dn != 1 {
+		t.Fatalf("CTV chỉ có nhật ký không ảnh chưa được tạo: %d", dn)
 	}
 	// đồng bộ lại: không tạo trùng
 	r = e.do(t, http.MethodPost, "/api/v1/admin/inbox/sync", admin.AccessToken, nil)

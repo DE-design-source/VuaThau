@@ -220,6 +220,7 @@ type HouseService interface {
 	// Quy tắc duyệt ảnh cho AI (admin viết ở trang Cấu hình)
 	AIRules(ctx context.Context) (*AIRules, error)
 	SaveAIRules(ctx context.Context, by *model.User, rules string) (string, *AIRules, error)
+	SavePhotoOrder(ctx context.Context, by *model.User, order string) (string, error)
 	// Bản đồ công khai (chưa đăng nhập): như sale, không tên CTV; ảnh đại diện qua link có chữ ký.
 	PublicMap(ctx context.Context, province string) (*SaleMapData, error)
 	PublicProject(ctx context.Context, id int64) (*PublicProject, error)
@@ -948,6 +949,7 @@ func (s *houseService) Detail(ctx context.Context, u *model.User, id int64) (*Ho
 		return nil, err
 	}
 	valid := FillProblems(ps, s.now())
+	sortPhotos(ps, s.photoOrder(ctx)) // quy tắc xếp ảnh ở trang Cấu hình
 	h.PhotosTotal, h.PhotosValid = len(ps), valid
 	if idx, _, err := s.sites(ctx); err == nil {
 		h.VIP = idx[h.ID].VIP

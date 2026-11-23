@@ -418,6 +418,22 @@ func (h *HouseHandler) SaveAIRules(w http.ResponseWriter, r *http.Request) {
 	ok(w, map[string]any{"message": m, "rules": res})
 }
 
+// SavePhotoOrder handles PUT /api/v1/settings/photo-order (admin): { order }
+func (h *HouseHandler) SavePhotoOrder(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Order string `json:"order"`
+	}
+	if !bodyOr400(w, r, &in) {
+		return
+	}
+	m, err := h.svc.SavePhotoOrder(r.Context(), me(r), in.Order)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"message": m, "order": in.Order})
+}
+
 // Queue handles GET /api/v1/admin/queue
 func (h *HouseHandler) Queue(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.svc.Queue(r.Context())

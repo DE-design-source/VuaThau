@@ -69,6 +69,7 @@ function Form({ vals, reload }) {
   return (
     <section className="stack">
       <PageHead title="Cấu hình" sub="Giá mới áp dụng cho hồ sơ gửi duyệt từ lúc lưu; hồ sơ đã gửi giữ giá cũ. App CTV tự cập nhật." />
+      <PhotoOrderBox />
       <AiRulesBox />
       <InboxBox />
       <KindsBox />
@@ -92,6 +93,36 @@ function Form({ vals, reload }) {
         </Button>
       </form>
     </section>
+  )
+}
+
+/** Quy tắc xếp thứ tự ảnh trong ảnh công trình (góp ý 23/11/2026). Ảnh đầu tiên là ảnh đại diện trên bản đồ / thẻ. */
+const PHOTO_ORDERS = [
+  ['sign_first', 'Ảnh bảng hiệu nhà thầu lên đầu', 'Ảnh có SĐT nhà thầu (bảng hiệu, bạt che) xếp đầu, còn lại theo giờ chụp.'],
+  ['time', 'Theo giờ chụp', 'Ảnh chụp trước xếp trước.'],
+  ['sent', 'Theo thứ tự CTV gửi', 'Giữ đúng thứ tự CTV chụp / gửi lên.'],
+]
+function PhotoOrderBox() {
+  const { data: d, reload } = usePage(() => configApi.getAiRules())
+  const [act, busy] = useAct(reload)
+  if (!d) return null
+  const cur = d.photo_order || 'sign_first'
+  return (
+    <div className="card stack">
+      <h2>Quy tắc sắp xếp thứ tự ảnh công trình</h2>
+      <p className="muted">Áp dụng khi xem hồ sơ, duyệt công trình, dự án của sale và bản đồ công khai. Ảnh đầu tiên là ảnh đại diện của công trình.</p>
+      <div className="stack-sm">
+        {PHOTO_ORDERS.map(([k, label, hint]) => (
+          <label key={k} className="radio-row">
+            <input type="radio" name="photo-order" checked={cur === k} disabled={busy === 'order'} onChange={() => act('order', () => configApi.savePhotoOrder(k))} />
+            <span>
+              <b>{label}</b>
+              <small className="muted d-block">{hint}</small>
+            </span>
+          </label>
+        ))}
+      </div>
+    </div>
   )
 }
 

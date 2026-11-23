@@ -238,7 +238,9 @@ func (s *houseService) inboxCTV(ctx context.Context, c inbox.Contact) (*model.Us
 func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejected bool, err error) {
 	x := s.inbox
 	if len(l.Images) == 0 {
-		return false, false, nil
+		// góp ý 23/11/2026: CTV có nhật ký trên Messenger mà chưa gửi được ảnh vẫn phải có trên web
+		_, err := s.inboxCTV(ctx, l.Contact)
+		return false, false, err
 	}
 	ctv, err := s.inboxCTV(ctx, l.Contact)
 	if err != nil {
@@ -452,6 +454,9 @@ func (s *houseService) SyncInbox(ctx context.Context) (*SyncStatus, error) {
 
 	res := SyncStatus{Enabled: true, At: ptr(s.now())}
 	err := s.backfillVideos(ctx)
+	if err == nil {
+		err = s.inboxCTVsOnce(ctx)
+	}
 	if err == nil {
 		err = s.resyncOnce(ctx)
 	}
@@ -686,4 +691,38 @@ func (s *houseService) resyncOnce(ctx context.Context) error {
 	log.Printf("Messenger: đọc lại toàn bộ hồ sơ (gỡ ảnh lẻ gom nhầm)")
 	x.prune = true // đánh dấu xong khi đọc hết không lỗi
 	return nil
+}
+
+const ctvBackfillKey = "inbox_ctv_backfill_v1"
+
+// inboxCTVsOnce: 1 lần, tạo tài khoản CTV cho người có nhật ký công trình bên Messenger mà chưa có ảnh gắn vào
+// (trước 23/11/2026 bỏ qua nên CTV có trên Messenger mà không có trên web). Không tạo hồ sơ, không đổi con trỏ đồng bộ.
+func (s *houseService) inboxCTVsOnce(ctx context.Context) error {
+	x := s.inbox
+	if done, _, err := x.state.Get(ctx, ctvBackfillKey); err != nil || done != "" {
+		return err
+	}
+	at, id, n := time.Time{}, "", 0
+	for {
+		logs, err := x.src.Logs(ctx, at, id, syncBatch)
+		if err != nil {
+			return fmt.Errorf("đọc dezon-inbox: %w", err)
+		}
+		for _, l := range logs {
+			if len(l.Images) == 0 {
+				if _, err := x.users.ByInboxContact(ctx, l.Contact.ID); errors.Is(err, repository.ErrNotFound) {
+					if _, err := s.inboxCTV(ctx, l.Contact); err != nil {
+						return err
+					}
+					n++
+				}
+			}
+			at, id = l.UpdatedAt, l.ID
+		}
+		if len(logs) < syncBatch {
+			break
+		}
+	}
+	log.Printf("Messenger: thêm %d CTV có nhật ký chưa kèm ảnh", n)
+	return x.state.Set(ctx, ctvBackfillKey, s.now().Format(time.RFC3339))
 }

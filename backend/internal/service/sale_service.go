@@ -121,6 +121,7 @@ func (s *houseService) SaleProject(ctx context.Context, id int64) (*SaleProjectD
 	if err != nil {
 		return nil, err
 	}
+	sortPhotos(ps, s.photoOrder(ctx))
 	d := &SaleProjectDetail{SaleProject: p, PhotoList: []SalePhoto{}}
 	for _, ph := range ps {
 		t := ph.ExifTime

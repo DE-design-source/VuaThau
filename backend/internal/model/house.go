@@ -95,10 +95,15 @@ const (
 	ScopeBoth = "trong_ngoai"
 )
 
-// EffScope: loại chụp đang áp dụng: admin chọn, không thì AI gợi ý (” = hồ sơ cũ, tính tiền như trước).
+// EffScope: loại chụp đang áp dụng: admin chọn, không thì AI gợi ý.
+// Hồ sơ Messenger chưa ai chọn: chỉ chụp ngoài (góp ý 23/11/2026: hồ sơ Messenger không qua AI, trước đây bị tính tiền
+// như chụp trong + ngoài). Hồ sơ app cũ chưa có gợi ý (''): tính tiền như trước.
 func (h *House) EffScope() string {
 	if h.Scope != "" {
 		return h.Scope
+	}
+	if h.ScopeAI == "" && h.Source == "inbox" {
+		return ScopeOut
 	}
 	return h.ScopeAI
 }

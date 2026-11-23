@@ -121,4 +121,31 @@ func TestContractors(t *testing.T) {
 	if r := e.do(t, http.MethodGet, "/api/v1/public/projects/999999", "", nil); r.Status != http.StatusNotFound {
 		t.Fatalf("công trình không có: %d", r.Status)
 	}
+
+	// quy tắc xếp ảnh (trang Cấu hình): mặc định ảnh bảng hiệu lên đầu; sai mã: 400; kế toán không sửa được
+	var rules struct {
+		PhotoOrder string `json:"photo_order"`
+	}
+	r = e.do(t, http.MethodGet, "/api/v1/settings/ai-rules", admin.AccessToken, nil)
+	_ = json.Unmarshal(r.Body.Data, &rules)
+	if rules.PhotoOrder != "sign_first" {
+		t.Fatalf("quy tắc xếp ảnh mặc định: %q", rules.PhotoOrder)
+	}
+	if r := e.do(t, http.MethodPut, "/api/v1/settings/photo-order", admin.AccessToken, map[string]string{"order": "xx"}); r.Status != http.StatusBadRequest {
+		t.Fatalf("sai mã: %d", r.Status)
+	}
+	if r := e.do(t, http.MethodPut, "/api/v1/settings/photo-order", kt.AccessToken, map[string]string{"order": "time"}); r.Status != http.StatusForbidden {
+		t.Fatalf("kế toán sửa: %d", r.Status)
+	}
+	if r := e.do(t, http.MethodPut, "/api/v1/settings/photo-order", admin.AccessToken, map[string]string{"order": "time"}); r.Status != http.StatusOK {
+		t.Fatalf("lưu quy tắc: %d", r.Status)
+	}
+	r = e.do(t, http.MethodGet, "/api/v1/settings/ai-rules", admin.AccessToken, nil)
+	_ = json.Unmarshal(r.Body.Data, &rules)
+	if rules.PhotoOrder != "time" {
+		t.Fatalf("quy tắc sau khi lưu: %q", rules.PhotoOrder)
+	}
+	if r := e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/houses/%d", hid), admin.AccessToken, nil); r.Status != http.StatusOK {
+		t.Fatalf("xem hồ sơ sau khi đổi quy tắc: %d", r.Status)
+	}
 }
