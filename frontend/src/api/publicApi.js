@@ -5,6 +5,9 @@ const publicApi = {
   /** { points: [{id, lat, lng, address, contractor, stage, province, at, last_at, cover_url}], provinces, stale_days } (không tên CTV) */
   map: ({ province } = {}) => axiosClient.get('/public/map', { params: cleanParams({ province }) }),
 
+  /** Chi tiết 1 công trình: { id, address, province_name, stage, floors, contractor, at, lat, lng, photos: [{url, time}] } */
+  project: (id) => axiosClient.get(`/public/projects/${id}`),
+
   /** Tìm địa điểm (chỉ địa điểm): { sites: [], places: [{name, lat, lng}] } */
   searchPlace: (q) => axiosClient.get('/public/geo/search', { params: { q } }),
 }

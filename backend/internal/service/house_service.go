@@ -222,6 +222,7 @@ type HouseService interface {
 	SaveAIRules(ctx context.Context, by *model.User, rules string) (string, *AIRules, error)
 	// Bản đồ công khai (chưa đăng nhập): như sale, không tên CTV; ảnh đại diện qua link có chữ ký.
 	PublicMap(ctx context.Context, province string) (*SaleMapData, error)
+	PublicProject(ctx context.Context, id int64) (*PublicProject, error)
 	PublicPhoto(ctx context.Context, pid int64, sig string) ([]byte, error)
 	PublicSearchPlace(ctx context.Context, q string) (*PlaceSearch, error)
 	SaleProjects(ctx context.Context, f repository.SaleFilter, page int) (*SaleProjectList, error)

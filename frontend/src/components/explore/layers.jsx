@@ -3,7 +3,8 @@
 //   Cộng tác viên: CTV cập nhật (hồng) · CTV kinh doanh (đỏ); trạng thái: Tích cực (ghim đặc) · Đã đăng ký (ghim rỗng)
 import { useState } from 'react'
 import { initials } from '@/utils/format'
-import { LAYER_META, NO_CUS_FILTER, RATING_LABEL, ctvKey, ctvStatusLabel, ctvTypeLabel } from '@/utils/mapLayers'
+import { cusGmap } from '@/utils/siteTip'
+import { LAYER_META, NO_CUS_FILTER, facet, RATING_LABEL, ctvKey, ctvStatusLabel, ctvTypeLabel } from '@/utils/mapLayers'
 
 function Switch({ on, onClick, label }) {
   return (
@@ -105,7 +106,7 @@ export function LayerPanel({ layers: L, set, counts }) {
 /** Danh sách khách hàng (tab Khách hàng, lấy từ Dezon Pro) + ô lọc Phụ trách. onPick(k): bay tới ghim khách.
  *  synced: false khi máy chủ chưa kết nối dezon.tech. */
 /** Ô lọc dạng viên thuốc: nhãn + giá trị đang chọn, bấm mở danh sách (select trong suốt phủ lên). */
-function Pill({ label, value, options, onChange }) {
+export function Pill({ label, value, options, onChange }) {
   const cur = options.find((o) => o.value === value)
   return (
     <label className={`cus-owner ${value ? 'on' : ''}`}>
@@ -121,18 +122,6 @@ function Pill({ label, value, options, onChange }) {
       </select>
     </label>
   )
-}
-
-/** đếm khách theo 1 ô (cả danh sách), xếp nhiều trước; '' gom thành '-' (chưa rõ) */
-function facet(all, get, empty) {
-  const m = new Map()
-  for (const k of all) {
-    const v = get(k) || ''
-    m.set(v, (m.get(v) || 0) + 1)
-  }
-  return [...m.entries()]
-    .sort((a, b) => (a[0] === '') - (b[0] === '') || b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'vi'))
-    .map(([v, n]) => ({ value: v === '' ? '-' : String(v), label: `${v === '' ? empty : v} (${n})` }))
 }
 
 export function CustomerList({ rows, all, filter: f, setFilter, onPick, active, onHover }) {
@@ -164,26 +153,29 @@ export function CustomerList({ rows, all, filter: f, setFilter, onPick, active, 
         <p className="muted">
           {rows.length} khách hàng{kinds.length ? ' · ' + kinds.map(([kd, n]) => `${n} ${kd.toLowerCase()}`).join(', ') : ''}
         </p>
-        <Pill label="Phụ trách" value={f.owner} options={owners} onChange={(v) => set({ owner: v })} />
-      </div>
-      <div className="cus-filters">
-        <Pill label="Tỉnh thành" value={f.province} options={provinces} onChange={(v) => set({ province: v })} />
-        <Pill label="Nguồn" value={f.source} options={sources} onChange={(v) => set({ source: v })} />
-        <Pill label="Giao tiếp" value={f.rating} options={ratings} onChange={(v) => set({ rating: v })} />
-        <Pill label="Ngày tạo" value={f.date} options={dates} onChange={(v) => set({ date: v, ...(v === 'custom' ? {} : { from: '', to: '' }) })} />
-        {f.date === 'custom' && (
-          <span className="cus-dates">
-            <input className="input input-sm" type="date" value={f.from} max={f.to || undefined} onChange={(e) => set({ from: e.target.value })} aria-label="Từ ngày" />
-            <span className="muted">→</span>
-            <input className="input input-sm" type="date" value={f.to} min={f.from || undefined} onChange={(e) => set({ to: e.target.value })} aria-label="Đến ngày" />
-          </span>
-        )}
         {any && (
           <button type="button" className="cus-clear" onClick={() => setFilter(NO_CUS_FILTER)}>
             Bỏ lọc ✕
           </button>
         )}
       </div>
+      <div className="ex-filters">
+        <Pill label="Phụ trách" value={f.owner} options={owners} onChange={(v) => set({ owner: v })} />
+        <Pill label="Tỉnh thành" value={f.province} options={provinces} onChange={(v) => set({ province: v })} />
+        <Pill label="Nguồn" value={f.source} options={sources} onChange={(v) => set({ source: v })} />
+        <Pill label="Giao tiếp" value={f.rating} options={ratings} onChange={(v) => set({ rating: v })} />
+        <Pill label="Ngày tạo" value={f.date} options={dates} onChange={(v) => set({ date: v, ...(v === 'custom' ? {} : { from: '', to: '' }) })} />
+      </div>
+      {f.date === 'custom' && (
+        <div className="cus-filters">
+          <span className="cus-dates">
+            <span className="muted">Ngày tạo từ</span>
+            <input className="input input-sm" type="date" value={f.from} max={f.to || undefined} onChange={(e) => set({ from: e.target.value })} aria-label="Từ ngày" />
+            <span className="muted">→</span>
+            <input className="input input-sm" type="date" value={f.to} min={f.from || undefined} onChange={(e) => set({ to: e.target.value })} aria-label="Đến ngày" />
+          </span>
+        </div>
+      )}
       {rows.length ? (
         <ul className="ctv-list">
           {rows.map((k) => (
@@ -211,6 +203,26 @@ export function CustomerList({ rows, all, filter: f, setFilter, onPick, active, 
                     {k.lat == null ? ' · chưa có vị trí trên bản đồ' : ''}
                   </span>
                 </span>
+                {cusGmap(k) && (
+                  <span
+                    role="link"
+                    tabIndex={0}
+                    className="gmap-btn"
+                    title="Mở vị trí khách trên Google Maps"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      window.open(cusGmap(k), '_blank', 'noopener')
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.stopPropagation()
+                        window.open(cusGmap(k), '_blank', 'noopener')
+                      }
+                    }}
+                  >
+                    Google Maps
+                  </span>
+                )}
                 <span className="cus-owner-col">
                   <small>Phụ trách</small>
                   <b>{k.owner || '—'}</b>

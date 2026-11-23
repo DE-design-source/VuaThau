@@ -54,6 +54,7 @@ type testEnv struct {
 	db    *pgxpool.Pool
 	house service.HouseService
 	user  service.UserService
+	nt    *service.ContractorService
 	data  string // DATA_DIR của máy chủ test
 	seq   atomic.Int64
 }
@@ -64,6 +65,7 @@ type envSettings struct {
 	inbox        inbox.Source
 	leads        service.LeadSource // khách hàng Dezon Pro (nil: tắt)
 	lark         service.LarkCTVSource // form tuyển CTV trên Lark (nil: tắt)
+	ntLark       service.LarkCTVSource // form đăng ký nhà thầu trên Lark (nil: tắt)
 	cfg          *config.Config
 	healthChecks map[string]router.HealthCheck
 }
@@ -138,6 +140,7 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 		Inbox: settings.inbox, Auth: authRepo, Sync: repository.NewSyncRepository(db), AI: settings.ai, OCR: settings.ocr,
 		Customers: repository.NewCustomerRepository(db), Leads: settings.leads})
 	paySvc := service.NewPaymentService(payRepo, houseRepo, photoRepo, userRepo, logRepo, settingsRepo, files)
+	ntSvc := service.NewContractorService(repository.NewContractorRepository(db), houseRepo, settings.ntLark)
 
 	deps := router.Deps{
 		Config:         cfg,
@@ -147,6 +150,7 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 		PaymentHandler: handler.NewPaymentHandler(paySvc, ""),
 		UserLookup:     userRepo.GetByID,
 		HealthChecks:   settings.healthChecks,
+		Contractors:    handler.NewContractorHandler(ntSvc, "https://form.test"),
 	}
 
 	srv := httptest.NewServer(router.New(deps))
@@ -154,7 +158,7 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 		srv.Close()
 		houseSvc.Wait()
 	})
-	return &testEnv{t: t, srv: srv, db: db, house: houseSvc, user: userSvc, data: cfg.DataDir}
+	return &testEnv{t: t, srv: srv, db: db, house: houseSvc, user: userSvc, nt: ntSvc, data: cfg.DataDir}
 }
 
 type noGoogle struct{}

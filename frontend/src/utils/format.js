@@ -110,3 +110,22 @@ export const aiDiffText = (diff) =>
   Object.keys(diff || {})
     .map((k) => AI_LABEL[k] || k)
     .join(', ')
+
+/** Số ngày (theo lịch giờ Việt Nam) từ thời điểm s tới hôm nay: 0 hôm nay, 1 hôm qua... null nếu không đọc được. */
+export function daysAgo(s) {
+  const p = vnParts(s)
+  if (!p) return null
+  const t = vnParts(new Date().toISOString())
+  return Math.round((Date.UTC(+t.y, +t.mo - 1, +t.d) - Date.UTC(+p.y, +p.mo - 1, +p.d)) / 864e5)
+}
+
+/** Nhãn thời gian trên thẻ công trình (góp ý 23/11/2026): Hôm nay, Hôm qua, N ngày trước, N tháng trước. */
+export function agoLabel(s) {
+  const n = daysAgo(s)
+  if (n == null) return ''
+  if (n <= 0) return 'Hôm nay'
+  if (n === 1) return 'Hôm qua'
+  if (n < 30) return `${n} ngày trước`
+  if (n < 365) return `${Math.floor(n / 30)} tháng trước`
+  return `${Math.floor(n / 365)} năm trước`
+}

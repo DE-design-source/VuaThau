@@ -1,7 +1,7 @@
 // Thẻ hiện khi rê chuột vào 1 công trình trên bản đồ: hình đại diện (ảnh lần chụp gần nhất) + thông tin chính.
 // Ảnh cần đăng nhập nên thẻ chỉ có chỗ trống <img data-cover>, SiteMap tải ảnh (kèm token) khi thẻ mở.
 import { getBlob } from '@/api/axiosClient'
-import { esc, hsId, isStale, vnDate } from '@/utils/format'
+import { agoLabel, esc, hsId, isStale, vnDate } from '@/utils/format'
 
 /** Tách địa chỉ thành 2 dòng thẻ: [số nhà, đường…] và [phường/xã, tỉnh]. prov: tên tỉnh khi địa chỉ quá ngắn. */
 export function splitAddr(addr, prov = '') {
@@ -23,6 +23,7 @@ export function cardProps(p, { to, prov = '', staleDays = 30, fresh } = {}) {
     contractor: p.contractor,
     ctv: p.ctv_name,
     date: vnDate(p.last_at || p.at),
+    ago: agoLabel(p.last_at || p.at),
     stale: isStale(p.last_at || p.at, staleDays),
   }
 }
@@ -54,6 +55,14 @@ export function siteTip(p, { staleDays = 30, prov = '', status = '', ctvLink = f
   )
 }
 
+/** Link Google Maps của khách: theo toạ độ nếu có địa chỉ cụ thể, không thì tìm theo chữ địa chỉ / khu vực. */
+export function cusGmap(k) {
+  const q = [k.address, k.area].filter(Boolean).join(', ')
+  if (k.address && k.lat != null) return `https://www.google.com/maps/search/?api=1&query=${k.lat},${k.lng}`
+  if (q) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`
+  return k.lat != null ? `https://www.google.com/maps/search/?api=1&query=${k.lat},${k.lng}` : ''
+}
+
 /** Thẻ của 1 khách hàng trên bản đồ (lớp Khách hàng: pipeline Kinh doanh Dezon Pro, admin / kế toán). */
 export function cusTip(k) {
   const tel = (k.phone || '').replace(/[^\d+]/g, '')
@@ -70,7 +79,9 @@ export function cusTip(k) {
     (k.source ? `<div class="site-tip-row"><span>Nguồn</span>${esc(k.source)}</div>` : '') +
     (k.rating > 0 ? `<div class="site-tip-row"><span>Giao tiếp</span><span class="cus-stars">${'★'.repeat(k.rating)}</span></div>` : '') +
     `</div></div>` +
-    `<div class="site-pop-actions"><a href="https://dezon.tech/kinh-doanh?lead=${encodeURIComponent(k.ext_id)}" target="_blank" rel="noreferrer">Mở trên Dezon Pro</a></div>`
+    `<div class="site-pop-actions"><a href="https://dezon.tech/kinh-doanh?lead=${encodeURIComponent(k.ext_id)}" target="_blank" rel="noreferrer">Mở trên Dezon Pro</a>` +
+    (cusGmap(k) ? `<a class="gmap-btn" href="${esc(cusGmap(k))}" target="_blank" rel="noreferrer">Google Maps</a>` : '') +
+    `</div>`
   )
 }
 
@@ -161,5 +172,6 @@ export function dezonCard(p, { prov = '' } = {}) {
     contractor: p.contractor,
     source: 'Nhà thầu đăng trên Dezon',
     date: vnDate(p.posted_at),
+    ago: agoLabel(p.posted_at),
   }
 }

@@ -26,6 +26,9 @@ import ContractorsPage from '@/pages/sale/ContractorsPage'
 const MapPage = lazy(() => import('@/pages/MapPage'))
 const PlanPage = lazy(() => import('@/pages/PlanPage'))
 const PublicMapPage = lazy(() => import('@/pages/PublicMapPage'))
+const PublicProjectPage = lazy(() => import('@/pages/PublicProjectPage'))
+const ContractorListPage = lazy(() => import('@/pages/ContractorListPage'))
+const ContractorPage = lazy(() => import('@/pages/ContractorPage'))
 const SaleMapPage = lazy(() => import('@/pages/sale/SaleMapPage'))
 
 /** Chỉ cho vào khi đã đăng nhập, và đúng vai trò nếu có roles. */
@@ -84,12 +87,15 @@ export default function App() {
       <Route element={<MainLayout />}>
         <Route index element={<Index />} />
         <Route path="ban-do" element={<PublicMap />} />
+        <Route path="ban-do/:id" element={<Suspense fallback={<PageState err="" />}><PublicProjectPage /></Suspense>} />
         <Route path="login" element={<LoginPage />} />
         <Route path="queue" element={g(<QueuePage />, ['admin'])} />
         <Route path="houses/:id" element={g(<HousePage />)} />
         <Route path="houses" element={g(<OverviewPage />)} />
         <Route path="ctvs" element={g(<CtvListPage />)} />
         <Route path="ctvs/:id" element={g(<CtvPage />)} />
+        <Route path="contractors" element={g(<Suspense fallback={<PageState err="" />}><ContractorListPage /></Suspense>)} />
+        <Route path="contractors/:key" element={g(<Suspense fallback={<PageState err="" />}><ContractorPage /></Suspense>)} />
         <Route path="map" element={g(<Suspense fallback={<PageState err="" />}><MapPage /></Suspense>)} />
         <Route path="quy-hoach" element={<Suspense fallback={<PageState err="" />}><PlanPage /></Suspense>} />
         <Route path="sale/map" element={g(<Suspense fallback={<PageState err="" />}><SaleMapPage /></Suspense>, SALE)} />

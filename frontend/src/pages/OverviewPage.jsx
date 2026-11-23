@@ -31,7 +31,7 @@ export default function OverviewPage() {
 
   return (
     <section className="stack">
-      <PageHead title="Hồ sơ" sub={`${d.ctv_total ?? 0} cộng tác viên · ${d.ready_ctvs ?? 0} CTV đủ điều kiện thanh toán`} />
+      <PageHead title="Công trình" sub={`${d.ctv_total ?? 0} cộng tác viên · ${d.ready_ctvs ?? 0} CTV đủ điều kiện thanh toán`} />
 
       <div className="kpis">
         {statuses.map((s) => (

@@ -42,9 +42,10 @@ export default function PublicMapPage() {
       ]}
       pop={(p) =>
         siteTip(p, { staleDays: stale, prov: name[p.province] }) +
-        `<div class="site-pop-actions"><a href="${gmapUrl(p.lat, p.lng)}" target="_blank" rel="noreferrer">Google Maps</a></div>`
+        `<div class="site-pop-actions"><a href="/ban-do/${p.id}" data-to="/ban-do/${p.id}">Xem chi tiết</a><a href="${gmapUrl(p.lat, p.lng)}" target="_blank" rel="noreferrer">Google Maps</a></div>`
       }
-      card={(p) => ({ ...cardProps(p, { prov: name[p.province], staleDays: stale }), href: gmapUrl(p.lat, p.lng), img: p.cover_url })}
+      card={(p) => ({ ...cardProps(p, { to: `/ban-do/${p.id}`, prov: name[p.province], staleDays: stale }), img: p.cover_url })}
+      ageColors
       footer={
         <>
           <div className="kpis ex-kpis">

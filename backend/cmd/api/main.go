@@ -114,6 +114,12 @@ func run() error {
 	} else if c := dezontech.New(cfg.DezonTechURL, cfg.DezonTechKey); c != nil {
 		leads = c
 	}
+	// Nhà thầu đăng ký qua form Lark + trích từ ảnh CTV (trang Nhà thầu)
+	var ntSrc service.LarkCTVSource
+	if lc := lark.New(cfg.LarkAPI, cfg.LarkAppID, cfg.LarkAppSecret, "", cfg.LarkNTBase, cfg.LarkNTTable); lc != nil {
+		ntSrc = lc
+	}
+	ntSvc := service.NewContractorService(repository.NewContractorRepository(db), houseRepo, ntSrc)
 	houseSvc := service.NewHouseService(service.HouseDeps{
 		Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo, Payments: payRepo, Settings: settingsRepo,
 		Files: files, AI: ai.New(cfg.AIEnabled, cfg.AIModel, cfg.AIWorkspace), Geo: geocoder, OCR: ocr.New(),
@@ -131,6 +137,7 @@ func run() error {
 	houseSvc.StartInboxSync(cfg.InboxSyncEvery)
 	houseSvc.StartCustomerSync(15 * time.Minute)
 	userSvc.StartLarkCTVSync(15 * time.Minute)
+	ntSvc.StartLarkSync(15 * time.Minute)
 	// Công trình nhà thầu mới đăng trên dezon.vn -> lớp ghim Dezon trên bản đồ (tra toạ độ: Google nếu có key)
 	dezonRepo := repository.NewDezonRepository(db)
 	log.Printf("Công trình Dezon: tra toạ độ bằng %s, mỗi 6h", map[bool]string{true: "Google", false: "OpenStreetMap"}[geocoder.Google()])
@@ -152,6 +159,7 @@ func run() error {
 			HouseHandler:   handler.NewHouseHandler(houseSvc),
 			PaymentHandler: handler.NewPaymentHandler(paySvc, gVerifier.ClientID()),
 			Dezon:          handler.NewDezonHandler(dezon.ListURL, dezonRepo),
+			Contractors:    handler.NewContractorHandler(ntSvc, cfg.LarkNTForm),
 			UserLookup:     userRepo.GetByID,
 			HealthChecks:   checks,
 		}),

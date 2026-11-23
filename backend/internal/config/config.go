@@ -55,6 +55,8 @@ type Config struct {
 	DezonDBURL string
 	// CTV từ form tuyển trên Lark Base (dòng tích "Duyệt tham gia"). Trống app id / secret: tắt.
 	LarkAPI, LarkAppID, LarkAppSecret, LarkCTVWiki, LarkCTVBase, LarkCTVTable string
+	// Nhà thầu đăng ký: Lark Base "Form Đăng ký nhà thầu - Vua Thầu" (bảng + link form cho nút Thêm nhà thầu)
+	LarkNTBase, LarkNTTable, LarkNTForm string
 
 	// Đăng nhập / đăng ký bằng Google trong app: OAuth client loại Web (id đầu tiên gửi cho app).
 	GoogleClientIDs []string
@@ -107,6 +109,9 @@ func Load() (*Config, error) {
 		LarkCTVWiki:        getEnv("LARK_CTV_WIKI", "IHe0wydh5iKw86kKlxulFtaWgSd"),
 		LarkCTVBase:        getEnv("LARK_CTV_BASE", ""),
 		LarkCTVTable:       getEnv("LARK_CTV_TABLE", "tbl99o12jAXbRDpc"),
+		LarkNTBase:         getEnv("LARK_NT_BASE", "FddBboAtMawxDWsDNE6lbtMagxd"),
+		LarkNTTable:        getEnv("LARK_NT_TABLE", "tblTwViWQQB2gLcG"),
+		LarkNTForm:         getEnv("LARK_NT_FORM", "https://decox-design-center.sg.larksuite.com/share/base/form/shrlg2APTfAQsFZuDwtuG9vNjmf"),
 		GoogleClientIDs:    splitCSV(getEnv("GOOGLE_CLIENT_IDS", "")),
 		GDriveClientID:     getEnv("GDRIVE_CLIENT_ID", ""),
 		GDriveClientSecret: getEnv("GDRIVE_CLIENT_SECRET", ""),

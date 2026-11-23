@@ -26,6 +26,19 @@ const PIN =
   '<path d="M16 1.5C8.3 1.5 2 7.7 2 15.4 2 25.8 16 40.5 16 40.5S30 25.8 30 15.4C30 7.7 23.7 1.5 16 1.5z" fill="currentColor" stroke="rgba(0,0,0,.28)" stroke-width="1.4"/>' +
   '<circle cx="16" cy="15.4" r="6.2" fill="#fff"/></svg>'
 
+// Bộ icon bản đồ (góp ý 23/11/2026): ghim tròn có chữ, đuôi nhọn chỉ đúng vị trí.
+//   KH đỏ #D93025 · CTV tích cực cam đặc #E8710A · CTV đăng ký viền cam, nền trắng · SALE (CTV kinh doanh) tím #C026D3
+const MK = { kh: '#D93025', ctv: '#E8710A', sale: '#C026D3' }
+function badgePin(text, c, outline = false) {
+  const long = text.length > 3
+  return (
+    '<svg viewBox="0 0 40 52" width="30" height="39" aria-hidden="true">' +
+    `<path d="M20 50 12.5 34h15Z" fill="${c}"/>` +
+    `<circle cx="20" cy="19" r="16.5" fill="${outline ? '#fff' : c}" stroke="${outline ? c : '#fff'}" stroke-width="${outline ? 3.6 : 3.2}"/>` +
+    `<text x="20" y="${long ? 22.6 : 23.6}" text-anchor="middle" font-size="${long ? 10.5 : 12.5}" font-weight="800" letter-spacing="-.2" fill="${outline ? c : '#fff'}">${text}</text></svg>`
+  )
+}
+
 function cssVar(name, fallback) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
 }
@@ -56,7 +69,7 @@ function loadProvinces() {
  * focus: { id, n } bay tới công trình và mở thẻ. fresh: Set id mới xuất hiện (thời gian thực).
  * search: tay cầm (useRef) để thanh tìm phía trên trang gọi search.current.find(chữ).
  */
-export default function SiteMap({ points, provinces = [], selected, onProvince, fitKey, pop, staleDays = 30, active, onHover, focus, fresh, search, onPlace, dezon = [], ctvPins, ctvPop, customers, cusPop, overlay }) {
+export default function SiteMap({ points, provinces = [], selected, onProvince, fitKey, pop, staleDays = 30, active, onHover, focus, fresh, search, onPlace, dezon = [], ctvPins, ctvPop, customers, cusPop, overlay, ageColors = false }) {
   const cusLayer = useRef(null) // lớp khách hàng (ghim cam chữ KH)
   const ctvLayer = useRef(null) // lớp cộng tác viên (ghim tròn hình người, nằm trên ghim công trình)
   const el = useRef(null)
@@ -192,7 +205,9 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
     marks.current = new Map()
     const latlngs = []
     for (const p of points) {
-      const cls = ['site-pin', isStale(p.last_at || p.at, staleDays) ? 'stale' : '', fresh?.has(p.id) ? 'new' : ''].join(' ')
+      // bản free (ageColors, góp ý 23/11/2026): vàng trong staleDays ngày, xanh lá quá staleDays, xanh dương quá 2 lần (2 tháng)
+      const old = ageColors && isStale(p.last_at || p.at, staleDays * 2)
+      const cls = ['site-pin', old ? 'old' : isStale(p.last_at || p.at, staleDays) ? 'stale' : '', fresh?.has(p.id) ? 'new' : ''].join(' ')
       const icon = L.divIcon({
         className: 'site-pin-icon',
         html: `<span class="${cls}" title="${esc(stageLabel(p.stage))}">${PIN}<span class="site-pin-label">${hsId(p.id)}</span></span>`,
@@ -252,9 +267,9 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
       const cls = ['ctv-pin', c.type === 'sales' ? 'sales' : '', c.status === 'active' ? 'solid' : '', c.approx ? 'approx' : ''].join(' ')
       const icon = L.divIcon({
         className: 'site-pin-icon',
-        html: `<span class="${cls}" title="${esc(c.name)}"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="12" cy="8" r="4.2" fill="currentColor"/><path d="M4 21c0-4.4 3.6-7.5 8-7.5s8 3.1 8 7.5Z" fill="currentColor"/></svg><span class="site-pin-label">${esc(c.name)}</span></span>`,
+        html: `<span class="${cls} mk-pin" title="${esc(c.name)}">${c.type === 'sales' ? badgePin('SALE', MK.sale) : badgePin('CTV', MK.ctv, c.status !== 'active')}<span class="site-pin-label">${esc(c.name)}</span></span>`,
         iconSize: null,
-        popupAnchor: [0, -16],
+        popupAnchor: [0, -36],
       })
       const key = `ctv${c.id}`
       const mk = L.marker([c.lat, c.lng], { icon, riseOnHover: true, keyboard: false, zIndexOffset: c.status === 'active' ? 1100 : 1000 })
@@ -276,9 +291,9 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
       if (k.lat == null || k.lng == null) continue
       const icon = L.divIcon({
         className: 'site-pin-icon',
-        html: `<span class="cus-pin" title="${esc(k.name)}"><svg viewBox="0 0 26 34" width="26" height="34" aria-hidden="true"><path d="M13 33l-5-7.6A12 12 0 1 1 18 25.4Z" fill="currentColor" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><circle cx="13" cy="13" r="10" fill="currentColor"/><text x="13" y="16.6" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">KH</text></svg><span class="site-pin-label">${esc(k.name)}</span></span>`,
+        html: `<span class="cus-pin mk-pin" title="${esc(k.name)}">${badgePin('KH', MK.kh)}<span class="site-pin-label">${esc(k.name)}</span></span>`,
         iconSize: null,
-        popupAnchor: [0, -32],
+        popupAnchor: [0, -36],
       })
       const key = `kh${k.id}`
       const mk = L.marker([k.lat, k.lng], { icon, riseOnHover: true, keyboard: false, zIndexOffset: 500 })

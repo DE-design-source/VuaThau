@@ -112,3 +112,38 @@ func (s *houseService) PublicSearchPlace(ctx context.Context, q string) (*PlaceS
 	res.Places = ps
 	return res, nil
 }
+
+// PublicPhotoRef: 1 ảnh công trình trên trang công khai (link có chữ ký, ảnh đã che SĐT).
+type PublicPhotoRef struct {
+	URL  string `json:"url"`
+	Time string `json:"time"`
+}
+
+// PublicProject: chi tiết 1 công trình cho người chưa đăng nhập (góp ý 23/11/2026: bản free bấm vào xem được
+// chi tiết từng công trình). Như dự án của sale nhưng không SĐT nhà thầu, không CTV, không tiền.
+type PublicProject struct {
+	ID           int64            `json:"id"`
+	Address      string           `json:"address"`
+	ProvinceName string           `json:"province_name"`
+	Stage        string           `json:"stage"`
+	Floors       *int             `json:"floors"`
+	Contractor   string           `json:"contractor"`
+	At           time.Time        `json:"at"`
+	Lat          *float64         `json:"lat"`
+	Lng          *float64         `json:"lng"`
+	Photos       []PublicPhotoRef `json:"photos"`
+}
+
+// PublicProject: chỉ công trình hiện trên bản đồ công khai (như sale được xem).
+func (s *houseService) PublicProject(ctx context.Context, id int64) (*PublicProject, error) {
+	p, err := s.SaleProject(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	out := &PublicProject{ID: p.ID, Address: p.Address, ProvinceName: p.ProvinceName, Stage: p.Stage, Floors: p.Floors,
+		Contractor: p.ContractorName, At: p.At, Lat: p.Lat, Lng: p.Lng, Photos: []PublicPhotoRef{}}
+	for _, ph := range p.PhotoList {
+		out.Photos = append(out.Photos, PublicPhotoRef{URL: fmt.Sprintf("/api/v1/public/photos/%d?s=%s", ph.ID, s.publicSig(ph.ID)), Time: ph.Time})
+	}
+	return out, nil
+}

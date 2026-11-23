@@ -29,6 +29,7 @@ type Deps struct {
 	HealthChecks   map[string]HealthCheck // e.g. "postgres", "redis"
 	Tiles          *handler.TileHandler   // nền bản đồ qua máy chủ; nil: tạo mới theo DATA_DIR
 	Dezon          *handler.DezonHandler  // dữ liệu dezon.vn; nil: chỉ nhà thầu tiềm năng, không có công trình
+	Contractors    *handler.ContractorHandler // trang Nhà thầu (admin); nil: tắt
 }
 
 func New(d Deps) http.Handler {
@@ -50,6 +51,12 @@ func New(d Deps) http.Handler {
 	// Bản đồ công khai (người chưa đăng nhập): không tên CTV, ảnh đại diện đã che SĐT qua link có chữ ký
 	mux.HandleFunc("GET /api/v1/public/map", h.PublicMap)
 	mux.HandleFunc("GET /api/v1/public/photos/{pid}", h.PublicPhoto)
+	mux.HandleFunc("GET /api/v1/public/projects/{id}", h.PublicProject)
+	if nt := d.Contractors; nt != nil {
+		mux.Handle("GET /api/v1/contractors", role(nt.List, model.RoleAdmin, model.RoleKetoan))
+		mux.Handle("GET /api/v1/contractors/{key}", role(nt.Get, model.RoleAdmin, model.RoleKetoan))
+		mux.Handle("POST /api/v1/contractors/sync", role(nt.Sync, model.RoleAdmin))
+	}
 	mux.HandleFunc("GET /api/v1/public/geo/search", h.PublicSearchPlace)
 
 	// Tải app Android (link gửi qua Zalo) + cấu hình cho app Expo cũ (để nó mời tải app mới)

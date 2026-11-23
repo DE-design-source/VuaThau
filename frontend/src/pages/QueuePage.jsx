@@ -66,7 +66,7 @@ export default function QueuePage() {
 
   return (
     <section className="stack">
-      <PageHead title="Hồ sơ chờ duyệt" sub={`${all.length} hồ sơ đang chờ. Mở từng hồ sơ để xem ảnh, trả lại hoặc từ chối kèm lý do.`}>
+      <PageHead title="Duyệt công trình" sub={`${all.length} hồ sơ đang chờ. Mở từng hồ sơ để xem ảnh, trả lại hoặc từ chối kèm lý do.`}>
         {rows.length > 0 && (
           <>
             <Link className="btn btn-secondary" to={`/houses/${rows[0].id}`}>

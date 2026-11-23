@@ -64,7 +64,7 @@ function Go({ to, href, className, label, children }) {
 }
 
 /** id: khoá thẻ (trùng khoá ghim trên bản đồ); img: ảnh công khai (Dezon) thay cho ảnh hồ sơ cần đăng nhập; dz: thẻ Dezon. */
-export default function SiteCard({ p, id = p.id, to, href, img, dz, tag, street, area, contractor, ctv, source, date, stale, dist, on, onHover, onLocate }) {
+export default function SiteCard({ p, id = p.id, to, href, img, dz, tag, ago, street, area, contractor, ctv, source, date, stale, dist, on, onHover, onLocate }) {
   const ini = (ctv || '').trim().split(/\s+/).pop()?.[0]?.toUpperCase()
   return (
     <article className={`ex-card ${on ? 'on' : ''}`} onMouseEnter={() => onHover?.(id)} onMouseLeave={() => onHover?.(null)}>
@@ -78,7 +78,9 @@ export default function SiteCard({ p, id = p.id, to, href, img, dz, tag, street,
             <CardImage id={p.cover_id} />
           )}
         </Go>
-        {tag && <span className={`ex-badge ${dz ? 'dz' : ''}`}>{tag}</span>}
+        {/* góp ý 23/11/2026: nhãn thời gian (Hôm nay, Hôm qua...) góc trên trái, giai đoạn góc dưới trái */}
+        {ago && <span className="ex-ago">{ago}</span>}
+        {tag && <span className={`ex-badge ex-stage ${dz ? 'dz' : ''}`}>{tag}</span>}
         <button type="button" className="ex-gmap" onClick={onLocate} title="Xem trên bản đồ" aria-label="Xem trên bản đồ">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
             <path d="M8 1a5 5 0 0 0-5 5c0 3.6 5 9 5 9s5-5.4 5-9a5 5 0 0 0-5-5zm0 7a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" fill="currentColor" />

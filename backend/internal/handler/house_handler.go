@@ -342,6 +342,20 @@ func (h *HouseHandler) PublicMap(w http.ResponseWriter, r *http.Request) {
 	ok(w, res)
 }
 
+// PublicProject handles GET /api/v1/public/projects/{id} (chi tiết công trình, không cần đăng nhập)
+func (h *HouseHandler) PublicProject(w http.ResponseWriter, r *http.Request) {
+	id, valid := idOr400(w, r, "id")
+	if !valid {
+		return
+	}
+	res, err := h.svc.PublicProject(r.Context(), id)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, res)
+}
+
 // PublicPhoto handles GET /api/v1/public/photos/{pid}?s= (ảnh đại diện bản đồ công khai, đã che SĐT)
 func (h *HouseHandler) PublicPhoto(w http.ResponseWriter, r *http.Request) {
 	pid, valid := idOr400(w, r, "pid")
