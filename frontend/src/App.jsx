@@ -26,7 +26,6 @@ import ContractorsPage from '@/pages/sale/ContractorsPage'
 const MapPage = lazy(() => import('@/pages/MapPage'))
 const PlanPage = lazy(() => import('@/pages/PlanPage'))
 const PublicMapPage = lazy(() => import('@/pages/PublicMapPage'))
-const NtPage = lazy(() => import('@/pages/NtPage'))
 const SaleMapPage = lazy(() => import('@/pages/sale/SaleMapPage'))
 
 /** Chỉ cho vào khi đã đăng nhập, và đúng vai trò nếu có roles. */
@@ -98,7 +97,6 @@ export default function App() {
         <Route path="sale/projects/:id" element={g(<SaleProjectPage />, SALE)} />
         <Route path="sale/contractors" element={g(<ContractorsPage />, SALE)} />
         <Route path="staff" element={g(<StaffPage />, ['admin'])} />
-        <Route path="nha-thau-app" element={g(<Suspense fallback={<PageState err="" />}><NtPage /></Suspense>, ['admin'])} />
         <Route path="settings" element={g(<SettingsPage />, ['admin'])} />
         <Route path="accounting" element={g(<AccountingPage />, ['ketoan'])} />
         <Route path="payouts/:ctvId" element={g(<PayPage />, ['ketoan'])} />
