@@ -26,13 +26,10 @@ import ContractorsPage from '@/pages/sale/ContractorsPage'
 const MapPage = lazy(() => import('@/pages/MapPage'))
 const PlanPage = lazy(() => import('@/pages/PlanPage'))
 const PublicMapPage = lazy(() => import('@/pages/PublicMapPage'))
-<<<<<<< HEAD
 const PublicProjectPage = lazy(() => import('@/pages/PublicProjectPage'))
 const ContractorListPage = lazy(() => import('@/pages/ContractorListPage'))
 const ContractorPage = lazy(() => import('@/pages/ContractorPage'))
-=======
 const NtPage = lazy(() => import('@/pages/NtPage'))
->>>>>>> parent of 08b87ab (Revert "Web: trang Nhà thầu dùng app (admin thêm nhà thầu, xem số dự án / nhật ký)")
 const SaleMapPage = lazy(() => import('@/pages/sale/SaleMapPage'))
 
 /** Chỉ cho vào khi đã đăng nhập, và đúng vai trò nếu có roles. */

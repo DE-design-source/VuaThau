@@ -4,10 +4,11 @@ import "time"
 
 // Vai trò người dùng.
 const (
-	RoleCTV    = "ctv"    // cộng tác viên: dùng app điện thoại
-	RoleAdmin  = "admin"  // duyệt hồ sơ, quản lý
-	RoleKetoan = "ketoan" // kế toán: thanh toán
-	RoleSale   = "sale"   // sale: chỉ xem bản đồ, dự án, nhà thầu (không thấy CTV, không thấy tiền)
+	RoleCTV     = "ctv"     // cộng tác viên: dùng app điện thoại
+	RoleAdmin   = "admin"   // duyệt hồ sơ, quản lý
+	RoleKetoan  = "ketoan"  // kế toán: thanh toán
+	RoleSale    = "sale"    // sale: chỉ xem bản đồ, dự án, nhà thầu (không thấy CTV, không thấy tiền)
+	RoleNhaThau = "nhathau" // nhà thầu: app, tự đăng dự án + nhật ký thi công (đợt 1, 23/11/2026)
 )
 
 // Trạng thái khoá tài khoản.

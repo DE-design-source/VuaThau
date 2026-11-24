@@ -190,7 +190,7 @@ func (s *authService) PhoneLogin(ctx context.Context, raw string) (*PhoneResult,
 	if err != nil {
 		return nil, fmt.Errorf("find user: %w", err)
 	}
-	if u.Role != model.RoleCTV {
+	if u.Role != model.RoleCTV && u.Role != model.RoleNhaThau { // CTV và nhà thầu vào app bằng SĐT
 		return nil, fail(ErrForbidden, "Tài khoản nhân viên đăng nhập trên web bằng mật khẩu.")
 	}
 	if u.Locked == model.LockedDeleted {
