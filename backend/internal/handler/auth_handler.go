@@ -43,15 +43,17 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	ok(w, res)
 }
 
-// Phone handles POST /api/v1/auth/phone {phone}: app CTV vào bằng SĐT
+// Phone handles POST /api/v1/auth/phone {phone, as}: CTV / nhà thầu vào bằng SĐT.
+// as = "ctv" | "nhathau" (nút chọn ở màn đăng nhập); trống: app cũ, không kiểm vai trò.
 func (h *AuthHandler) Phone(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Phone string `json:"phone"`
+		As    string `json:"as"`
 	}
 	if !bodyOr400(w, r, &in) {
 		return
 	}
-	res, err := h.svc.PhoneLogin(r.Context(), in.Phone)
+	res, err := h.svc.PhoneLogin(r.Context(), in.Phone, in.As)
 	if err != nil {
 		writeServiceError(w, err)
 		return

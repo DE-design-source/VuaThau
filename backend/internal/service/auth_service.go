@@ -64,7 +64,8 @@ type AuthService interface {
 	Login(ctx context.Context, in LoginInput) (*AuthResult, error)
 	Google(ctx context.Context, idToken string) (*GoogleResult, error)
 	// PhoneLogin: CTV vào app chỉ bằng SĐT (góp ý 20/11/2026), không mật khẩu.
-	PhoneLogin(ctx context.Context, phone string) (*PhoneResult, error)
+	// as: vai trò người dùng chọn ở màn đăng nhập ("ctv" | "nhathau"); trống: không kiểm (app cũ).
+	PhoneLogin(ctx context.Context, phone, as string) (*PhoneResult, error)
 	// Issue cấp token mới cho người dùng (sau khi đổi mật khẩu).
 	Issue(u *model.User) (*AuthResult, error)
 }
@@ -178,13 +179,14 @@ func (s *authService) Login(ctx context.Context, in LoginInput) (*AuthResult, er
 
 // PhoneLogin: SĐT có tài khoản CTV thì vào luôn; chưa có thì báo app sang Đăng ký. Tài khoản nhân viên vẫn dùng mật khẩu.
 // Ai biết SĐT cũng vào được, nên CTV không tự đổi ngân hàng khi đã có (UserService.UpdateBank), phải nhờ admin.
-func (s *authService) PhoneLogin(ctx context.Context, raw string) (*PhoneResult, error) {
+func (s *authService) PhoneLogin(ctx context.Context, raw, as string) (*PhoneResult, error) {
 	phone := normPhone(raw)
 	if !ValidPhone(phone) {
 		return nil, fail(ErrInvalidInput, "Số điện thoại chưa đúng, nhập 10 số, ví dụ 0912345678.")
 	}
 	u, err := s.repo.FindByLogin(ctx, phone)
 	if errors.Is(err, repository.ErrNotFound) {
+		// nhà thầu không tự đăng ký trong app (admin thêm / form đăng ký nhà thầu): app hiện nút Đăng ký nhà thầu
 		return &PhoneResult{Registered: false, Phone: phone}, nil
 	}
 	if err != nil {
@@ -192,6 +194,13 @@ func (s *authService) PhoneLogin(ctx context.Context, raw string) (*PhoneResult,
 	}
 	if u.Role != model.RoleCTV && u.Role != model.RoleNhaThau { // CTV và nhà thầu vào app bằng SĐT
 		return nil, fail(ErrForbidden, "Tài khoản nhân viên đăng nhập trên web bằng mật khẩu.")
+	}
+	// chọn nhầm vai trò ở màn đăng nhập: báo rõ, không vào nhầm giao diện
+	switch {
+	case as == model.RoleNhaThau && u.Role == model.RoleCTV:
+		return nil, fail(ErrConflict, "Số %s là tài khoản Cộng tác viên. Chọn \"Cộng tác viên\" để đăng nhập.", phone)
+	case as == model.RoleCTV && u.Role == model.RoleNhaThau:
+		return nil, fail(ErrConflict, "Số %s là tài khoản Nhà thầu. Chọn \"Nhà thầu\" để đăng nhập.", phone)
 	}
 	if u.Locked == model.LockedDeleted {
 		return nil, fail(ErrLocked, "Tài khoản của số này đã xoá. Liên hệ admin Vua Thầu để mở lại.")

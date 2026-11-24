@@ -12,6 +12,13 @@ import (
 type PaymentHandler struct {
 	svc            service.PaymentService
 	googleClientID string
+	ntForm         string // form đăng ký nhà thầu (Lark): màn đăng nhập chọn "Nhà thầu" mà SĐT chưa có tài khoản
+}
+
+// WithNTForm: link form đăng ký nhà thầu trả trong /config (nt_form).
+func (h *PaymentHandler) WithNTForm(url string) *PaymentHandler {
+	h.ntForm = url
+	return h
 }
 
 func NewPaymentHandler(svc service.PaymentService, googleClientID string) *PaymentHandler {
@@ -31,7 +38,10 @@ func (h *PaymentHandler) Config(w http.ResponseWriter, r *http.Request) {
 		writeServiceError(w, err)
 		return
 	}
-	ok(w, c)
+	ok(w, struct {
+		*service.Config
+		NTForm string `json:"nt_form"`
+	}{c, h.ntForm})
 }
 
 // Settings handles GET /api/v1/settings

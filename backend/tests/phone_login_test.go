@@ -55,6 +55,20 @@ func TestPhoneLogin(t *testing.T) {
 	tok := d.AccessToken
 	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/me", tok, nil), http.StatusOK)
 
+	// màn đăng nhập có nút chọn vai trò: CTV chọn "Nhà thầu" -> 409 kèm hướng dẫn; chọn đúng thì vào
+	r = e.do(t, http.MethodPost, "/api/v1/auth/phone", "", map[string]string{"phone": phone, "as": "nhathau"})
+	expectStatus(t, r, http.StatusConflict)
+	if !strings.Contains(string(r.Raw), "Cộng tác viên") {
+		t.Fatalf("chọn nhầm vai trò: %s", r.Raw)
+	}
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/auth/phone", "", map[string]string{"phone": phone, "as": "ctv"}), http.StatusOK)
+	// nhà thầu chọn "Cộng tác viên" -> 409
+	ntAdmin := e.staff(t, model.RoleAdmin)
+	ntPhone := e.newPhone()
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/admin/nt", ntAdmin.AccessToken, map[string]string{"phone": ntPhone, "name": "NT"}), http.StatusOK)
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/auth/phone", "", map[string]string{"phone": ntPhone, "as": "ctv"}), http.StatusConflict)
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/auth/phone", "", map[string]string{"phone": ntPhone, "as": "nhathau"}), http.StatusOK)
+
 	// SĐT sai
 	r, _ = phoneLogin("12345")
 	expectStatus(t, r, http.StatusBadRequest)

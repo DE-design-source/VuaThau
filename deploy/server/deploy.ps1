@@ -35,13 +35,18 @@ Lf "$root\deploy\server\api\Dockerfile" "$stage\Dockerfile"
 Lf "$root\deploy\server\docker-compose.yml" "$stage\docker-compose.yml"
 Get-ChildItem "$root\backend\migrations\*.sql" | ForEach-Object { Lf $_.FullName "$stage\migrations\$($_.Name)" }
 
+Write-Host "== đóng gói (nén gzip: mạng tải lên chậm, gói nén nhỏ hơn ~3 lần)"
+# gói = đúng cây thư mục api.new trên máy chủ: Dockerfile, bin/, migrations/, web/ (+ web/app/)
+Copy-Item -Recurse "$root\frontend\dist" "$stage\web"
+if ($withApp) { Copy-Item -Recurse "$app\build\web" "$stage\web\app" }
+$pkg = Join-Path $env:TEMP "vtnt-deploy.tgz"
+Remove-Item -Force $pkg -ErrorAction SilentlyContinue
+tar.exe -czf $pkg -C $stage Dockerfile bin migrations web; if ($LASTEXITCODE) { throw "đóng gói lỗi" }
+Write-Host ("   gói {0:N1} MB" -f ((Get-Item $pkg).Length / 1MB))
+
 Write-Host "== tải lên $HostName`:$Dir"
-ssh $HostName "rm -rf $Dir/api.new && mkdir -p $Dir/api.new/bin $Dir/api.new/migrations"
-scp -q "$stage\Dockerfile" "${HostName}:$Dir/api.new/"
-scp -q "$stage\bin\api" "$stage\bin\ntctl" "${HostName}:$Dir/api.new/bin/"
-scp -q "$stage\migrations\*" "${HostName}:$Dir/api.new/migrations/"
-scp -q -r "$root\frontend\dist" "${HostName}:$Dir/api.new/web"
-if ($withApp) { scp -q -r "$app\build\web" "${HostName}:$Dir/api.new/web/app" }
+scp -q $pkg "${HostName}:/tmp/vtnt-deploy.tgz"; if ($LASTEXITCODE) { throw "tải gói lên lỗi" }
+ssh $HostName "set -e; rm -rf $Dir/api.new && mkdir -p $Dir/api.new && tar -xzf /tmp/vtnt-deploy.tgz -C $Dir/api.new && rm -f /tmp/vtnt-deploy.tgz"; if ($LASTEXITCODE) { throw "giải nén trên máy chủ lỗi" }
 scp -q "$stage\docker-compose.yml" "${HostName}:$Dir/docker-compose.yml"
 
 Write-Host "== dựng image, chạy migration, khởi động lại"

@@ -59,6 +59,7 @@ func New(d Deps) http.Handler {
 		mux.Handle("POST /api/v1/contractors/sync", role(nt.Sync, model.RoleAdmin))
 	}
 	mux.HandleFunc("GET /api/v1/public/geo/search", h.PublicSearchPlace)
+	mux.HandleFunc("GET /api/v1/geo/divisions", handler.Divisions) // 34 tỉnh + phường / xã 2025 (form Đăng dự án)
 
 	// Tải app Android (link gửi qua Zalo) + cấu hình cho app Expo cũ (để nó mời tải app mới)
 	dl := handler.NewDownloadHandler(d.Config.DataDir, p)
@@ -81,8 +82,13 @@ func New(d Deps) http.Handler {
 		mux.Handle("GET /api/v1/nt/projects/{id}", role(nt.Project, nth, model.RoleAdmin))
 		mux.Handle("PUT /api/v1/nt/projects/{id}", role(nt.UpdateProject, nth))
 		mux.Handle("DELETE /api/v1/nt/projects/{id}", role(nt.DeleteProject, nth))
+		mux.Handle("POST /api/v1/nt/projects/{id}/photos", role(nt.AddProjectPhotos, nth))
 		mux.Handle("POST /api/v1/nt/projects/{id}/logs", role(nt.AddLog, nth))
 		mux.Handle("DELETE /api/v1/nt/projects/{id}/logs/{lid}", role(nt.DeleteLog, nth))
+		mux.Handle("GET /api/v1/nt/projects/{id}/logs/{lid}/report", role(nt.Report, nth))
+		// báo cáo gửi chủ nhà: link công khai /bc/<mã> (mã có chữ ký), không cần đăng nhập
+		mux.HandleFunc("GET /api/v1/public/bc/{code}", nt.PublicReport)
+		mux.HandleFunc("GET /api/v1/public/bc/{code}/photos/{mid}", nt.PublicReportPhoto)
 		mux.Handle("GET /api/v1/nt/photos/{id}", role(nt.Photo, nth, model.RoleAdmin))
 		mux.HandleFunc("GET /api/v1/nt/videos/{id}", nt.Video)
 		mux.Handle("GET /api/v1/admin/nt", role(nt.Contractors, model.RoleAdmin))
@@ -101,7 +107,7 @@ func New(d Deps) http.Handler {
 	mux.Handle("GET /api/v1/ctv/income", role(h.Income, ctv))
 	mux.Handle("GET /api/v1/ctv/map", role(h.CTVMap, ctv))
 	mux.Handle("GET /api/v1/geo/search", role(h.SearchPlace, ctv, admin, ketoan, sale))
-	mux.Handle("GET /api/v1/geocode", role(h.Geocode, ctv))
+	mux.Handle("GET /api/v1/geocode", role(h.Geocode, ctv, model.RoleNhaThau)) // nhà thầu: Ghim trên bản đồ (chỉ trả địa chỉ)
 	mux.Handle("POST /api/v1/photos/check", role(h.CheckPhoto, ctv))
 	mux.Handle("POST /api/v1/houses", role(h.Create, ctv))
 	mux.Handle("PUT /api/v1/houses/{id}", role(h.Save, ctv))

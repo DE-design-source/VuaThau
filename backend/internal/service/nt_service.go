@@ -13,8 +13,10 @@ import (
 	"strings"
 	"time"
 
+	"vuathau/backend/internal/integration/geo"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/imaging"
+	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/repository"
 	"vuathau/backend/internal/storage"
 )
@@ -36,6 +38,7 @@ type NTService struct {
 	auth     repository.AuthRepository
 	files    *storage.Files
 	logs     repository.LogRepository
+	geo      NTGeocoder
 	mediaKey []byte
 	now      func() time.Time
 }
@@ -136,7 +139,10 @@ func (s *NTService) Projects(ctx context.Context, u *model.User, status string) 
 
 type NTProjectInput struct {
 	Name     string   `json:"name"`
-	Address  string   `json:"address"`
+	Address  string   `json:"address"`  // địa chỉ 1 dòng (app cũ); có province thì bỏ qua, ghép từ 3 ô dưới
+	Province string   `json:"province"` // form Đăng dự án: tỉnh / thành
+	Ward     string   `json:"ward"`     // phường / xã / đặc khu (đúng danh sách 2025)
+	Street   string   `json:"street"`   // số nhà, tên đường
 	Kind     string   `json:"kind"`
 	Status   string   `json:"status"`
 	Progress *int     `json:"progress"`
@@ -144,14 +150,64 @@ type NTProjectInput struct {
 	Lng      *float64 `json:"lng"`
 }
 
+// NTGeocoder: tra toạ độ từ địa chỉ dự án khi nhà thầu không ghim trên bản đồ.
+type NTGeocoder interface {
+	Search(ctx context.Context, q string) ([]geo.Place, error)
+}
+
+// WithGeo: bật tra toạ độ theo địa chỉ (nil: tắt).
+func (s *NTService) WithGeo(g NTGeocoder) *NTService {
+	s.geo = g
+	return s
+}
+
+// address: điền địa chỉ dự án theo form (tỉnh + phường bắt buộc, đúng danh sách sau sắp xếp 2025).
+func (s *NTService) address(p *repository.NTProject, in NTProjectInput) error {
+	if strings.TrimSpace(in.Province) == "" && strings.TrimSpace(in.Ward) == "" {
+		p.Address = truncate(in.Address, MaxAddressLen) // app cũ: 1 ô địa chỉ
+		return nil
+	}
+	prov, ward, ok := province.Ward(in.Province, in.Ward)
+	if prov == "" {
+		return fail(ErrInvalidInput, "Chọn tỉnh / thành phố.")
+	}
+	if !ok {
+		return fail(ErrInvalidInput, "Chọn phường / xã thuộc %s.", prov)
+	}
+	p.Province, p.Ward, p.Street = prov, ward, truncate(in.Street, 200)
+	p.Address = truncate(province.Join(p.Street, p.Ward, p.Province), MaxAddressLen)
+	return nil
+}
+
+// locate: chưa ghim trên bản đồ thì tra toạ độ theo địa chỉ (lỗi / không ra: để trống, nhật ký đầu tiên có GPS sẽ điền).
+func (s *NTService) locate(ctx context.Context, p *repository.NTProject) {
+	if s.geo == nil || p.Lat != nil || strings.TrimSpace(p.Address) == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	places, err := s.geo.Search(ctx, p.Address)
+	if err != nil || len(places) == 0 {
+		return
+	}
+	lat, lng := places[0].Lat, places[0].Lng
+	if validLatLng(&lat, &lng) {
+		p.Lat, p.Lng = &lat, &lng
+	}
+}
+
 func (s *NTService) CreateProject(ctx context.Context, u *model.User, in NTProjectInput) (*repository.NTProject, error) {
-	p := &repository.NTProject{UserID: u.ID, Name: truncate(in.Name, 200), Address: truncate(in.Address, MaxAddressLen), Kind: truncate(in.Kind, 60)}
+	p := &repository.NTProject{UserID: u.ID, Name: truncate(in.Name, 200), Kind: truncate(in.Kind, 60)}
 	if p.Name == "" {
 		return nil, fail(ErrInvalidInput, "Cần tên dự án, ví dụ: Nhà phố Thủ Đức.")
+	}
+	if err := s.address(p, in); err != nil {
+		return nil, err
 	}
 	if validLatLng(in.Lat, in.Lng) {
 		p.Lat, p.Lng = in.Lat, in.Lng
 	}
+	s.locate(ctx, p)
 	if err := s.repo.CreateProject(ctx, p); err != nil {
 		return nil, err
 	}
@@ -170,7 +226,10 @@ func (s *NTService) UpdateProject(ctx context.Context, u *model.User, id int64, 
 	if n := truncate(in.Name, 200); n != "" {
 		p.Name = n
 	}
-	p.Address = truncate(in.Address, MaxAddressLen)
+	oldAddr := p.Address
+	if err := s.address(p, in); err != nil {
+		return nil, err
+	}
 	p.Kind = truncate(in.Kind, 60)
 	if in.Progress != nil {
 		p.Progress = min(max(*in.Progress, 0), 100)
@@ -186,6 +245,9 @@ func (s *NTService) UpdateProject(ctx context.Context, u *model.User, id int64, 
 	}
 	if validLatLng(in.Lat, in.Lng) {
 		p.Lat, p.Lng = in.Lat, in.Lng
+	} else if p.Address != oldAddr {
+		p.Lat, p.Lng = nil, nil // đổi địa chỉ mà không ghim lại: tra lại toạ độ
+		s.locate(ctx, p)
 	}
 	if err := s.repo.UpdateProject(ctx, p); err != nil {
 		return nil, err
@@ -206,6 +268,7 @@ func (s *NTService) DeleteProject(ctx context.Context, u *model.User, id int64) 
 
 type NTProjectDetail struct {
 	Project *repository.NTProject `json:"project"`
+	Photos  []repository.NTMedia  `json:"photos"` // ảnh dự án (form Đăng dự án), ảnh bìa trước
 	Logs    []repository.NTLog    `json:"logs"`
 	Days    int                   `json:"days"` // ngày thi công thứ mấy (hoặc tổng số ngày nếu đã xong)
 }
@@ -228,7 +291,186 @@ func (s *NTService) Project(ctx context.Context, u *model.User, id int64) (*NTPr
 			s.sign(&logs[i].Media[j])
 		}
 	}
-	return &NTProjectDetail{Project: p, Logs: logs, Days: int(end.Sub(p.StartedOn).Hours()/24) + 1}, nil
+	photos, err := s.repo.ProjectPhotos(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &NTProjectDetail{Project: p, Photos: photos, Logs: logs, Days: int(end.Sub(p.StartedOn).Hours()/24) + 1}, nil
+}
+
+// MaxNTProjectPhotos: ảnh dự án tối đa (thiết kế: "Ảnh bìa đặt ở ô đầu tiên · tối đa 20 ảnh").
+const MaxNTProjectPhotos = 20
+
+// AddProjectPhotos: ảnh dự án (form Đăng dự án), các phần "files" theo thứ tự (ảnh đầu = ảnh bìa nếu dự án chưa có ảnh).
+func (s *NTService) AddProjectPhotos(ctx context.Context, u *model.User, id int64, next func() (*NTPart, error)) (*NTLogResult, error) {
+	p, err := s.mine(ctx, u, id)
+	if err != nil {
+		return nil, err
+	}
+	have, err := s.repo.ProjectPhotos(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	res := &NTLogResult{Skipped: []string{}}
+	for {
+		part, err := next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, fail(ErrInvalidInput, "Không đọc được ảnh gửi lên.")
+		}
+		if part.Field != "files" {
+			continue
+		}
+		if len(have)+res.Photos >= MaxNTProjectPhotos {
+			res.Skipped = append(res.Skipped, fmt.Sprintf("%s: dự án đã đủ %d ảnh", part.Name, MaxNTProjectPhotos))
+			continue
+		}
+		data, err := io.ReadAll(io.LimitReader(part.Body, MaxFileBytes+1))
+		if err != nil {
+			return nil, fail(ErrInvalidInput, "Không đọc được ảnh gửi lên.")
+		}
+		if len(data) > MaxFileBytes {
+			res.Skipped = append(res.Skipped, part.Name+": ảnh quá 20MB")
+			continue
+		}
+		if _, _, err := imaging.Probe(data); err != nil {
+			res.Skipped = append(res.Skipped, part.Name+": không phải ảnh")
+			continue
+		}
+		sum := sha256.Sum256(data)
+		sha := hex.EncodeToString(sum[:])
+		if err := s.files.SavePhoto(sha, data, nil); err != nil {
+			return nil, err
+		}
+		if err := s.repo.AddMedia(ctx, &repository.NTMedia{ProjectID: p.ID, Kind: "photo", SHA256: sha, Mime: "image/jpeg", Size: int64(len(data))}); err != nil {
+			if errors.Is(err, repository.ErrDuplicate) {
+				res.Skipped = append(res.Skipped, part.Name+": ảnh đã có trong dự án")
+				continue
+			}
+			return nil, err
+		}
+		res.Photos++
+	}
+	if res.Photos == 0 && len(res.Skipped) > 0 {
+		return nil, fail(ErrInvalidInput, "Không ảnh nào được nhận: %s", strings.Join(res.Skipped, "; "))
+	}
+	res.Message = fmt.Sprintf("Đã thêm %d ảnh cho dự án %s.", res.Photos, p.Name)
+	return res, nil
+}
+
+// ---------- Báo cáo gửi chủ nhà ----------
+// Mỗi nhật ký có 1 link công khai /bc/<mã> (mã = id nhật ký + chữ ký, không hết hạn): chủ nhà mở xem ảnh thực tế,
+// không cần đăng nhập. Không lưu gì thêm; xoá nhật ký / dự án thì link hết hiệu lực.
+
+func (s *NTService) reportSig(logID int64) string {
+	m := hmac.New(sha256.New, s.mediaKey)
+	fmt.Fprintf(m, "bc.%d", logID)
+	return hex.EncodeToString(m.Sum(nil))[:12]
+}
+
+// ReportCode: mã báo cáo của nhật ký, dạng "<id>-<chữ ký>".
+func (s *NTService) ReportCode(logID int64) string {
+	return fmt.Sprintf("%d-%s", logID, s.reportSig(logID))
+}
+
+func (s *NTService) reportLog(code string) (int64, bool) {
+	id, sig, ok := strings.Cut(code, "-")
+	n, err := strconv.ParseInt(id, 10, 64)
+	return n, ok && err == nil && n > 0 && hmac.Equal([]byte(sig), []byte(s.reportSig(n)))
+}
+
+type NTReportLink struct {
+	Code string `json:"code"`
+	Path string `json:"path"` // /bc/<mã>: app ghép với tên miền đang dùng
+}
+
+// Report: link báo cáo của 1 nhật ký (chủ dự án).
+func (s *NTService) Report(ctx context.Context, u *model.User, projectID, logID int64) (*NTReportLink, error) {
+	if _, err := s.mine(ctx, u, projectID); err != nil {
+		return nil, err
+	}
+	l, err := s.repo.Log(ctx, logID)
+	if errors.Is(err, repository.ErrNotFound) || (err == nil && l.ProjectID != projectID) {
+		return nil, fail(ErrNotFound, "Không tìm thấy nhật ký.")
+	}
+	if err != nil {
+		return nil, err
+	}
+	c := s.ReportCode(l.ID)
+	return &NTReportLink{Code: c, Path: "/bc/" + c}, nil
+}
+
+// NTPublicReport: trang báo cáo công khai (chủ nhà xem). Không có SĐT / tài khoản nhà thầu.
+type NTPublicReport struct {
+	Company  string    `json:"company"`
+	Verified bool      `json:"verified"`
+	Project  string    `json:"project"`
+	Address  string    `json:"address"`
+	Kind     string    `json:"kind"`
+	Status   string    `json:"status"`
+	Progress int       `json:"progress"`
+	Note     string    `json:"note"`
+	TakenAt  time.Time `json:"taken_at"`
+	GPS      bool      `json:"gps"` // ảnh có toạ độ GPS + giờ chụp in trên ảnh
+	Photos   []string  `json:"photos"`
+	Videos   int       `json:"videos"`
+}
+
+func (s *NTService) PublicReport(ctx context.Context, code string) (*NTPublicReport, error) {
+	id, ok := s.reportLog(code)
+	if !ok {
+		return nil, fail(ErrNotFound, "Link báo cáo không đúng.")
+	}
+	l, err := s.repo.Log(ctx, id)
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, fail(ErrNotFound, "Báo cáo này không còn.")
+	}
+	if err != nil {
+		return nil, err
+	}
+	p, err := s.repo.Project(ctx, l.ProjectID)
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, fail(ErrNotFound, "Báo cáo này không còn.")
+	}
+	if err != nil {
+		return nil, err
+	}
+	prof, err := s.repo.Profile(ctx, p.UserID)
+	if err != nil {
+		return nil, err
+	}
+	r := &NTPublicReport{Company: prof.Company, Verified: prof.Verified, Project: p.Name, Address: p.Address, Kind: p.Kind,
+		Status: p.Status, Progress: p.Progress, Note: l.Note, TakenAt: l.TakenAt, GPS: l.Lat != nil, Photos: []string{}}
+	for _, m := range l.Media {
+		if m.Kind == "photo" {
+			r.Photos = append(r.Photos, fmt.Sprintf("/api/v1/public/bc/%s/photos/%d", code, m.ID))
+		} else {
+			r.Videos++
+		}
+	}
+	return r, nil
+}
+
+// PublicReportPhoto: ảnh của báo cáo (chỉ ảnh thuộc đúng nhật ký trong mã).
+func (s *NTService) PublicReportPhoto(ctx context.Context, code string, mediaID int64, small bool) ([]byte, error) {
+	id, ok := s.reportLog(code)
+	if !ok {
+		return nil, fail(ErrNotFound, "Không tìm thấy ảnh.")
+	}
+	m, err := s.repo.Media(ctx, mediaID)
+	if errors.Is(err, repository.ErrNotFound) || (err == nil && (m.LogID != id || m.Kind != "photo")) {
+		return nil, fail(ErrNotFound, "Không tìm thấy ảnh.")
+	}
+	if err != nil {
+		return nil, err
+	}
+	b, err := s.files.ReadPhoto(m.SHA256, small)
+	if err != nil {
+		return nil, fail(ErrNotFound, "Không tìm thấy file ảnh.")
+	}
+	return b, nil
 }
 
 // ---------- Nhật ký ----------

@@ -28,6 +28,9 @@ type NTProject struct {
 	UserID     int64      `json:"user_id"`
 	Name       string     `json:"name"`
 	Address    string     `json:"address"`
+	Province   string     `json:"province"` // tỉnh / thành (form Đăng dự án)
+	Ward       string     `json:"ward"`     // phường / xã / đặc khu
+	Street     string     `json:"street"`   // số nhà, tên đường
 	Kind       string     `json:"kind"`
 	Status     string     `json:"status"` // dang_thi_cong | hoan_thanh
 	Progress   int        `json:"progress"`
@@ -42,7 +45,7 @@ type NTProject struct {
 	Photos  int        `json:"photos"`
 	Videos  int        `json:"videos"`
 	LastLog *time.Time `json:"last_log"`
-	Cover   *int64     `json:"cover"` // id ảnh mới nhất
+	Cover   *int64     `json:"cover"` // ảnh bìa: ảnh dự án đầu tiên, không có thì ảnh nhật ký mới nhất
 }
 
 type NTLog struct {
@@ -58,7 +61,7 @@ type NTLog struct {
 
 type NTMedia struct {
 	ID        int64  `json:"id"`
-	LogID     int64  `json:"log_id"`
+	LogID     int64  `json:"log_id"` // 0: ảnh dự án (form Đăng dự án), không thuộc nhật ký nào
 	ProjectID int64  `json:"project_id"`
 	Kind      string `json:"kind"` // photo | video
 	SHA256    string `json:"-"`
@@ -81,6 +84,10 @@ type NTRepository interface {
 	DeleteLog(ctx context.Context, id int64) error
 	AddMedia(ctx context.Context, m *NTMedia) error
 	Media(ctx context.Context, id int64) (*NTMedia, error)
+	// ProjectPhotos: ảnh dự án (không thuộc nhật ký), ảnh bìa trước
+	ProjectPhotos(ctx context.Context, projectID int64) ([]NTMedia, error)
+	// Log: 1 nhật ký kèm ảnh / video (báo cáo gửi chủ nhà)
+	Log(ctx context.Context, id int64) (*NTLog, error)
 	// Contractors: mọi tài khoản nhà thầu (trang admin)
 	Contractors(ctx context.Context) ([]NTContractor, error)
 }
@@ -124,18 +131,19 @@ func (r *ntRepository) UpsertProfile(ctx context.Context, p *NTProfile) error {
 	return err
 }
 
-const ntProjectSelect = `SELECT p.id, p.user_id, p.name, p.address, p.kind, p.status, p.progress, p.started_on, p.finished_on, p.lat, p.lng,
+const ntProjectSelect = `SELECT p.id, p.user_id, p.name, p.address, p.province, p.ward, p.street, p.kind, p.status, p.progress, p.started_on, p.finished_on, p.lat, p.lng,
 	p.created_at, p.updated_at,
 	(SELECT COUNT(*) FROM nt_logs l WHERE l.project_id = p.id),
 	(SELECT COUNT(*) FROM nt_media m WHERE m.project_id = p.id AND m.kind = 'photo'),
 	(SELECT COUNT(*) FROM nt_media m WHERE m.project_id = p.id AND m.kind = 'video'),
 	(SELECT MAX(l.taken_at) FROM nt_logs l WHERE l.project_id = p.id),
-	(SELECT m.id FROM nt_media m JOIN nt_logs l ON l.id = m.log_id WHERE m.project_id = p.id AND m.kind = 'photo' ORDER BY l.taken_at DESC, m.id DESC LIMIT 1)
+	(SELECT m.id FROM nt_media m LEFT JOIN nt_logs l ON l.id = m.log_id WHERE m.project_id = p.id AND m.kind = 'photo'
+		ORDER BY (m.log_id IS NULL) DESC, CASE WHEN m.log_id IS NULL THEN m.id END ASC, l.taken_at DESC, m.id DESC LIMIT 1)
 	FROM nt_projects p`
 
 func scanNTProject(row pgx.Row) (*NTProject, error) {
 	var p NTProject
-	err := row.Scan(&p.ID, &p.UserID, &p.Name, &p.Address, &p.Kind, &p.Status, &p.Progress, &p.StartedOn, &p.FinishedOn, &p.Lat, &p.Lng,
+	err := row.Scan(&p.ID, &p.UserID, &p.Name, &p.Address, &p.Province, &p.Ward, &p.Street, &p.Kind, &p.Status, &p.Progress, &p.StartedOn, &p.FinishedOn, &p.Lat, &p.Lng,
 		&p.CreatedAt, &p.UpdatedAt, &p.Logs, &p.Photos, &p.Videos, &p.LastLog, &p.Cover)
 	return &p, err
 }
@@ -167,15 +175,15 @@ func (r *ntRepository) Project(ctx context.Context, id int64) (*NTProject, error
 }
 
 func (r *ntRepository) CreateProject(ctx context.Context, p *NTProject) error {
-	return r.db.QueryRow(ctx, `INSERT INTO nt_projects (user_id, name, address, kind, lat, lng) VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, status, progress, started_on, created_at, updated_at`, p.UserID, p.Name, p.Address, p.Kind, p.Lat, p.Lng).
+	return r.db.QueryRow(ctx, `INSERT INTO nt_projects (user_id, name, address, province, ward, street, kind, lat, lng) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id, status, progress, started_on, created_at, updated_at`, p.UserID, p.Name, p.Address, p.Province, p.Ward, p.Street, p.Kind, p.Lat, p.Lng).
 		Scan(&p.ID, &p.Status, &p.Progress, &p.StartedOn, &p.CreatedAt, &p.UpdatedAt)
 }
 
 func (r *ntRepository) UpdateProject(ctx context.Context, p *NTProject) error {
 	_, err := r.db.Exec(ctx, `UPDATE nt_projects SET name = $2, address = $3, kind = $4, status = $5, progress = $6, finished_on = $7,
-		lat = COALESCE($8, lat), lng = COALESCE($9, lng), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`,
-		p.ID, p.Name, p.Address, p.Kind, p.Status, p.Progress, p.FinishedOn, p.Lat, p.Lng)
+		lat = COALESCE($8, lat), lng = COALESCE($9, lng), province = $10, ward = $11, street = $12, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`,
+		p.ID, p.Name, p.Address, p.Kind, p.Status, p.Progress, p.FinishedOn, p.Lat, p.Lng, p.Province, p.Ward, p.Street)
 	return err
 }
 
@@ -205,7 +213,7 @@ func (r *ntRepository) Logs(ctx context.Context, projectID int64) ([]NTLog, erro
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	mr, err := r.db.Query(ctx, `SELECT id, log_id, project_id, kind, sha256, mime, size FROM nt_media WHERE project_id = $1 ORDER BY id`, projectID)
+	mr, err := r.db.Query(ctx, `SELECT id, log_id, project_id, kind, sha256, mime, size FROM nt_media WHERE project_id = $1 AND log_id IS NOT NULL ORDER BY id`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +254,7 @@ func (r *ntRepository) DeleteLog(ctx context.Context, id int64) error {
 }
 
 func (r *ntRepository) AddMedia(ctx context.Context, m *NTMedia) error {
-	err := r.db.QueryRow(ctx, `INSERT INTO nt_media (log_id, project_id, kind, sha256, mime, size) VALUES ($1, $2, $3, $4, $5, $6)
+	err := r.db.QueryRow(ctx, `INSERT INTO nt_media (log_id, project_id, kind, sha256, mime, size) VALUES (NULLIF($1, 0), $2, $3, $4, $5, $6)
 		ON CONFLICT (project_id, sha256) DO NOTHING RETURNING id`, m.LogID, m.ProjectID, m.Kind, m.SHA256, m.Mime, m.Size).Scan(&m.ID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrDuplicate
@@ -256,13 +264,57 @@ func (r *ntRepository) AddMedia(ctx context.Context, m *NTMedia) error {
 
 func (r *ntRepository) Media(ctx context.Context, id int64) (*NTMedia, error) {
 	var m NTMedia
-	err := r.db.QueryRow(ctx, `SELECT m.id, m.log_id, m.project_id, m.kind, m.sha256, m.mime, m.size FROM nt_media m
+	err := r.db.QueryRow(ctx, `SELECT m.id, COALESCE(m.log_id, 0), m.project_id, m.kind, m.sha256, m.mime, m.size FROM nt_media m
 		JOIN nt_projects p ON p.id = m.project_id AND p.deleted_at IS NULL WHERE m.id = $1`, id).
 		Scan(&m.ID, &m.LogID, &m.ProjectID, &m.Kind, &m.SHA256, &m.Mime, &m.Size)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	return &m, err
+}
+
+func (r *ntRepository) ProjectPhotos(ctx context.Context, projectID int64) ([]NTMedia, error) {
+	rows, err := r.db.Query(ctx, `SELECT id, project_id, kind, sha256, mime, size FROM nt_media
+		WHERE project_id = $1 AND log_id IS NULL AND kind = 'photo' ORDER BY id`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []NTMedia{}
+	for rows.Next() {
+		var m NTMedia
+		if err := rows.Scan(&m.ID, &m.ProjectID, &m.Kind, &m.SHA256, &m.Mime, &m.Size); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func (r *ntRepository) Log(ctx context.Context, id int64) (*NTLog, error) {
+	l := NTLog{Media: []NTMedia{}}
+	err := r.db.QueryRow(ctx, `SELECT l.id, l.project_id, l.note, l.taken_at, l.lat, l.lng, l.address FROM nt_logs l
+		JOIN nt_projects p ON p.id = l.project_id AND p.deleted_at IS NULL WHERE l.id = $1`, id).
+		Scan(&l.ID, &l.ProjectID, &l.Note, &l.TakenAt, &l.Lat, &l.Lng, &l.Address)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.db.Query(ctx, `SELECT id, log_id, project_id, kind, sha256, mime, size FROM nt_media WHERE log_id = $1 ORDER BY id`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var m NTMedia
+		if err := rows.Scan(&m.ID, &m.LogID, &m.ProjectID, &m.Kind, &m.SHA256, &m.Mime, &m.Size); err != nil {
+			return nil, err
+		}
+		l.Media = append(l.Media, m)
+	}
+	return &l, rows.Err()
 }
 
 func (r *ntRepository) Contractors(ctx context.Context) ([]NTContractor, error) {

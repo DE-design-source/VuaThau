@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -203,4 +204,122 @@ func TestNhaThau(t *testing.T) {
 	if !found {
 		t.Fatalf("admin danh sách nhà thầu: %+v", al.Rows)
 	}
+}
+
+// Form "Đăng tải dự án mới" (thiết kế 24/11/2026): tỉnh + phường đúng danh sách 2025, ảnh dự án (ảnh đầu = ảnh bìa, tối đa 20),
+// và báo cáo gửi chủ nhà: link công khai /bc/<mã> chỉ xem được đúng nhật ký đó.
+func TestNhaThauFormVaBaoCao(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	admin := e.staff(t, model.RoleAdmin)
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/admin/nt", admin.AccessToken,
+		map[string]string{"phone": "0907555666", "name": "Anh Hưng", "company": "Smartcons"}), http.StatusOK)
+	r := e.do(t, http.MethodPost, "/api/v1/auth/phone", "", map[string]string{"phone": "0907555666"})
+	var lg struct {
+		AccessToken string `json:"access_token"`
+	}
+	decodeData(t, r, &lg)
+	tok := lg.AccessToken
+
+	// danh sách tỉnh / phường (công khai)
+	var divs []struct {
+		Name  string   `json:"name"`
+		Wards []string `json:"wards"`
+	}
+	hr, err := http.Get(e.srv.URL + "/api/v1/geo/divisions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = json.NewDecoder(hr.Body).Decode(&divs)
+	_ = hr.Body.Close()
+	if err != nil || len(divs) != 34 {
+		t.Fatalf("tỉnh: %d", len(divs))
+	}
+
+	// phường không thuộc tỉnh -> 400; thiếu tỉnh -> 400
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/nt/projects", tok,
+		map[string]string{"name": "Nhà phố anh Hưng", "province": "TP. Hồ Chí Minh", "ward": "Phường Ba Đình"}), http.StatusBadRequest)
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/nt/projects", tok,
+		map[string]string{"name": "Nhà phố anh Hưng", "province": "Không có", "ward": "Phường An Khánh"}), http.StatusBadRequest)
+
+	// đúng: tên tỉnh đầy đủ cũng nhận, địa chỉ ghép "số nhà, phường, tỉnh"
+	r = e.do(t, http.MethodPost, "/api/v1/nt/projects", tok, map[string]any{"name": "Nhà phố anh Hưng", "province": "Thành phố Hồ Chí Minh",
+		"ward": "phường an khánh", "street": "20 Nguyễn Thiện Thành", "kind": "Nhà phố", "lat": 10.78, "lng": 106.72})
+	expectStatus(t, r, http.StatusCreated)
+	var cp struct {
+		Project struct {
+			ID       int64  `json:"id"`
+			Address  string `json:"address"`
+			Province string `json:"province"`
+			Ward     string `json:"ward"`
+		} `json:"project"`
+	}
+	decodeData(t, r, &cp)
+	pid := cp.Project.ID
+	if cp.Project.Address != "20 Nguyễn Thiện Thành, Phường An Khánh, TP. Hồ Chí Minh" || cp.Project.Province != "TP. Hồ Chí Minh" || cp.Project.Ward != "Phường An Khánh" {
+		t.Fatalf("địa chỉ: %s", r.Raw)
+	}
+
+	// ảnh dự án: 2 ảnh, ảnh đầu là ảnh bìa
+	r = e.upload(t, fmt.Sprintf("/api/v1/nt/projects/%d/photos", pid), tok, "files", [][]byte{photo(t, 8801), photo(t, 8802)}, nil)
+	expectStatus(t, r, http.StatusCreated)
+	var det struct {
+		Project struct {
+			Cover *int64 `json:"cover"`
+		} `json:"project"`
+		Photos []struct {
+			ID int64 `json:"id"`
+		} `json:"photos"`
+	}
+	path := fmt.Sprintf("/api/v1/nt/projects/%d", pid)
+	decodeData(t, e.do(t, http.MethodGet, path, tok, nil), &det)
+	if len(det.Photos) != 2 || det.Project.Cover == nil || *det.Project.Cover != det.Photos[0].ID {
+		t.Fatalf("ảnh dự án: %+v", det)
+	}
+
+	// nhật ký rồi báo cáo; ảnh dự án vẫn là ảnh bìa
+	r = e.upload(t, fmt.Sprintf("/api/v1/nt/projects/%d/logs", pid), tok, "files", [][]byte{photo(t, 8803)}, map[string]string{"note": "Cốp pha. Lắp cốp pha cột tầng 2"})
+	expectStatus(t, r, http.StatusCreated)
+	var lr struct {
+		Log struct {
+			ID int64 `json:"id"`
+		} `json:"log"`
+	}
+	decodeData(t, r, &lr)
+	decodeData(t, e.do(t, http.MethodGet, path, tok, nil), &det)
+	if *det.Project.Cover != det.Photos[0].ID {
+		t.Fatalf("ảnh bìa đổi theo nhật ký: %+v", det)
+	}
+	var link struct {
+		Code string `json:"code"`
+		Path string `json:"path"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, fmt.Sprintf("%s/logs/%d/report", path, lr.Log.ID), tok, nil), &link)
+	if link.Code == "" || link.Path != "/bc/"+link.Code {
+		t.Fatalf("link báo cáo: %+v", link)
+	}
+	// chủ nhà mở link (không đăng nhập)
+	var rep struct {
+		Company string   `json:"company"`
+		Project string   `json:"project"`
+		Note    string   `json:"note"`
+		Photos  []string `json:"photos"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/public/bc/"+link.Code, "", nil), &rep)
+	if rep.Company != "Smartcons" || rep.Project != "Nhà phố anh Hưng" || len(rep.Photos) != 1 || rep.Note == "" {
+		t.Fatalf("báo cáo: %+v", rep)
+	}
+	if pr, err := http.Get(e.srv.URL + rep.Photos[0]); err != nil || pr.StatusCode != http.StatusOK || pr.Header.Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("ảnh báo cáo: %v %+v", err, pr)
+	} else {
+		_ = pr.Body.Close()
+	}
+	// ảnh dự án (không thuộc nhật ký) không xem được qua link báo cáo; mã sai -> 404
+	expectStatus(t, e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/public/bc/%s/photos/%d", link.Code, det.Photos[0].ID), "", nil), http.StatusNotFound)
+	expectStatus(t, e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/public/bc/%d-000000000000", lr.Log.ID), "", nil), http.StatusNotFound)
+	// nhà thầu khác không lấy được link báo cáo
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/admin/nt", admin.AccessToken, map[string]string{"phone": "0907555777", "name": "B"}), http.StatusOK)
+	r = e.do(t, http.MethodPost, "/api/v1/auth/phone", "", map[string]string{"phone": "0907555777"})
+	decodeData(t, r, &lg)
+	expectStatus(t, e.do(t, http.MethodGet, fmt.Sprintf("%s/logs/%d/report", path, lr.Log.ID), lg.AccessToken, nil), http.StatusNotFound)
 }

@@ -7,6 +7,7 @@ import (
 
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/response"
+	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/service"
 )
 
@@ -139,6 +140,90 @@ func (h *NTHandler) AddLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.Success(w, http.StatusCreated, res)
+}
+
+// AddProjectPhotos handles POST /api/v1/nt/projects/{id}/photos (multipart files): ảnh dự án, ảnh đầu = ảnh bìa.
+func (h *NTHandler) AddProjectPhotos(w http.ResponseWriter, r *http.Request) {
+	id, valid := idOr400(w, r, "id")
+	if !valid {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, int64(service.MaxNTProjectPhotos)*(service.MaxFileBytes+1<<20))
+	mr, err := r.MultipartReader()
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Không đọc được ảnh gửi lên.")
+		return
+	}
+	var part *multipart.Part
+	next := func() (*service.NTPart, error) {
+		if part != nil {
+			_ = part.Close()
+		}
+		p, err := mr.NextPart()
+		if err != nil {
+			return nil, err
+		}
+		part = p
+		return &service.NTPart{Field: p.FormName(), Name: p.FileName(), Mime: p.Header.Get("Content-Type"), Body: p}, nil
+	}
+	res, err := h.svc.AddProjectPhotos(r.Context(), me(r), id, next)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	response.Success(w, http.StatusCreated, res)
+}
+
+// Report handles GET /api/v1/nt/projects/{id}/logs/{lid}/report: link báo cáo gửi chủ nhà
+func (h *NTHandler) Report(w http.ResponseWriter, r *http.Request) {
+	id, valid := idOr400(w, r, "id")
+	if !valid {
+		return
+	}
+	lid, valid := idOr400(w, r, "lid")
+	if !valid {
+		return
+	}
+	res, err := h.svc.Report(r.Context(), me(r), id, lid)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, res)
+}
+
+// PublicReport handles GET /api/v1/public/bc/{code} (không cần đăng nhập)
+func (h *NTHandler) PublicReport(w http.ResponseWriter, r *http.Request) {
+	res, err := h.svc.PublicReport(r.Context(), r.PathValue("code"))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	ok(w, res)
+}
+
+// PublicReportPhoto handles GET /api/v1/public/bc/{code}/photos/{mid}?size=small
+func (h *NTHandler) PublicReportPhoto(w http.ResponseWriter, r *http.Request) {
+	mid, valid := idOr400(w, r, "mid")
+	if !valid {
+		return
+	}
+	b, err := h.svc.PublicReportPhoto(r.Context(), r.PathValue("code"), mid, r.URL.Query().Get("size") == "small")
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(b)
+}
+
+// Divisions handles GET /api/v1/geo/divisions: 34 tỉnh / thành + phường / xã (form Đăng dự án)
+func Divisions(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(province.WardsJSON)
 }
 
 // DeleteLog handles DELETE /api/v1/nt/projects/{id}/logs/{lid}
