@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"io"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -150,6 +151,64 @@ func (h *NTHandler) Sites(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ok(w, map[string]any{"rows": rows})
+}
+
+// SaveBranding handles PUT /api/v1/nt/branding {brand, size, badge}: Logo trên ảnh ({profile})
+func (h *NTHandler) SaveBranding(w http.ResponseWriter, r *http.Request) {
+	var in service.NTBrandingInput
+	if !bodyOr400(w, r, &in) {
+		return
+	}
+	p, err := h.svc.SaveBranding(r.Context(), me(r), in)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"profile": p, "message": "Đã lưu logo trên ảnh."})
+}
+
+// UploadLogo handles POST /api/v1/nt/logo (multipart "file", PNG / JPG tối đa 5MB) ({profile})
+func (h *NTHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 6<<20)
+	f, _, err := r.FormFile("file")
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Chọn file logo (PNG hoặc JPG, tối đa 5MB).")
+		return
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Không đọc được file logo.")
+		return
+	}
+	p, err := h.svc.SaveLogo(r.Context(), me(r), data)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"profile": p, "message": "Đã tải logo lên."})
+}
+
+// DeleteLogo handles DELETE /api/v1/nt/logo: bỏ logo, in tên thương hiệu dạng chữ
+func (h *NTHandler) DeleteLogo(w http.ResponseWriter, r *http.Request) {
+	p, err := h.svc.SaveLogo(r.Context(), me(r), nil)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"profile": p, "message": "Đã bỏ logo."})
+}
+
+// Logo handles GET /api/v1/nt/logo: file logo (app in lên ảnh)
+func (h *NTHandler) Logo(w http.ResponseWriter, r *http.Request) {
+	b, err := h.svc.Logo(r.Context(), me(r))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", http.DetectContentType(b))
+	w.Header().Set("Cache-Control", "private, no-cache")
+	_, _ = w.Write(b)
 }
 
 // Portfolio handles GET /api/v1/nt/portfolio: link hồ sơ năng lực công khai ({code, path})

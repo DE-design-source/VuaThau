@@ -1,12 +1,16 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/jpeg" // logo JPG
+	_ "image/png"  // logo PNG nền trong
 	"strconv"
 	"strings"
 	"time"
@@ -132,6 +136,77 @@ func (s *NTService) PublicPortfolioPhoto(ctx context.Context, code string, media
 	b, err := s.files.ReadPhoto(m.SHA256, small)
 	if err != nil {
 		return nil, fail(ErrNotFound, "Không tìm thấy file ảnh.")
+	}
+	return b, nil
+}
+
+// ---------- Logo trên ảnh ----------
+
+type NTBrandingInput struct {
+	Brand string `json:"brand"` // tên thương hiệu in trên ảnh khi chưa có logo (tối đa 20 ký tự)
+	Size  int    `json:"size"`  // 1 nhỏ, 2 vừa, 3 lớn
+	Badge bool   `json:"badge"` // giữ nhãn "Vua Thầu xác minh"
+}
+
+const maxBrandRunes = 20
+
+func (s *NTService) SaveBranding(ctx context.Context, u *model.User, in NTBrandingInput) (*repository.NTProfile, error) {
+	brand := strings.TrimSpace(in.Brand)
+	if r := []rune(brand); len(r) > maxBrandRunes {
+		return nil, fail(ErrInvalidInput, "Tên thương hiệu tối đa %d ký tự.", maxBrandRunes)
+	}
+	size := min(max(in.Size, 1), 3)
+	if err := s.repo.SaveBranding(ctx, u.ID, brand, "-", size, in.Badge); err != nil {
+		return nil, err
+	}
+	return s.repo.Profile(ctx, u.ID)
+}
+
+// maxLogoBytes: logo công ty tải lên (PNG nền trong / JPG).
+const maxLogoBytes = 5 << 20
+
+// SaveLogo: lưu logo công ty (giữ nguyên file, PNG nền trong vẫn trong). data nil: xoá logo.
+func (s *NTService) SaveLogo(ctx context.Context, u *model.User, data []byte) (*repository.NTProfile, error) {
+	prof, err := s.repo.Profile(ctx, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	sha := ""
+	if data != nil {
+		if len(data) > maxLogoBytes {
+			return nil, fail(ErrInvalidInput, "Logo quá 5MB.")
+		}
+		cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+		if err != nil {
+			return nil, fail(ErrInvalidInput, "File logo không phải ảnh (PNG hoặc JPG).")
+		}
+		if cfg.Width < 100 || cfg.Height < 100 {
+			return nil, fail(ErrInvalidInput, "Logo nhỏ quá (%dx%d), cần tối thiểu 300×300px để in rõ.", cfg.Width, cfg.Height)
+		}
+		sum := sha256.Sum256(data)
+		sha = hex.EncodeToString(sum[:])
+		if err := s.files.SavePhoto(sha, data, nil); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.repo.SaveBranding(ctx, u.ID, prof.Brand, sha, max(prof.LogoSize, 1), prof.ShowBadge); err != nil {
+		return nil, err
+	}
+	return s.repo.Profile(ctx, u.ID)
+}
+
+// Logo: file logo của nhà thầu (app tải về để in lên ảnh); chưa có: 404.
+func (s *NTService) Logo(ctx context.Context, u *model.User) ([]byte, error) {
+	prof, err := s.repo.Profile(ctx, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	if prof.LogoSHA == "" {
+		return nil, fail(ErrNotFound, "Chưa có logo.")
+	}
+	b, err := s.files.ReadPhoto(prof.LogoSHA, false)
+	if err != nil {
+		return nil, fail(ErrNotFound, "Không tìm thấy file logo.")
 	}
 	return b, nil
 }

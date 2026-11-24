@@ -21,6 +21,12 @@ type NTProfile struct {
 	Rating      float64  `json:"rating"`
 	Reviews     int      `json:"reviews"`
 	Views       int      `json:"views"`
+	// Logo trên ảnh: tên thương hiệu (in chữ khi chưa có logo), logo công ty, cỡ (1-3), giữ nhãn Vua Thầu xác minh
+	Brand     string `json:"brand"`
+	LogoSHA   string `json:"-"`
+	HasLogo   bool   `json:"has_logo"`
+	LogoSize  int    `json:"logo_size"`
+	ShowBadge bool   `json:"show_badge"`
 }
 
 type NTProject struct {
@@ -98,6 +104,8 @@ type NTRepository interface {
 	UserPhone(ctx context.Context, uid int64) (string, error)
 	// AddView: +1 lượt xem hồ sơ năng lực (link công khai)
 	AddView(ctx context.Context, uid int64) error
+	// SaveBranding: Logo trên ảnh (logoSHA "-": giữ logo cũ)
+	SaveBranding(ctx context.Context, uid int64, brand, logoSHA string, size int, badge bool) error
 	// ProjectPhotos: ảnh dự án (không thuộc nhật ký), ảnh bìa trước
 	ProjectPhotos(ctx context.Context, projectID int64) ([]NTMedia, error)
 	// Log: 1 nhật ký kèm ảnh / video (báo cáo gửi chủ nhà)
@@ -124,9 +132,11 @@ type ntRepository struct{ db *pgxpool.Pool }
 func NewNTRepository(db *pgxpool.Pool) NTRepository { return &ntRepository{db: db} }
 
 func (r *ntRepository) Profile(ctx context.Context, uid int64) (*NTProfile, error) {
-	p := &NTProfile{UserID: uid, Specialties: []string{}}
-	err := r.db.QueryRow(ctx, `SELECT company, specialties, regions, years, verified, rating::float8, reviews, views FROM nt_profiles WHERE user_id = $1`, uid).
-		Scan(&p.Company, &p.Specialties, &p.Regions, &p.Years, &p.Verified, &p.Rating, &p.Reviews, &p.Views)
+	p := &NTProfile{UserID: uid, Specialties: []string{}, LogoSize: 2, ShowBadge: true}
+	err := r.db.QueryRow(ctx, `SELECT company, specialties, regions, years, verified, rating::float8, reviews, views, brand, logo_sha, logo_size, show_badge
+		FROM nt_profiles WHERE user_id = $1`, uid).
+		Scan(&p.Company, &p.Specialties, &p.Regions, &p.Years, &p.Verified, &p.Rating, &p.Reviews, &p.Views, &p.Brand, &p.LogoSHA, &p.LogoSize, &p.ShowBadge)
+	p.HasLogo = p.LogoSHA != ""
 	if errors.Is(err, pgx.ErrNoRows) {
 		return p, nil
 	}
@@ -400,5 +410,12 @@ func (r *ntRepository) UserPhone(ctx context.Context, uid int64) (string, error)
 
 func (r *ntRepository) AddView(ctx context.Context, uid int64) error {
 	_, err := r.db.Exec(ctx, `UPDATE nt_profiles SET views = views + 1 WHERE user_id = $1`, uid)
+	return err
+}
+
+func (r *ntRepository) SaveBranding(ctx context.Context, uid int64, brand, logoSHA string, size int, badge bool) error {
+	_, err := r.db.Exec(ctx, `INSERT INTO nt_profiles (user_id, brand, logo_sha, logo_size, show_badge) VALUES ($1, $2, CASE WHEN $3 = '-' THEN '' ELSE $3 END, $4, $5)
+		ON CONFLICT (user_id) DO UPDATE SET brand = EXCLUDED.brand, logo_size = EXCLUDED.logo_size, show_badge = EXCLUDED.show_badge,
+			logo_sha = CASE WHEN $3 = '-' THEN nt_profiles.logo_sha ELSE $3 END, updated_at = NOW()`, uid, brand, logoSHA, size, badge)
 	return err
 }
