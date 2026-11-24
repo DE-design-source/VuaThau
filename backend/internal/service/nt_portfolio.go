@@ -11,6 +11,8 @@ import (
 	"image"
 	_ "image/jpeg" // logo JPG
 	_ "image/png"  // logo PNG nền trong
+	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -209,4 +211,118 @@ func (s *NTService) Logo(ctx context.Context, u *model.User) ([]byte, error) {
 		return nil, fail(ErrNotFound, "Không tìm thấy file logo.")
 	}
 	return b, nil
+}
+
+// ---------- Khám phá (thiết kế "App – Khám phá") ----------
+// Bảng tin hoạt động thi công gần đây của các nhà thầu trên Vua Thầu: ai đang thi công ở đâu, ảnh mới nhất,
+// bấm vào xem hồ sơ năng lực. Lọc: Tất cả / Gần tôi (≤ 10 km) / Đã xác minh / Tổng thầu / Thầu phụ / Tổ đội; tìm theo
+// tên công ty, dự án, địa chỉ.
+
+type NTExploreItem struct {
+	LogID      int64     `json:"log_id"`
+	Company    string    `json:"company"`
+	Verified   bool      `json:"verified"`
+	Kind       string    `json:"kind,omitempty"`
+	Role       string    `json:"role,omitempty"`
+	Staff      string    `json:"staff,omitempty"`
+	Phone      string    `json:"phone"`
+	Project    string    `json:"project"`
+	Address    string    `json:"address"`
+	Note       string    `json:"note"`
+	TakenAt    time.Time `json:"taken_at"`
+	Lat        *float64  `json:"lat,omitempty"`
+	Lng        *float64  `json:"lng,omitempty"`
+	DistanceKm *float64  `json:"distance_km,omitempty"`
+	Photos     []string  `json:"photos"`
+	PhotoCount int       `json:"photo_count"`
+	Portfolio  string    `json:"portfolio"` // /nt/<mã>
+	Mine       bool      `json:"mine"`
+}
+
+type NTExploreQuery struct {
+	Q        string
+	Filter   string // all | near | verified | tong_thau | thau_phu | to_doi
+	Lat, Lng *float64
+}
+
+const exploreNearKm = 10
+
+func (s *NTService) Explore(ctx context.Context, u *model.User, in NTExploreQuery) ([]NTExploreItem, error) {
+	rows, err := s.repo.Explore(ctx, time.Now().AddDate(0, 0, -60), 400)
+	if err != nil {
+		return nil, err
+	}
+	q := model.FoldName(strings.TrimSpace(in.Q))
+	out := []NTExploreItem{}
+	seen := map[string]bool{} // mỗi dự án chỉ hiện nhật ký mới nhất
+	for _, r := range rows {
+		key := fmt.Sprintf("%d|%s", r.UserID, r.Project)
+		if seen[key] {
+			continue
+		}
+		company := r.Company
+		if company == "" {
+			company = r.Name
+		}
+		var dist *float64
+		if in.Lat != nil && in.Lng != nil && r.Lat != nil && r.Lng != nil {
+			d := haversineKm(*in.Lat, *in.Lng, *r.Lat, *r.Lng)
+			dist = &d
+		}
+		kindRole := model.FoldName(r.Kind + " " + r.Role)
+		switch in.Filter {
+		case "near":
+			if dist == nil || *dist > exploreNearKm {
+				continue
+			}
+		case "verified":
+			if !r.Verified {
+				continue
+			}
+		case "tong_thau":
+			if !strings.Contains(kindRole, "tongthau") {
+				continue
+			}
+		case "thau_phu":
+			if !strings.Contains(kindRole, "thauphu") {
+				continue
+			}
+		case "to_doi":
+			if !strings.Contains(kindRole, "todoi") {
+				continue
+			}
+		}
+		if q != "" && !strings.Contains(model.FoldName(company+" "+r.Project+" "+r.Address+" "+r.Note), q) {
+			continue
+		}
+		seen[key] = true
+		code := fmt.Sprintf("%d-%s", r.UserID, s.portfolioSig(r.UserID))
+		photos := []string{}
+		for i, id := range r.Photos {
+			if i == 4 {
+				break
+			}
+			photos = append(photos, fmt.Sprintf("/api/v1/public/nt/%s/photos/%d", code, id))
+		}
+		out = append(out, NTExploreItem{
+			LogID: r.LogID, Company: company, Verified: r.Verified, Kind: r.Kind, Role: r.Role, Staff: r.Staff, Phone: r.Phone,
+			Project: r.Project, Address: r.Address, Note: r.Note, TakenAt: r.TakenAt, Lat: r.Lat, Lng: r.Lng, DistanceKm: dist,
+			Photos: photos, PhotoCount: len(r.Photos), Portfolio: "/nt/" + code, Mine: r.UserID == u.ID,
+		})
+		if len(out) == 60 {
+			break
+		}
+	}
+	if in.Filter == "near" {
+		sort.SliceStable(out, func(i, j int) bool { return *out[i].DistanceKm < *out[j].DistanceKm })
+	}
+	return out, nil
+}
+
+func haversineKm(lat1, lng1, lat2, lng2 float64) float64 {
+	const r = 6371.0
+	rad := math.Pi / 180
+	dlat, dlng := (lat2-lat1)*rad, (lng2-lng1)*rad
+	a := math.Sin(dlat/2)*math.Sin(dlat/2) + math.Cos(lat1*rad)*math.Cos(lat2*rad)*math.Sin(dlng/2)*math.Sin(dlng/2)
+	return 2 * r * math.Asin(math.Sqrt(a))
 }

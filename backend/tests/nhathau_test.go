@@ -364,6 +364,23 @@ func TestNhaThauFormVaBaoCao(t *testing.T) {
 	if pf.Code == "" || pf.Path != "/nt/"+pf.Code {
 		t.Fatalf("link hồ sơ: %+v", pf)
 	}
+	// Khám phá: nhật ký vừa chụp hiện ra (của mình), ảnh mở được qua link hồ sơ công khai
+	var ex struct {
+		Items []struct {
+			Mine      bool     `json:"mine"`
+			Photos    []string `json:"photos"`
+			Portfolio string   `json:"portfolio"`
+		} `json:"items"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/nt/explore", tok, nil), &ex)
+	if len(ex.Items) == 0 || !ex.Items[0].Mine || ex.Items[0].Portfolio != pf.Path || len(ex.Items[0].Photos) == 0 {
+		t.Fatalf("khám phá: %+v", ex.Items)
+	}
+	if res, err := http.Get(e.srv.URL + ex.Items[0].Photos[0]); err != nil || res.StatusCode != http.StatusOK {
+		t.Fatalf("ảnh khám phá: %v %+v", err, res)
+	} else {
+		_ = res.Body.Close()
+	}
 	var pub struct {
 		Company  string `json:"company"`
 		Phone    string `json:"phone"`

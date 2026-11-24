@@ -106,6 +106,8 @@ type NTRepository interface {
 	AddView(ctx context.Context, uid int64) error
 	// SaveBranding: Logo trên ảnh (logoSHA "-": giữ logo cũ)
 	SaveBranding(ctx context.Context, uid int64, brand, logoSHA string, size int, badge bool) error
+	// Explore: nhật ký gần đây của mọi nhà thầu đang hoạt động (màn Khám phá), mới trước
+	Explore(ctx context.Context, since time.Time, limit int) ([]NTExploreRow, error)
 	// ProjectPhotos: ảnh dự án (không thuộc nhật ký), ảnh bìa trước
 	ProjectPhotos(ctx context.Context, projectID int64) ([]NTMedia, error)
 	// Log: 1 nhật ký kèm ảnh / video (báo cáo gửi chủ nhà)
@@ -418,4 +420,52 @@ func (r *ntRepository) SaveBranding(ctx context.Context, uid int64, brand, logoS
 		ON CONFLICT (user_id) DO UPDATE SET brand = EXCLUDED.brand, logo_size = EXCLUDED.logo_size, show_badge = EXCLUDED.show_badge,
 			logo_sha = CASE WHEN $3 = '-' THEN nt_profiles.logo_sha ELSE $3 END, updated_at = NOW()`, uid, brand, logoSHA, size, badge)
 	return err
+}
+
+// NTExploreRow: 1 nhật ký trên màn Khám phá (nhà thầu + dự án + loại hình / vai trò từ form đăng ký nếu có).
+type NTExploreRow struct {
+	LogID    int64
+	UserID   int64
+	Project  string
+	Address  string
+	Lat, Lng *float64
+	Note     string
+	TakenAt  time.Time
+	Company  string
+	Name     string
+	Phone    string
+	Kind     string // Công ty / Tổ đội / Cá nhân
+	Role     string // Tổng thầu / Thầu phụ ...
+	Staff    string
+	Verified bool
+	Photos   []int64
+}
+
+func (r *ntRepository) Explore(ctx context.Context, since time.Time, limit int) ([]NTExploreRow, error) {
+	rows, err := r.db.Query(ctx, `SELECT l.id, u.id, p.name, p.address, COALESCE(l.lat, p.lat), COALESCE(l.lng, p.lng), l.note, l.taken_at,
+			COALESCE(pf.company, ''), u.name, u.username, COALESCE(pf.verified, false),
+			COALESCE(c.kind, ''), COALESCE(c.role, ''), COALESCE(c.staff, ''),
+			ARRAY(SELECT m.id FROM nt_media m WHERE m.log_id = l.id AND m.kind = 'photo' ORDER BY m.id)
+		FROM nt_logs l
+		JOIN nt_projects p ON p.id = l.project_id AND p.deleted_at IS NULL
+		JOIN users u ON u.id = p.user_id AND u.role = 'nhathau' AND u.locked = 0
+		LEFT JOIN nt_profiles pf ON pf.user_id = u.id
+		LEFT JOIN LATERAL (SELECT kind, role, staff FROM contractors c
+			WHERE regexp_replace(c.phone, '\D', '', 'g') IN (u.username, '84' || substr(u.username, 2)) ORDER BY c.updated_at DESC LIMIT 1) c ON true
+		WHERE l.taken_at >= $1
+		ORDER BY l.taken_at DESC LIMIT $2`, since, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []NTExploreRow{}
+	for rows.Next() {
+		var x NTExploreRow
+		if err := rows.Scan(&x.LogID, &x.UserID, &x.Project, &x.Address, &x.Lat, &x.Lng, &x.Note, &x.TakenAt, &x.Company, &x.Name, &x.Phone,
+			&x.Verified, &x.Kind, &x.Role, &x.Staff, &x.Photos); err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
+	return out, rows.Err()
 }

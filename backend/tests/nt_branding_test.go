@@ -70,6 +70,10 @@ func TestNhaThauBranding(t *testing.T) {
 	if !bytes.Equal(got, logo) {
 		t.Fatalf("logo khác file đã gửi (%d / %d byte)", len(got), len(logo))
 	}
+	// Khám phá: chạy được truy vấn (lọc, tìm, toạ độ)
+	for _, q := range []string{"", "?filter=near&lat=10.78&lng=106.7", "?filter=tong_thau&q=nha"} {
+		expectStatus(t, e.do(t, http.MethodGet, "/api/v1/nt/explore"+q, tok, nil), http.StatusOK)
+	}
 	// bỏ logo
 	expectStatus(t, e.do(t, http.MethodDelete, "/api/v1/nt/logo", tok, nil), http.StatusOK)
 	decodeData(t, e.do(t, http.MethodGet, "/api/v1/nt/home", tok, nil), &home)

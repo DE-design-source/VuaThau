@@ -78,6 +78,9 @@ func phoneDigits(s string) string {
 	return d
 }
 
+// FoldName: như foldName, dùng ngoài gói model (tìm kiếm không dấu).
+func FoldName(s string) string { return foldName(s) }
+
 // foldName: bỏ dấu, chữ thường, chỉ giữ chữ và số (đ → d).
 // Bộ chuyển tạo mới mỗi lần: transform.Chain giữ trạng thái bên trong, dùng chung 1 biến giữa nhiều request
 // cùng lúc làm panic "slice bounds out of range" (lỗi production 24/11/2026 khi mở nhiều ảnh cùng lúc).

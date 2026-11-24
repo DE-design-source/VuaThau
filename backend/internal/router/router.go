@@ -86,6 +86,7 @@ func New(d Deps) http.Handler {
 		mux.Handle("POST /api/v1/nt/logo", role(nt.UploadLogo, nth))
 		mux.Handle("DELETE /api/v1/nt/logo", role(nt.DeleteLogo, nth))
 		mux.Handle("GET /api/v1/nt/logo", role(nt.Logo, nth))
+		mux.Handle("GET /api/v1/nt/explore", role(nt.Explore, nth))
 		// hồ sơ năng lực công khai /nt/<mã> (mã có chữ ký)
 		mux.HandleFunc("GET /api/v1/public/nt/{code}", nt.PublicPortfolio)
 		mux.HandleFunc("GET /api/v1/public/nt/{code}/photos/{mid}", nt.PublicPortfolioPhoto)

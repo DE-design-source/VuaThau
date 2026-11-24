@@ -5,6 +5,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"strconv"
 
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/response"
@@ -209,6 +210,23 @@ func (h *NTHandler) Logo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", http.DetectContentType(b))
 	w.Header().Set("Cache-Control", "private, no-cache")
 	_, _ = w.Write(b)
+}
+
+// Explore handles GET /api/v1/nt/explore?q=&filter=&lat=&lng= (màn Khám phá)
+func (h *NTHandler) Explore(w http.ResponseWriter, r *http.Request) {
+	qs := r.URL.Query()
+	in := service.NTExploreQuery{Q: qs.Get("q"), Filter: qs.Get("filter")}
+	if lat, err := strconv.ParseFloat(qs.Get("lat"), 64); err == nil {
+		if lng, err := strconv.ParseFloat(qs.Get("lng"), 64); err == nil {
+			in.Lat, in.Lng = &lat, &lng
+		}
+	}
+	items, err := h.svc.Explore(r.Context(), me(r), in)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"items": items})
 }
 
 // Portfolio handles GET /api/v1/nt/portfolio: link hồ sơ năng lực công khai ({code, path})
