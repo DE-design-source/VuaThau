@@ -106,6 +106,7 @@ func New(d Deps) http.Handler {
 		mux.HandleFunc("GET /api/v1/nt/videos/{id}", nt.Video)
 		mux.Handle("GET /api/v1/admin/nt", role(nt.Contractors, model.RoleAdmin))
 		mux.Handle("POST /api/v1/admin/nt", role(nt.AddContractor, model.RoleAdmin))
+		mux.Handle("PUT /api/v1/admin/nt/{id}/alt-phones", role(nt.SetAltPhones, model.RoleAdmin))
 	}
 
 	// Tài khoản (mọi vai trò)

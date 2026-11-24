@@ -51,6 +51,7 @@ export default function NtPage() {
               <tr>
                 <th>Nhà thầu</th>
                 <th>Số điện thoại</th>
+                <th>SĐT phụ</th>
                 <th className="num">Dự án</th>
                 <th className="num">Nhật ký</th>
                 <th>Cập nhật gần nhất</th>
@@ -65,6 +66,9 @@ export default function NtPage() {
                     {r.company && <small className="muted d-block">{r.name}</small>}
                   </td>
                   <td className="nowrap">{r.phone}</td>
+                  <td>
+                    <AltPhones row={r} act={act} busy={busy} />
+                  </td>
                   <td className="num">{r.projects}</td>
                   <td className="num">{r.logs}</td>
                   <td className="nowrap">{r.last_log ? vnTime(r.last_log) : <span className="muted">Chưa có</span>}</td>
@@ -78,5 +82,40 @@ export default function NtPage() {
         )}
       </div>
     </section>
+  )
+}
+
+/** SĐT phụ của 1 nhà thầu: bảng hiệu công trình ghi số khác số đăng nhập -> gán để app nhà thầu thấy công trình đó. */
+function AltPhones({ row, act, busy }) {
+  const [edit, setEdit] = useState(null)
+  const list = row.alt_phones || []
+  const key = `alt-${row.id}`
+  if (edit === null) {
+    return (
+      <span className="inline">
+        {list.length ? <span className="nowrap">{list.join(', ')}</span> : <span className="muted">Chưa có</span>}
+        <button type="button" className="link-button" onClick={() => setEdit(list.join(', '))}>
+          Sửa
+        </button>
+      </span>
+    )
+  }
+  return (
+    <form
+      className="inline"
+      onSubmit={(e) => {
+        e.preventDefault()
+        const phones = edit.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean)
+        act(key, () => ntApi.setAltPhones(row.id, phones)).then((j) => j && setEdit(null))
+      }}
+    >
+      <input className="input" inputMode="tel" value={edit} onChange={(e) => setEdit(e.target.value)} placeholder="0973 234 050, …" autoFocus />
+      <Button type="submit" loading={busy === key}>
+        Lưu
+      </Button>
+      <button type="button" className="link-button" onClick={() => setEdit(null)}>
+        Huỷ
+      </button>
+    </form>
   )
 }

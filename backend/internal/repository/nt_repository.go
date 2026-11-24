@@ -106,6 +106,11 @@ type NTRepository interface {
 	AddView(ctx context.Context, uid int64) error
 	// SaveBranding: Logo trên ảnh (logoSHA "-": giữ logo cũ)
 	SaveBranding(ctx context.Context, uid int64, brand, logoSHA string, size int, badge bool) error
+	// AltPhones / SetAltPhones: SĐT phụ của nhà thầu (admin gán)
+	AltPhones(ctx context.Context, uid int64) ([]string, error)
+	SetAltPhones(ctx context.Context, uid int64, phones []string) error
+	// AltPhoneOwner: nhà thầu đang dùng phone làm SĐT phụ (0: chưa ai)
+	AltPhoneOwner(ctx context.Context, phone string) (int64, error)
 	// Explore: nhật ký gần đây của mọi nhà thầu đang hoạt động (màn Khám phá), mới trước
 	Explore(ctx context.Context, since time.Time, limit int) ([]NTExploreRow, error)
 	// ProjectPhotos: ảnh dự án (không thuộc nhật ký), ảnh bìa trước
@@ -127,6 +132,7 @@ type NTContractor struct {
 	Logs      int        `json:"logs"`
 	LastLog   *time.Time `json:"last_log"`
 	CreatedAt time.Time  `json:"created_at"`
+	AltPhones []string   `json:"alt_phones"` // SĐT phụ: khớp thêm công trình CTV ghi số này
 }
 
 type ntRepository struct{ db *pgxpool.Pool }
@@ -359,7 +365,7 @@ func (r *ntRepository) Log(ctx context.Context, id int64) (*NTLog, error) {
 }
 
 func (r *ntRepository) Contractors(ctx context.Context) ([]NTContractor, error) {
-	rows, err := r.db.Query(ctx, `SELECT u.id, u.username, u.name, COALESCE(pf.company, ''), u.locked, u.created_at,
+	rows, err := r.db.Query(ctx, `SELECT u.id, u.username, u.name, COALESCE(pf.company, ''), u.locked, u.created_at, COALESCE(pf.alt_phones, '{}'),
 			(SELECT COUNT(*) FROM nt_projects p WHERE p.user_id = u.id AND p.deleted_at IS NULL),
 			(SELECT COUNT(*) FROM nt_logs l JOIN nt_projects p ON p.id = l.project_id WHERE p.user_id = u.id AND p.deleted_at IS NULL),
 			(SELECT MAX(l.taken_at) FROM nt_logs l JOIN nt_projects p ON p.id = l.project_id WHERE p.user_id = u.id AND p.deleted_at IS NULL)
@@ -372,7 +378,7 @@ func (r *ntRepository) Contractors(ctx context.Context) ([]NTContractor, error) 
 	out := []NTContractor{}
 	for rows.Next() {
 		var c NTContractor
-		if err := rows.Scan(&c.ID, &c.Phone, &c.Name, &c.Company, &c.Locked, &c.CreatedAt, &c.Projects, &c.Logs, &c.LastLog); err != nil {
+		if err := rows.Scan(&c.ID, &c.Phone, &c.Name, &c.Company, &c.Locked, &c.CreatedAt, &c.AltPhones, &c.Projects, &c.Logs, &c.LastLog); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -468,4 +474,28 @@ func (r *ntRepository) Explore(ctx context.Context, since time.Time, limit int) 
 		out = append(out, x)
 	}
 	return out, rows.Err()
+}
+
+func (r *ntRepository) AltPhones(ctx context.Context, uid int64) ([]string, error) {
+	out := []string{}
+	err := r.db.QueryRow(ctx, `SELECT alt_phones FROM nt_profiles WHERE user_id = $1`, uid).Scan(&out)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return []string{}, nil
+	}
+	return out, err
+}
+
+func (r *ntRepository) SetAltPhones(ctx context.Context, uid int64, phones []string) error {
+	_, err := r.db.Exec(ctx, `INSERT INTO nt_profiles (user_id, alt_phones) VALUES ($1, $2)
+		ON CONFLICT (user_id) DO UPDATE SET alt_phones = EXCLUDED.alt_phones, updated_at = NOW()`, uid, phones)
+	return err
+}
+
+func (r *ntRepository) AltPhoneOwner(ctx context.Context, phone string) (int64, error) {
+	var uid int64
+	err := r.db.QueryRow(ctx, `SELECT user_id FROM nt_profiles WHERE $1 = ANY(alt_phones) LIMIT 1`, phone).Scan(&uid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return uid, err
 }

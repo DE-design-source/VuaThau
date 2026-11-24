@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -244,7 +245,76 @@ func (s *NTService) allSites(ctx context.Context, u *model.User) ([]NTSite, erro
 	if s.sites == nil {
 		return []NTSite{}, nil
 	}
-	return s.sites.ContractorSites(ctx, u.Username)
+	alt, err := s.repo.AltPhones(ctx, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	out := []NTSite{}
+	seen := map[int64]bool{}
+	for _, phone := range append([]string{u.Username}, alt...) {
+		rows, err := s.sites.ContractorSites(ctx, phone)
+		if err != nil {
+			return nil, err
+		}
+		for _, x := range rows {
+			if !seen[x.ID] {
+				seen[x.ID] = true
+				out = append(out, x)
+			}
+		}
+	}
+	return out, nil
+}
+
+// maxAltPhones: số SĐT phụ tối đa mỗi nhà thầu.
+const maxAltPhones = 5
+
+// SetAltPhones (admin): gán SĐT phụ cho nhà thầu uid. Số phụ không được là số đăng nhập của tài khoản khác, cũng
+// không được là số phụ của nhà thầu khác (1 công trình chỉ hiện cho 1 nhà thầu).
+func (s *NTService) SetAltPhones(ctx context.Context, by *model.User, uid int64, phones []string) ([]string, error) {
+	phone, err := s.repo.UserPhone(ctx, uid) // chỉ tài khoản nhà thầu
+	if err != nil {
+		return nil, err
+	}
+	if phone == "" {
+		return nil, fail(ErrNotFound, "Không tìm thấy nhà thầu.")
+	}
+	u, err := s.auth.FindByLogin(ctx, phone)
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, raw := range phones {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		p := normPhone(raw)
+		if !ValidPhone(p) {
+			return nil, fail(ErrInvalidInput, "SĐT phụ %q không đúng (cần 10 số).", raw)
+		}
+		if p == u.Username || slices.Contains(out, p) {
+			continue
+		}
+		if other, err := s.auth.FindByLogin(ctx, p); err == nil {
+			return nil, fail(ErrConflict, "SĐT %s là số đăng nhập của %s.", p, other.Name)
+		} else if !errors.Is(err, repository.ErrNotFound) {
+			return nil, err
+		}
+		if owner, err := s.repo.AltPhoneOwner(ctx, p); err != nil {
+			return nil, err
+		} else if owner != 0 && owner != uid {
+			return nil, fail(ErrConflict, "SĐT %s đã là số phụ của nhà thầu khác.", p)
+		}
+		out = append(out, p)
+	}
+	if len(out) > maxAltPhones {
+		return nil, fail(ErrInvalidInput, "Tối đa %d SĐT phụ.", maxAltPhones)
+	}
+	if err := s.repo.SetAltPhones(ctx, uid, out); err != nil {
+		return nil, err
+	}
+	_ = s.logs.Add(ctx, by.ID, ActNTAltPhones, nil, nil, fmt.Sprintf("%s (%s): %s", u.Name, u.Username, strings.Join(out, ", ")))
+	return out, nil
 }
 
 // Sites: công trình CTV đã chụp có bảng hiệu ghi SĐT của nhà thầu này, trừ công trình đã thành dự án của nhà thầu

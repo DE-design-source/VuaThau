@@ -444,5 +444,26 @@ func (h *NTHandler) AddContractor(w http.ResponseWriter, r *http.Request) {
 	msg(w, m)
 }
 
+// SetAltPhones handles PUT /api/v1/admin/nt/{id}/alt-phones (admin): {phones: ["09..."]} -> {alt_phones, message}
+func (h *NTHandler) SetAltPhones(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Mã nhà thầu không hợp lệ.")
+		return
+	}
+	var in struct {
+		Phones []string `json:"phones"`
+	}
+	if !bodyOr400(w, r, &in) {
+		return
+	}
+	out, err := h.svc.SetAltPhones(r.Context(), me(r), id, in.Phones)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"alt_phones": out, "message": "Đã lưu SĐT phụ."})
+}
+
 // AdminProject handles GET /api/v1/admin/nt/projects/{id} (admin xem dự án của nhà thầu)
 func (h *NTHandler) AdminProject(w http.ResponseWriter, r *http.Request) { h.Project(w, r) }
