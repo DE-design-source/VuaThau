@@ -41,7 +41,9 @@ Copy-Item -Recurse "$root\frontend\dist" "$stage\web"
 if ($withApp) { Copy-Item -Recurse "$app\build\web" "$stage\web\app" }
 $pkg = Join-Path $env:TEMP "vtnt-deploy.tgz"
 Remove-Item -Force $pkg -ErrorAction SilentlyContinue
-tar.exe -czf $pkg -C $stage Dockerfile bin migrations web; if ($LASTEXITCODE) { throw "đóng gói lỗi" }
+# tar có sẵn của Windows (gọi từ Git Bash thì "tar.exe" là GNU tar, hiểu "C:" là máy chủ từ xa -> lỗi)
+$tar = Join-Path $env:SystemRoot "System32\tar.exe"
+& $tar -czf $pkg -C $stage Dockerfile bin migrations web; if ($LASTEXITCODE) { throw "đóng gói lỗi" }
 Write-Host ("   gói {0:N1} MB" -f ((Get-Item $pkg).Length / 1MB))
 
 Write-Host "== tải lên $HostName`:$Dir"
