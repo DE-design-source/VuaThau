@@ -9,7 +9,7 @@ import useCfg from '@/hooks/useCfg'
 import mapApi from '@/api/mapApi'
 import dezonApi from '@/api/dezonApi'
 import Explorer from '@/components/explore/Explorer'
-import { cardProps, siteTip } from '@/utils/siteTip'
+import { cardProps, gmapBtn, siteTip } from '@/utils/siteTip'
 import { Button, Kpi, PageState, Pill } from '@/components/ui'
 import { gmapUrl, isStale, vnDate } from '@/utils/format'
 
@@ -169,7 +169,7 @@ export default function MapPage() {
       pop={(p) =>
         siteTip(p, { staleDays: days, prov: name[p.province], status: statuses[p.status]?.label, ctvLink: true }) +
         `<div class="site-pop-actions"><a href="/houses/${p.id}" data-to="/houses/${p.id}">Mở hồ sơ</a>` +
-        `<a href="${gmapUrl(p.lat, p.lng)}" target="_blank" rel="noreferrer">Google Maps</a></div>`
+        `${gmapBtn(gmapUrl(p.lat, p.lng))}</div>`
       }
       card={(p) => cardProps(p, { to: `/houses/${p.id}`, prov: name[p.province], staleDays: days, fresh })}
       footer={

@@ -1,7 +1,7 @@
 // Thẻ hiện khi rê chuột vào 1 công trình trên bản đồ: hình đại diện (ảnh lần chụp gần nhất) + thông tin chính.
 // Ảnh cần đăng nhập nên thẻ chỉ có chỗ trống <img data-cover>, SiteMap tải ảnh (kèm token) khi thẻ mở.
 import { getBlob } from '@/api/axiosClient'
-import { agoLabel, esc, hsId, isStale, vnDate } from '@/utils/format'
+import { agoLabel, esc, gmapUrl, hsId, isStale, vnDate } from '@/utils/format'
 
 /** Tách địa chỉ thành 2 dòng thẻ: [số nhà, đường…] và [phường/xã, tỉnh]. prov: tên tỉnh khi địa chỉ quá ngắn. */
 export function splitAddr(addr, prov = '') {
@@ -55,13 +55,23 @@ export function siteTip(p, { staleDays = 30, prov = '', status = '', ctvLink = f
   )
 }
 
-/** Link Google Maps của khách: theo toạ độ nếu có địa chỉ cụ thể, không thì tìm theo chữ địa chỉ / khu vực. */
+/** Link Google Maps của khách (chỉ khách đã có vị trí trên bản đồ): theo toạ độ; khách chỉ có khu vực (ghim ở trung tâm tỉnh)
+ *  thì tìm theo chữ khu vực cho đúng hơn. Chưa có vị trí: ''. */
 export function cusGmap(k) {
-  const q = [k.address, k.area].filter(Boolean).join(', ')
-  if (k.address && k.lat != null) return `https://www.google.com/maps/search/?api=1&query=${k.lat},${k.lng}`
-  if (q) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`
-  return k.lat != null ? `https://www.google.com/maps/search/?api=1&query=${k.lat},${k.lng}` : ''
+  if (k.lat == null || k.lng == null) return ''
+  if (!k.address && k.area) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(k.area)}`
+  return gmapUrl(k.lat, k.lng)
 }
+
+/** Link Google Maps của CTV: theo toạ độ; vị trí gần đúng thì tìm theo chữ địa chỉ. Chưa có vị trí: ''. */
+export function ctvGmap(c) {
+  if (c.lat == null || c.lng == null) return ''
+  if (c.approx && c.address) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.address)}`
+  return gmapUrl(c.lat, c.lng)
+}
+
+/** Nút Google Maps trong thẻ bản đồ (cùng kiểu ở thẻ công trình, CTV, khách hàng) */
+export const gmapBtn = (href) => (href ? `<a class="gmap-btn" href="${esc(href)}" target="_blank" rel="noreferrer">Google Maps</a>` : '')
 
 /** Thẻ của 1 khách hàng trên bản đồ (lớp Khách hàng: pipeline Kinh doanh Dezon Pro, admin / kế toán). */
 export function cusTip(k) {
@@ -80,7 +90,7 @@ export function cusTip(k) {
     (k.rating > 0 ? `<div class="site-tip-row"><span>Giao tiếp</span><span class="cus-stars">${'★'.repeat(k.rating)}</span></div>` : '') +
     `</div></div>` +
     `<div class="site-pop-actions"><a href="https://dezon.tech/kinh-doanh?lead=${encodeURIComponent(k.ext_id)}" target="_blank" rel="noreferrer">Mở trên Dezon Pro</a>` +
-    (cusGmap(k) ? `<a class="gmap-btn" href="${esc(cusGmap(k))}" target="_blank" rel="noreferrer">Google Maps</a>` : '') +
+    gmapBtn(cusGmap(k)) +
     `</div>`
   )
 }
@@ -100,6 +110,7 @@ export function ctvTip(c) {
     `</div></div>` +
     `<div class="site-pop-actions"><a href="/ctvs/${c.id}" data-to="/ctvs/${c.id}">Hồ sơ CTV</a>` +
     (c.count ? `<a href="/map?ctv=${c.id}" data-to="/map?ctv=${c.id}">Công trình của CTV</a>` : '') +
+    gmapBtn(ctvGmap(c)) +
     `</div>`
   )
 }
@@ -119,7 +130,7 @@ export function dezonTip(p, { prov = '' } = {}) {
     (p.posted_at ? `<div class="site-tip-when">đăng trên dezon.vn ${esc(vnDate(p.posted_at))}</div>` : '') +
     `</div></div>` +
     `<div class="site-pop-actions">${link(p.url, 'Xem trên Dezon')}${link(p.contractor_url, 'Nhà thầu')}` +
-    `<a href="https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}" target="_blank" rel="noreferrer">Google Maps</a></div>`
+    `${gmapBtn(p.lat != null ? gmapUrl(p.lat, p.lng) : '')}</div>`
   )
 }
 

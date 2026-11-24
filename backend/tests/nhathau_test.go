@@ -305,7 +305,8 @@ func TestNhaThauFormVaBaoCao(t *testing.T) {
 		Note    string   `json:"note"`
 		Photos  []string `json:"photos"`
 	}
-	decodeData(t, e.do(t, http.MethodGet, "/api/v1/public/bc/"+link.Code, "", nil), &rep)
+	rr := e.do(t, http.MethodGet, "/api/v1/public/bc/"+link.Code, "", nil)
+	decodeData(t, rr, &rep)
 	if rep.Company != "Smartcons" || rep.Project != "Nhà phố anh Hưng" || len(rep.Photos) != 1 || rep.Note == "" {
 		t.Fatalf("báo cáo: %+v", rep)
 	}
@@ -322,6 +323,37 @@ func TestNhaThauFormVaBaoCao(t *testing.T) {
 	r = e.do(t, http.MethodPost, "/api/v1/auth/phone", "", map[string]string{"phone": "0907555777"})
 	decodeData(t, r, &lg)
 	expectStatus(t, e.do(t, http.MethodGet, fmt.Sprintf("%s/logs/%d/report", path, lr.Log.ID), lg.AccessToken, nil), http.StatusNotFound)
+
+	// nhật ký cũ hơn (giờ chụp 01/11) hiện ở "Nhật ký trước đây" của báo cáo, ảnh xem được qua link báo cáo; báo cáo có SĐT nhà thầu
+	// ô chữ (meta có giờ chụp) gửi TRƯỚC ảnh, như app
+	var mb bytes.Buffer
+	mw := multipart.NewWriter(&mb)
+	_ = mw.WriteField("note", "Đào móng")
+	_ = mw.WriteField("meta", `{"t":"2026-11-01 08:00","lat":10.78,"lng":106.72}`)
+	fw, _ := mw.CreateFormFile("files", "anh-1.jpg")
+	_, _ = fw.Write(photo(t, 8804))
+	_ = mw.Close()
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/api/v1/nt/projects/%d/logs", e.srv.URL, pid), &mb)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+tok)
+	expectStatus(t, e.send(t, req), http.StatusCreated)
+	var rep2 struct {
+		Phone   string `json:"phone"`
+		Logs    int    `json:"logs"`
+		Earlier []struct {
+			Note   string   `json:"note"`
+			Photos []string `json:"photos"`
+		} `json:"earlier"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/public/bc/"+link.Code, "", nil), &rep2)
+	if rep2.Phone != "0907555666" || rep2.Logs != 2 || len(rep2.Earlier) != 1 || rep2.Earlier[0].Note != "Đào móng" || len(rep2.Earlier[0].Photos) != 1 {
+		t.Fatalf("nhật ký trước đây: %+v", rep2)
+	}
+	if pr, err := http.Get(e.srv.URL + rep2.Earlier[0].Photos[0]); err != nil || pr.StatusCode != http.StatusOK {
+		t.Fatalf("ảnh nhật ký trước đây: %v %+v", err, pr)
+	} else {
+		_ = pr.Body.Close()
+	}
 }
 
 // Nhà thầu có tài khoản app thấy công trình CTV đã chụp có bảng hiệu ghi SĐT của mình (0xxx hay 84xxx đều khớp),

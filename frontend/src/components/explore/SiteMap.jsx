@@ -11,6 +11,7 @@ import { maplibreGL } from '@maplibre/maplibre-gl-leaflet'
 import MapSearch from '@/components/MapSearch'
 import { dezonTip, fillCover, stageLabel } from '@/utils/siteTip'
 import { esc, hsId, isStale } from '@/utils/format'
+import { ctvBadge, cusBadge } from './pins'
 
 const VN_CENTER = [16.0, 106.2]
 const VN_BOUNDS = [
@@ -26,18 +27,69 @@ const PIN =
   '<path d="M16 1.5C8.3 1.5 2 7.7 2 15.4 2 25.8 16 40.5 16 40.5S30 25.8 30 15.4C30 7.7 23.7 1.5 16 1.5z" fill="currentColor" stroke="rgba(0,0,0,.28)" stroke-width="1.4"/>' +
   '<circle cx="16" cy="15.4" r="6.2" fill="#fff"/></svg>'
 
-// Bộ icon bản đồ (góp ý 23/11/2026): ghim tròn có chữ, đuôi nhọn chỉ đúng vị trí.
-//   KH đỏ #D93025 · CTV tích cực cam đặc #E8710A · CTV đăng ký viền cam, nền trắng · SALE (CTV kinh doanh) tím #C026D3
-const MK = { kh: '#D93025', ctv: '#E8710A', sale: '#C026D3' }
-function badgePin(text, c, outline = false) {
-  const long = text.length > 3
-  return (
-    '<svg viewBox="0 0 40 52" width="30" height="39" aria-hidden="true">' +
-    `<path d="M20 50 12.5 34h15Z" fill="${c}"/>` +
-    `<circle cx="20" cy="19" r="16.5" fill="${outline ? '#fff' : c}" stroke="${outline ? c : '#fff'}" stroke-width="${outline ? 3.6 : 3.2}"/>` +
-    `<text x="20" y="${long ? 22.6 : 23.6}" text-anchor="middle" font-size="${long ? 10.5 : 12.5}" font-weight="800" letter-spacing="-.2" fill="${outline ? c : '#fff'}">${text}</text></svg>`
-  )
+const HOVER_MS = 150 // rê chuột ngang qua ghim: chờ chút mới mở thẻ (đỡ nháy khi lướt qua nhiều ghim)
+const LEAVE_MS = 450 // rời ghim / thẻ: chờ chừng này mới đóng, đủ thời gian rê chuột từ ghim lên thẻ
+
+/**
+ * Gắn thẻ cho 1 ghim (góp ý 24/11/2026: rê từ ghim sang thẻ thì thẻ tắt, không bấm được gì trong thẻ):
+ *   rê chuột vào ghim: mở thẻ; rê tiếp lên thẻ: thẻ vẫn mở; rời cả ghim lẫn thẻ: đóng.
+ *   bấm ghim: giữ thẻ mở, chỉ đóng khi bấm X / bấm ra ngoài bản đồ / bấm ghim khác.
+ * st: { pinned } dùng chung cả bản đồ: đang giữ 1 thẻ thì rê chuột qua ghim khác không đè thẻ đó.
+ * Thêm mk.showPop(giữ): mở thẻ từ ngoài (bấm ở danh sách, vẽ lại lớp ghim).
+ */
+function hoverPop(mk, html, opts, st) {
+  mk.bindPopup(html, opts)
+  mk.off('click', mk._openPopup, mk) // bỏ kiểu mặc định của Leaflet (bấm lần 2 thì tắt)
+  const pop = mk.getPopup()
+  let t = null
+  const stop = () => clearTimeout(t)
+  const show = (keep) => {
+    stop()
+    pop.options.autoPan = keep // mở do rê chuột: không kéo bản đồ (ghim chạy khỏi chuột)
+    if (keep) st.pinned = mk
+    if (!mk.isPopupOpen()) mk.openPopup()
+  }
+  const leave = () => {
+    stop()
+    t = setTimeout(() => st.pinned !== mk && mk.closePopup(), LEAVE_MS)
+  }
+  mk.on('mouseover', () => {
+    stop()
+    if (mk.isPopupOpen() || (st.pinned && st.pinned !== mk && st.pinned.isPopupOpen())) return
+    t = setTimeout(() => show(false), HOVER_MS)
+  })
+  mk.on('mouseout', leave)
+  mk.on('click', (e) => {
+    L.DomEvent.stop(e)
+    show(true)
+  })
+  mk.on('popupopen', () => {
+    const el = pop.getElement()
+    if (el && !el.dataset.hover) {
+      el.dataset.hover = '1'
+      el.addEventListener('mouseenter', stop)
+      el.addEventListener('mouseleave', leave)
+    }
+  })
+  mk.on('popupclose', () => {
+    stop()
+    if (st.pinned === mk) st.pinned = null
+  })
+  mk.on('remove', stop)
+  mk.showPop = show
+  return mk
 }
+
+// Vẽ lại 1 lớp ghim (tự tải lại mỗi 15 giây, đổi lớp...): nhớ thẻ đang mở của lớp đó để mở lại, không tắt ngang khi đang xem
+function openOf(marks, own, st) {
+  for (const [k, mk] of marks) if (own(String(k)) && mk.isPopupOpen()) return { k, keep: st.pinned === mk }
+  return null
+}
+function reopen(marks, o) {
+  const mk = o && marks.get(o.k)
+  if (mk?.showPop) mk.showPop(o.keep)
+}
+const isSite = (k) => !/^(dz|ctv|kh)/.test(k)
 
 function cssVar(name, fallback) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
@@ -70,13 +122,14 @@ function loadProvinces() {
  * search: tay cầm (useRef) để thanh tìm phía trên trang gọi search.current.find(chữ).
  */
 export default function SiteMap({ points, provinces = [], selected, onProvince, fitKey, pop, staleDays = 30, active, onHover, focus, fresh, search, onPlace, dezon = [], ctvPins, ctvPop, customers, cusPop, overlay, ageColors = false }) {
-  const cusLayer = useRef(null) // lớp khách hàng (ghim cam chữ KH)
-  const ctvLayer = useRef(null) // lớp cộng tác viên (ghim tròn hình người, nằm trên ghim công trình)
+  const cusLayer = useRef(null) // lớp khách hàng (ghim tròn đỏ chữ KH)
+  const ctvLayer = useRef(null) // lớp cộng tác viên (ghim tròn chữ CTV / SALE, nằm trên ghim công trình)
   const el = useRef(null)
   const map = useRef(null)
   const pins = useRef(null)
   const dzPins = useRef(null) // lớp công trình Dezon (nằm dưới ghim hồ sơ)
-  const marks = useRef(new Map()) // id công trình -> marker
+  const marks = useRef(new Map()) // khoá ghim (id công trình, dz.., ctv.., kh..) -> marker
+  const st = useRef({ pinned: null }) // thẻ đang được giữ mở (bấm ghim), xem hoverPop
   const areas = useRef(null)
   const fitted = useRef(null)
   const onProv = useRef(onProvince)
@@ -201,8 +254,9 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
     const m = map.current
     const g = pins.current
     if (!m || !g) return
+    const was = openOf(marks.current, isSite, st.current)
     g.clearLayers()
-    marks.current = new Map()
+    for (const k of [...marks.current.keys()]) if (isSite(String(k))) marks.current.delete(k) // giữ ghim CTV / khách / Dezon
     const latlngs = []
     for (const p of points) {
       // bản free (ageColors, góp ý 23/11/2026): vàng trong staleDays ngày, xanh lá quá staleDays, xanh dương quá 2 lần (2 tháng)
@@ -216,7 +270,7 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
       })
       const mk = L.marker([p.lat, p.lng], { icon, riseOnHover: true, keyboard: false })
       if (pop) {
-        mk.bindPopup(pop(p), { className: 'site-pop', minWidth: 260, maxWidth: 260, autoPanPadding: [24, 24] })
+        hoverPop(mk, pop(p), { className: 'site-pop', minWidth: 260, maxWidth: 260, autoPanPadding: [24, 24] }, st.current)
         if (p.cover_id) mk.on('popupopen', (e) => fillCover(e.popup.getElement(), p.cover_id))
       }
       mk.on('mouseover', () => hover.current?.(p.id))
@@ -225,6 +279,7 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
       marks.current.set(p.id, mk)
       latlngs.push([p.lat, p.lng])
     }
+    reopen(marks.current, was)
     if (selected || fitted.current === fitKey) return // đã canh theo tỉnh / đã canh với bộ lọc này (tự tải lại không làm nhảy)
     fitted.current = fitKey
     if (latlngs.length) m.fitBounds(latlngs, { padding: [40, 40], maxZoom: 14 })
@@ -236,8 +291,10 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
   useEffect(() => {
     const g = dzPins.current
     if (!g) return
+    const own = (k) => k.startsWith('dz')
+    const was = openOf(marks.current, own, st.current)
     g.clearLayers()
-    for (const k of [...marks.current.keys()]) if (String(k).startsWith('dz')) marks.current.delete(k)
+    for (const k of [...marks.current.keys()]) if (own(String(k))) marks.current.delete(k)
     const name = Object.fromEntries(provinces.map((p) => [p.code, p.name]))
     for (const p of dezon) {
       const icon = L.divIcon({
@@ -248,63 +305,70 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
       })
       const key = `dz${p.id}`
       const mk = L.marker([p.lat, p.lng], { icon, riseOnHover: true, keyboard: false, zIndexOffset: -500 })
-        .bindPopup(dezonTip(p, { prov: name[p.province] }), { className: 'site-pop', minWidth: 260, maxWidth: 260, autoPanPadding: [24, 24] })
-        .addTo(g)
+      hoverPop(mk, dezonTip(p, { prov: name[p.province] }), { className: 'site-pop', minWidth: 260, maxWidth: 260, autoPanPadding: [24, 24] }, st.current)
+      mk.addTo(g)
       mk.on('mouseover', () => hover.current?.(key))
       mk.on('mouseout', () => hover.current?.(null))
       marks.current.set(key, mk)
     }
-  }, [dezon, provinces, points])
+    reopen(marks.current, was)
+  }, [dezon, provinces])
 
-  // Cộng tác viên: ghim tròn hình người, màu theo loại (hồng: cập nhật, đỏ: kinh doanh); đặc: tích cực, rỗng: đã đăng ký
+  // Cộng tác viên (bộ icon 23/11/2026): ghim tròn chữ CTV cam (đặc: tích cực, viền: đã đăng ký), SALE tím (CTV kinh doanh);
+  // tên hiện cạnh ghim. Nằm trên ghim công trình và khách hàng.
   useEffect(() => {
     const g = ctvLayer.current
     if (!g) return
+    const own = (k) => k.startsWith('ctv')
+    const was = openOf(marks.current, own, st.current)
     g.clearLayers()
-    for (const k of [...marks.current.keys()]) if (String(k).startsWith('ctv')) marks.current.delete(k)
+    for (const k of [...marks.current.keys()]) if (own(String(k))) marks.current.delete(k)
     for (const c of ctvPins || []) {
       if (c.lat == null || c.lng == null) continue
-      const cls = ['ctv-pin', c.type === 'sales' ? 'sales' : '', c.status === 'active' ? 'solid' : '', c.approx ? 'approx' : ''].join(' ')
+      const cls = ['ctv-pin mk-pin', c.type === 'sales' ? 'sales' : '', c.status === 'active' ? 'solid' : '', c.approx ? 'approx' : ''].join(' ')
       const icon = L.divIcon({
         className: 'site-pin-icon',
-        html: `<span class="${cls} mk-pin" title="${esc(c.name)}">${c.type === 'sales' ? badgePin('SALE', MK.sale) : badgePin('CTV', MK.ctv, c.status !== 'active')}<span class="site-pin-label">${esc(c.name)}</span></span>`,
+        html: `<span class="${cls}" title="${esc(c.name)}">${ctvBadge(c)}<span class="site-pin-label">${esc(c.name)}</span></span>`,
         iconSize: null,
         popupAnchor: [0, -36],
       })
       const key = `ctv${c.id}`
       const mk = L.marker([c.lat, c.lng], { icon, riseOnHover: true, keyboard: false, zIndexOffset: c.status === 'active' ? 1100 : 1000 })
-      if (ctvPop) mk.bindPopup(ctvPop(c), { className: 'site-pop', minWidth: 260, maxWidth: 280, autoPanPadding: [24, 24] })
+      if (ctvPop) hoverPop(mk, ctvPop(c), { className: 'site-pop', minWidth: 260, maxWidth: 280, autoPanPadding: [24, 24] }, st.current)
       mk.on('mouseover', () => hover.current?.(key))
       mk.on('mouseout', () => hover.current?.(null))
       mk.addTo(g)
       marks.current.set(key, mk)
     }
-  }, [ctvPins, ctvPop, points])
+    reopen(marks.current, was)
+  }, [ctvPins, ctvPop])
 
-  // Khách hàng: ghim cam chữ KH (dưới ghim CTV, trên ghim công trình)
+  // Khách hàng: ghim tròn chữ KH đỏ, tên cạnh ghim (dưới ghim CTV, trên ghim công trình)
   useEffect(() => {
     const g = cusLayer.current
     if (!g) return
+    const own = (k) => k.startsWith('kh')
+    const was = openOf(marks.current, own, st.current)
     g.clearLayers()
-    for (const k of [...marks.current.keys()]) if (String(k).startsWith('kh')) marks.current.delete(k)
+    for (const k of [...marks.current.keys()]) if (own(String(k))) marks.current.delete(k)
     for (const k of customers || []) {
       if (k.lat == null || k.lng == null) continue
       const icon = L.divIcon({
         className: 'site-pin-icon',
-        html: `<span class="cus-pin mk-pin" title="${esc(k.name)}">${badgePin('KH', MK.kh)}<span class="site-pin-label">${esc(k.name)}</span></span>`,
+        html: `<span class="cus-pin mk-pin" title="${esc(k.name)}">${cusBadge()}<span class="site-pin-label">${esc(k.name)}</span></span>`,
         iconSize: null,
         popupAnchor: [0, -36],
       })
       const key = `kh${k.id}`
       const mk = L.marker([k.lat, k.lng], { icon, riseOnHover: true, keyboard: false, zIndexOffset: 500 })
-      if (cusPop) mk.bindPopup(cusPop(k), { className: 'site-pop', minWidth: 240, maxWidth: 280, autoPanPadding: [24, 24] })
+      if (cusPop) hoverPop(mk, cusPop(k), { className: 'site-pop', minWidth: 240, maxWidth: 280, autoPanPadding: [24, 24] }, st.current)
       mk.on('mouseover', () => hover.current?.(key))
       mk.on('mouseout', () => hover.current?.(null))
       mk.addTo(g)
       marks.current.set(key, mk)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customers, points])
+    reopen(marks.current, was)
+  }, [customers, cusPop])
 
   // Rê chuột ở danh sách: nhãn tương ứng đậm lên, nổi lên trên
   useEffect(() => {
@@ -322,7 +386,8 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
     const mk = focus && marks.current.get(focus.id)
     if (!mk) return
     map.current.setView(mk.getLatLng(), Math.max(map.current.getZoom(), 16))
-    mk.openPopup()
+    if (mk.showPop) mk.showPop(true) // giữ thẻ mở tới khi bấm X / bấm ra ngoài
+    else mk.openPopup()
   }, [focus])
 
   return (

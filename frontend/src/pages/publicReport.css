@@ -1,0 +1,465 @@
+/* Báo cáo thi công gửi chủ nhà (/bc/:code) – thiết kế "Báo cáo khách hàng (link chủ nhà)" + "Xem ảnh toàn màn hình" (24/11/2026).
+   Trang riêng, không menu quản lý; điện thoại là chính, màn rộng thì giữa trang tối đa 640px. */
+.rp {
+  --rp-ink: #0b2340;
+  --rp-blue: #0a4bb5;
+  --rp-text: #0b1b33;
+  --rp-muted: #64748b;
+  --rp-line: #eef1f6;
+  min-height: 100dvh;
+  padding-bottom: 84px;
+  background: #f4f6fa;
+  color: var(--rp-text);
+  font-family: Manrope, 'Be Vietnam Pro', system-ui, sans-serif;
+}
+.rp > * {
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.rp-empty {
+  display: grid;
+  place-items: center;
+  min-height: 60dvh;
+  padding: 24px;
+  color: var(--rp-muted);
+  text-align: center;
+}
+.rp .num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* đầu trang: công ty nhà thầu */
+.rp-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 82px;
+  padding: 14px 16px;
+  box-sizing: border-box;
+  background: linear-gradient(100deg, #0b2340 0%, #102c5e 55%, #1b3f94 100%);
+}
+.rp-logo {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--rp-blue);
+  font-size: 16px;
+  font-weight: 800;
+}
+.rp-co {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  color: #fff;
+}
+.rp-co b {
+  font-size: 14px;
+  line-height: 19px;
+}
+.rp-area {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.14);
+  color: #ffb81c;
+  font-size: 10px;
+  font-weight: 700;
+}
+.rp-area svg {
+  color: #cbd5e1;
+}
+.rp-co small {
+  font-size: 11px;
+  color: #fff;
+}
+
+/* khối trắng */
+.rp-card {
+  background: #fff;
+  padding: 14px 16px 16px;
+}
+.rp-card + .rp-card {
+  margin-top: 8px;
+}
+.rp-eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  color: var(--rp-blue);
+}
+.rp-card h1 {
+  margin: 4px 0 0;
+  font-size: 20px;
+  line-height: 1.25;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  color: var(--rp-ink);
+}
+.rp-card h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--rp-ink);
+}
+.rp-when {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--rp-muted);
+}
+.rp-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eaf1fc;
+  color: var(--rp-blue);
+  font-size: 11px;
+  font-weight: 700;
+}
+.rp-chip.ok {
+  background: #e8f6ee;
+  color: #166534;
+}
+
+/* ảnh ghép */
+.rp-mosaic {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rp-mosaic.small {
+  margin-top: 8px;
+}
+.rp-mrow {
+  display: flex;
+  gap: 6px;
+}
+.rp-mosaic.small .rp-mrow {
+  gap: 5px;
+}
+.rp-mrow button {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  aspect-ratio: 3 / 4;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #e3e8f0;
+  cursor: zoom-in;
+}
+.rp-mrow button.wide {
+  flex: 1.333 1 0;
+  aspect-ratio: 4 / 3;
+}
+.rp-mrow:first-child button:first-child:not(:only-child) {
+  flex: 0.75 1 0;
+}
+.rp-mosaic.small .rp-mrow button,
+.rp-mosaic.small .rp-mrow button:first-child {
+  flex: 1 1 0;
+  aspect-ratio: 1;
+}
+.rp-mrow img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.rp-more {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(11 35 64 / 0.55);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+}
+.rp-quote {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 19px;
+  color: #1e293b;
+}
+
+/* tiến độ */
+.rp-progress {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f7f9fc;
+}
+.rp-prow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--rp-ink);
+}
+.rp-prow .v {
+  color: var(--rp-blue);
+}
+.rp-bar {
+  margin-top: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: #c8d8ee;
+  overflow: hidden;
+}
+.rp-bar > div {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--rp-blue);
+}
+.rp-progress small {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--rp-muted);
+}
+
+/* nhật ký trước đây */
+.rp-earlier {
+  padding-bottom: 6px;
+}
+.rp-log {
+  padding: 12px 0 14px;
+  border-bottom: 1px solid var(--rp-line);
+}
+.rp-log:last-child {
+  border-bottom: 0;
+}
+.rp-loghead {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.rp-loghead b {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--rp-ink);
+}
+.rp-loghead span {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+}
+.rp-loghead svg {
+  align-self: center;
+  color: #94a3b8;
+}
+
+.rp-foot {
+  padding: 14px 16px 20px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 16px;
+  color: #94a3b8;
+}
+
+/* nút cố định cuối trang */
+.rp-actions {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px calc(16px + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1px solid #e3e8f0;
+}
+.rp-actions a {
+  flex: 1;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 800;
+  text-decoration: none;
+}
+.rp-call {
+  border: 1.5px solid var(--rp-blue);
+  color: var(--rp-blue);
+  background: #fff;
+}
+.rp-zalo {
+  background: #0068ff;
+  color: #fff;
+}
+@media (min-width: 672px) {
+  .rp-actions {
+    left: 50%;
+    right: auto;
+    width: 640px;
+    transform: translateX(-50%);
+    box-sizing: border-box;
+  }
+}
+
+/* xem ảnh toàn màn hình */
+.rp-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  background: #05080f;
+  color: #fff;
+}
+.rp-viewer header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: calc(14px + env(safe-area-inset-top)) 12px 14px;
+}
+.rp-round {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.12);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  cursor: pointer;
+}
+.rp-vtitle {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  text-align: center;
+}
+.rp-vtitle b {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.rp-vtitle span {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: pan-y;
+}
+.rp-stage img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.rp-stage .prev,
+.rp-stage .next {
+  position: absolute;
+  top: 50%;
+  margin-top: -20px;
+}
+.rp-stage .prev {
+  left: 8px;
+}
+.rp-stage .next {
+  right: 8px;
+}
+.rp-vmeta {
+  flex-shrink: 0;
+  padding: 12px 16px 0;
+}
+.rp-vmeta > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.rp-vmeta small {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+.rp-gps {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgb(34 197 94 / 0.15);
+  color: #4ade80;
+  font-size: 10px;
+}
+.rp-gps i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+}
+.rp-strip {
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 12px 16px calc(20px + env(safe-area-inset-bottom));
+  scrollbar-width: none;
+}
+.rp-strip button {
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #222;
+  opacity: 0.55;
+  cursor: pointer;
+}
+.rp-strip button.on {
+  border-color: #ffb81c;
+  opacity: 1;
+}
+.rp-strip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}

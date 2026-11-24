@@ -7,12 +7,19 @@ import SiteCard from './SiteCard'
 import { useNavigate } from 'react-router-dom'
 import { ctvTip, cusTip, dezonCard } from '@/utils/siteTip'
 import { distM, distText, hsId, isStale as stale } from '@/utils/format'
-import { CtvList, CustomerList, LayerPanel, Pill } from './layers'
-import { NO_CUS_FILTER, NO_P_FILTER, NO_V_FILTER, P_AGES, ctvKey, cusMatch, ctvVisible, facet, pMatch, useLayers, vMatch } from '@/utils/mapLayers'
+import { CtvList, CustomerList, FilterBar, LayerPanel, Pill } from './layers'
+import { NO_CUS_FILTER, NO_P_FILTER, NO_V_FILTER, P_AGES, ctvKey, ctvProvinces, cusMatch, ctvVisible, facet, fold, pMatch, useLayers, vMatch } from '@/utils/mapLayers'
 
 const PAGE = 24
 const NONE = []
 const SAME_SITE_M = 60 // công trình Dezon cách hồ sơ CTV dưới chừng này: coi là đã có CTV chụp, không hiện riêng
+
+/** Ô tìm nhanh (q đã bỏ dấu): khớp chữ trong xs, hoặc từ 4 số trở lên khớp SĐT */
+function qHit(q, xs, phone) {
+  if (!q || fold(xs.join(' ')).includes(q)) return true
+  const digits = q.replace(/\D/g, '')
+  return digits.length >= 4 && (phone || '').replace(/\D/g, '').includes(digits)
+}
 
 /** Ghim nhỏ trong chú thích (cùng hình với ghim trên bản đồ): '' vàng, 'stale' xanh lá, 'dz' xanh dương. */
 function PinMark({ kind = '' }) {
@@ -43,12 +50,8 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
   const [tab, setTab] = useState('projects')
   const navigate = useNavigate()
   // tìm nhanh trong danh sách (chỉ trang có lớp CTV): bỏ dấu, chữ thường
-  const fold = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase()
   const q = layered ? fold(addr.trim()) : ''
-  const hit = (...xs) => !q || fold(xs.join(' ')).includes(q)
-  const digits = q.replace(/\D/g, '')
-  const phoneHit = (p) => digits.length >= 4 && (p || '').replace(/\D/g, '').includes(digits)
-  // bộ lọc tab Công trình (góp ý 23/11/2026): giai đoạn, ngày chụp, CTV
+  // bộ lọc tab Công trình (góp ý 23-24/11/2026): tỉnh thành (ô của thanh tìm), giai đoạn, lần chụp, ngày chụp, CTV
   const [pf, setPf] = useState(NO_P_FILTER)
   // Danh sách tính sẵn (useMemo): rê chuột (đổi active) không vẽ lại ghim, thẻ đang mở trên bản đồ không tự tắt (góp ý 23/11/2026)
   const points = useMemo(
@@ -56,10 +59,9 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
       allPoints.filter(
         (p) =>
           (!layered || layers[stale(p.last_at || p.at, staleDays) ? 'shoot' : 'pending']) &&
-          pMatch(p, pf) &&
+          pMatch(p, pf, staleDays) &&
           (!q || fold([p.address, p.contractor, p.ctv_name, p.stage, hsId(p.id)].join(' ')).includes(q)),
       ),
-     
     [allPoints, layered, layers, staleDays, pf, q],
   )
   const search = useRef(null) // MapSearch: search.current.find(chữ)
@@ -87,19 +89,18 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
   )
   const dz = useMemo(
     () =>
-      // lọc theo CTV / giai đoạn thì bỏ công trình Dezon (chưa CTV nào chụp, không có giai đoạn)
-      (layered && !layers.dezon) || pf.ctv || pf.stage
+      // lọc theo CTV / giai đoạn / lần chụp thì bỏ công trình Dezon (chưa CTV nào chụp, không có giai đoạn)
+      (layered && !layers.dezon) || pf.ctv || pf.stage || pf.shot
         ? NONE
         : dzAll.filter((d) => pMatch({ at: d.posted_at }, pf) && (!q || fold([d.title, d.contractor, d.address].join(' ')).includes(q))),
-     
     [dzAll, layered, layers, pf, q],
   )
   // cộng tác viên theo lớp đang bật + ô lọc tab CTV + ô tìm
   const [vf, setVf] = useState(NO_V_FILTER)
+  const ctvProv = useMemo(() => (layered ? ctvProvinces(ctvPins, provinces, allPoints) : new Map()), [layered, ctvPins, provinces, allPoints])
   const ctvs = useMemo(
-    () => (layered ? ctvPins.filter((c) => ctvVisible(c, layers) && vMatch(c, vf) && (hit(c.name, c.address, c.kind) || phoneHit(c.phone))) : NONE),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [layered, ctvPins, layers, vf, q],
+    () => (layered ? ctvPins.filter((c) => ctvVisible(c, layers) && vMatch(c, vf, ctvProv.get(c.id)) && qHit(q, [c.name, c.address, c.kind], c.phone)) : NONE),
+    [layered, ctvPins, layers, vf, q, ctvProv],
   )
   const counts = layered
     ? {
@@ -116,8 +117,7 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
   const [cf, setCf] = useState(NO_CUS_FILTER) // bộ lọc tab Khách hàng
   const allCus = layered ? customers || NONE : NONE
   const cus = useMemo(
-    () => (layered && layers.customer ? allCus.filter((k) => cusMatch(k, cf) && (hit(k.name, k.address, k.area, k.owner, k.kind) || phoneHit(k.phone))) : NONE),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    () => (layered && layers.customer ? allCus.filter((k) => cusMatch(k, cf) && qHit(q, [k.name, k.address, k.area, k.owner, k.kind], k.phone)) : NONE),
     [layered, layers, allCus, cf, q],
   )
   if (counts) counts.customer = allCus.length
@@ -153,6 +153,26 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
         .sort((a, b) => a.label.localeCompare(b.label, 'vi')),
     [allPoints],
   )
+  // ô Tỉnh thành tab Công trình: dùng chung ô của thanh tìm (lọc ở máy chủ), 2 chỗ luôn khớp nhau
+  const provSel = selects.find((s) => s.key === 'province')
+  // Lần chụp: như chú thích ghim (vàng / xanh lá)
+  const shotOpts = useMemo(() => {
+    const n = allPoints.filter((p) => stale(p.last_at || p.at, staleDays)).length
+    return [
+      { value: 'pending', label: `Chưa tới lúc chụp (${allPoints.length - n})` },
+      { value: 'shoot', label: `Cần chụp (${n})` },
+    ]
+  }, [allPoints, staleDays])
+  // Tỉnh thành tab CTV: theo địa chỉ CTV / nơi CTV chụp nhiều nhất (ctvProvinces)
+  const ctvProvOpts = useMemo(() => {
+    const n = new Map()
+    for (const c of layered ? ctvPins : NONE) n.set(ctvProv.get(c.id) || '', (n.get(ctvProv.get(c.id) || '') || 0) + 1)
+    const nm = Object.fromEntries((provinces || []).map((p) => [p.code, p.name]))
+    return [...n.entries()]
+      .map(([code, k]) => ({ value: code || '-', label: `${code ? nm[code] || code : 'Chưa rõ tỉnh'} (${k})`, none: !code }))
+      .sort((a, b) => a.none - b.none || a.label.localeCompare(b.label, 'vi'))
+      .map(({ value, label }) => ({ value, label }))
+  }, [layered, ctvPins, ctvProv, provinces])
 
   return (
     <div className="ex">
@@ -223,17 +243,8 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
             <CustomerList rows={cus} all={allCus} filter={cf} setFilter={setCf} onPick={pickCus} active={active} onHover={setActive} />
           ) : tab === 'ctv' && layered ? (
             <>
-              <div className="ex-filters-head">
-                <p className="muted">
-                  {ctvs.length} cộng tác viên · {ctvs.filter((c) => c.type !== 'sales').length} cập nhật, {ctvs.filter((c) => c.type === 'sales').length} kinh doanh
-                </p>
-                {Object.entries(vf).some(([k, v]) => v !== NO_V_FILTER[k]) && (
-                  <button type="button" className="cus-clear" onClick={() => setVf(NO_V_FILTER)}>
-                    Bỏ lọc ✕
-                  </button>
-                )}
-              </div>
-              <div className="ex-filters">
+              <FilterBar any={Object.entries(vf).some(([k, v]) => v !== NO_V_FILTER[k])} onClear={() => setVf(NO_V_FILTER)}>
+                <Pill label="Tỉnh thành" value={vf.prov} options={ctvProvOpts} onChange={(v) => setVf({ ...vf, prov: v })} />
                 <Pill
                   label="Loại"
                   value={vf.type}
@@ -271,26 +282,34 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
                   ]}
                   onChange={(v) => setVf({ ...vf, last: v })}
                 />
-              </div>
+              </FilterBar>
+              {/* số CTV đã có trên tab: ở đây chỉ chia theo loại */}
+              <p className="muted ex-sum">
+                {ctvs.filter((c) => c.type !== 'sales').length} CTV cập nhật · {ctvs.filter((c) => c.type === 'sales').length} CTV kinh doanh ·{' '}
+                {ctvs.filter((c) => c.status === 'active').length} tích cực
+              </p>
               <CtvList ctvs={ctvs} onPick={pickCtv} active={active} onHover={setActive} />
             </>
           ) : (
             <>
-          {/* góp ý 23/11/2026: bỏ dòng "N công trình" (đã có số trên tab), thay bằng ô lọc */}
-          <div className="ex-filters">
+          {/* góp ý 23-24/11/2026: bỏ dòng "N công trình" (đã có số trên tab), thay bằng hàng ô lọc như tab Khách hàng */}
+          <FilterBar
+            any={!!provSel?.value || Object.entries(pf).some(([k, v]) => v !== NO_P_FILTER[k])}
+            onClear={() => {
+              setPf(NO_P_FILTER)
+              if (provSel?.value) provSel.onChange('')
+            }}
+          >
+            {provSel && <Pill label="Tỉnh thành" value={provSel.value} options={provSel.options.filter((o) => o.value)} onChange={provSel.onChange} />}
             <Pill label="Giai đoạn" value={pf.stage} options={stageOpts} onChange={(v) => setPf({ ...pf, stage: v })} />
+            <Pill label="Lần chụp" value={pf.shot} options={shotOpts} onChange={(v) => setPf({ ...pf, shot: v })} />
             <Pill label="Ngày chụp" value={pf.age} options={P_AGES} onChange={(v) => setPf({ ...pf, age: v })} />
             {layered && <Pill label="CTV" value={pf.ctv} options={ctvOpts} onChange={(v) => setPf({ ...pf, ctv: v })} />}
-          </div>
+          </FilterBar>
           <div className="ex-head">
             <h2 className="ex-head-sub">
               {!layered && `${rows.length} công trình `}
               {busy && <span className="muted ex-busy">đang tải…</span>}
-              {Object.entries(pf).some(([k, v]) => v !== NO_P_FILTER[k]) && (
-                <button type="button" className="cus-clear" onClick={() => setPf(NO_P_FILTER)}>
-                  Bỏ lọc ✕
-                </button>
-              )}
               {near && (
                 <span className="ex-near">
                   trong {distText(near.radius)} quanh <b>{near.name.split(',')[0]}</b>

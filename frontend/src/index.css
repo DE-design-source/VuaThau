@@ -2239,7 +2239,10 @@ details summary {
 }
 .site-pop-actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
+  gap: 8px 10px;
   padding: 0 12px 12px;
   font-weight: 600;
 }
@@ -4512,39 +4515,66 @@ details.card > summary strong {
   padding: 3px 10px;
 }
 
-/* Hàng ô lọc trong danh sách bản đồ (góp ý 23/11/2026): các ô bằng nhau, thẳng hàng cả chiều ngang */
+/* Hàng ô lọc dùng chung 3 tab (góp ý 23-24/11/2026): 1 hàng, các ô cùng cao 32px, cách đều 8px;
+   hẹp thì xuống dòng (mỗi ô tối thiểu 128px); "Bỏ lọc" luôn ở cuối hàng, cùng cao, căn giữa theo ô. */
 .ex-filters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: 6px;
-  margin: 6px 0 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
 }
 .ex-filters .cus-owner {
+  flex: 1 1 0;
+  min-width: 128px;
   max-width: none;
-  min-width: 0;
-  width: 100%;
+  height: 34px;
+  box-sizing: border-box;
+}
+.ex-filters .cus-owner::after {
+  top: 13px;
+}
+.ex-filters .cus-owner span {
+  flex: none;
 }
 .ex-filters .cus-owner b {
   min-width: 0;
 }
-.ex-filters-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
+.ex-filters-clear {
+  flex: none;
+  height: 34px;
+  margin-left: auto;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  text-decoration: underline;
+  cursor: pointer;
 }
-.ex-filters-head p {
-  margin: 0;
-  font-size: 13px;
+.ex-filters-clear:hover {
+  color: var(--color-text);
 }
-/* Nút Google Maps (thẻ khách hàng, dòng khách hàng) */
-.gmap-btn {
+/* không lọc gì: giữ chỗ (hàng không nhảy khi bật / tắt lọc) nhưng ẩn */
+.ex-filters-clear:disabled {
+  visibility: hidden;
+}
+/* dòng chia nhóm dưới hàng ô lọc (số tổng đã có trên tab) */
+.ex-sum {
+  margin: -2px 0 8px;
+  font-size: 12.5px;
+}
+/* Nút Google Maps (thẻ trên bản đồ: công trình, CTV, khách hàng; dòng khách hàng) */
+.gmap-btn,
+.site-pop-actions a[href^='https://www.google.com/maps'] {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   padding: 4px 10px;
   border-radius: 6px;
-  background: #e5484d;
+  background: #1a73e8;
   color: #fff !important;
   font-size: 11.5px;
   font-weight: 700;
@@ -4553,8 +4583,30 @@ details.card > summary strong {
   cursor: pointer;
   flex: none;
 }
-.gmap-btn:hover {
-  background: #d13438;
+.gmap-btn:hover,
+.site-pop-actions a[href^='https://www.google.com/maps']:hover {
+  background: #1765cc;
+}
+/* dòng khách hàng: nút "Xem Google Map" cạnh dòng (link riêng, không lồng trong nút của dòng) */
+.cus-li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+.cus-li .ctv-item {
+  flex: 1;
+  min-width: 0;
+  border-bottom: 0;
+}
+.cus-li:hover,
+.cus-li.on {
+  background: var(--color-soft, #fafafa);
+}
+.cus-li .ctv-item:hover {
+  background: transparent;
 }
 .ex-head-sub {
   display: flex;
@@ -4588,19 +4640,53 @@ details.card > summary strong {
 .ctv-pin.mk-pin.approx svg circle {
   stroke-dasharray: 4 3;
 }
-.ctv-pin.mk-pin .site-pin-label,
-.cus-pin.mk-pin .site-pin-label {
-  top: calc(100% + 2px);
+/* tên hiện cạnh ghim (bên phải, ngang vòng tròn); phóng xa thì chỉ hiện khi rê chuột / đang chọn cho đỡ rối */
+.site-map .mk-pin .site-pin-label {
+  display: block;
+  left: calc(100% + 1px);
+  top: 7px;
+  margin-top: 0;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 3px 7px;
+  border-radius: 8px;
+  font-size: 11px;
+  transform: none;
+}
+.site-map.zoom-far .mk-pin .site-pin-label {
+  display: none;
+}
+.site-map.zoom-far .mk-pin:hover .site-pin-label,
+.site-map.zoom-far .mk-pin.on .site-pin-label {
+  display: block;
 }
 .cus-av {
   background: #d93025;
   box-shadow: 0 0 0 1px #f2b8b5, 0 2px 6px rgb(217 48 37 / 0.25);
 }
-/* Nền bản đồ nhạt, ngả xám (góp ý 23/11/2026): ghim nổi bật hơn */
-.site-map .leaflet-tile-pane,
-.site-map .leaflet-gl-layer,
-.site-map .maplibregl-canvas {
-  filter: saturate(0.35) brightness(1.07) contrast(0.9);
+/* ghim nhỏ trong chú thích Lớp bản đồ (đúng hình ghim KH / CTV / SALE trên bản đồ) */
+.lp-ico {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  font-family: inherit;
+}
+.lp-ico svg {
+  display: block;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.25));
+}
+.lp-chip .lp-ico {
+  width: 14px;
+}
+/* Nền bản đồ xám nhạt (góp ý 23-24/11/2026): ghim màu nổi bật. Chỉ lọc lớp nền (tile pane: cả nền vector MapLibre
+   lẫn nền ảnh OSM), không đụng ghim, thẻ, lớp tô tỉnh. Đặt 1 chỗ để không bị lọc chồng nhiều lần. */
+.site-map .leaflet-tile-pane {
+  filter: grayscale(1) brightness(1.1) contrast(0.82);
+}
+:root[data-theme='dark'] .site-map .leaflet-tile-pane {
+  filter: grayscale(1) invert(1) brightness(0.85) contrast(0.85);
 }
 
 /* Chi tiết công trình bản free (/ban-do/:id) */
@@ -4906,167 +4992,3 @@ details.card > summary strong {
   margin-top: 3px;
 }
 
-/* ---------- Báo cáo thi công gửi chủ nhà (/bc/:code) ---------- */
-.bc {
-  min-height: 100dvh;
-  background: #f4f6fa;
-  color: #0b1b33;
-}
-.bc-empty {
-  display: grid;
-  place-items: center;
-  min-height: 60dvh;
-  padding: 24px;
-  color: var(--color-muted);
-  text-align: center;
-}
-.bc-hero {
-  position: relative;
-  min-height: 260px;
-  max-height: 46dvh;
-  aspect-ratio: 4 / 3;
-  width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
-  overflow: hidden;
-  background: #0b2340;
-}
-.bc-hero img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.bc-hero::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgb(11 35 64 / 0) 30%, rgb(11 35 64 / 0.88) 100%);
-}
-.bc-hero-text {
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  bottom: 14px;
-  z-index: 1;
-  color: #fff;
-}
-.bc-eyebrow {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  color: #ffb81c;
-}
-.bc-hero h1 {
-  margin: 2px 0 2px;
-  font-size: 1.4rem;
-  line-height: 1.25;
-  color: #fff;
-}
-.bc-hero p {
-  margin: 0;
-  font-size: 0.85rem;
-  color: #c9d4e5;
-}
-.bc-body {
-  display: grid;
-  gap: 14px;
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 14px 16px 32px;
-}
-.bc-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 8px;
-  font-size: 0.85rem;
-  color: #475569;
-}
-.bc-chip {
-  padding: 2px 9px;
-  border-radius: 999px;
-  background: #eef2f7;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: #475569;
-}
-.bc-chip.ok {
-  background: #e8f6ee;
-  color: #166534;
-}
-.bc-note {
-  padding: 12px 14px;
-  border: 1px solid #e3e8f0;
-  border-radius: 12px;
-  background: #fff;
-}
-.bc-note b {
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #94a3b8;
-}
-.bc-note p {
-  margin: 4px 0 0;
-  font-size: 0.95rem;
-  line-height: 1.45;
-}
-.bc-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 6px;
-}
-.bc-grid button {
-  padding: 0;
-  border: 0;
-  border-radius: 10px;
-  overflow: hidden;
-  aspect-ratio: 3 / 4;
-  background: #e3e8f0;
-  cursor: zoom-in;
-}
-.bc-grid img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.bc-foot {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding-top: 10px;
-  border-top: 1px solid #e3e8f0;
-  font-size: 0.8rem;
-  line-height: 1.45;
-  color: #64748b;
-}
-.bc-viewer {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: grid;
-  place-items: center;
-  background: rgb(0 0 0 / 0.92);
-  cursor: zoom-out;
-}
-.bc-viewer img {
-  max-width: 100%;
-  max-height: 100dvh;
-  object-fit: contain;
-}
-.bc-count {
-  position: absolute;
-  top: 12px;
-  right: 14px;
-  color: #fff;
-  font-size: 0.85rem;
-  font-weight: 700;
-}
-@media (max-width: 420px) {
-  .bc-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}

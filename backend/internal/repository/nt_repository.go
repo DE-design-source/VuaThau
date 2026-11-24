@@ -94,6 +94,8 @@ type NTRepository interface {
 	LarkRecord(ctx context.Context, uid int64) (string, error)
 	// SwapLock: đổi trạng thái khoá nhà thầu from -> to (chỉ khi đang đúng from: không đè khoá của admin); đăng xuất mọi máy.
 	SwapLock(ctx context.Context, uid int64, from, to int) (bool, error)
+	// UserPhone: SĐT đăng nhập của nhà thầu (nút Gọi / Zalo trên báo cáo gửi chủ nhà)
+	UserPhone(ctx context.Context, uid int64) (string, error)
 	// ProjectPhotos: ảnh dự án (không thuộc nhật ký), ảnh bìa trước
 	ProjectPhotos(ctx context.Context, projectID int64) ([]NTMedia, error)
 	// Log: 1 nhật ký kèm ảnh / video (báo cáo gửi chủ nhà)
@@ -383,4 +385,13 @@ func (r *ntRepository) SwapLock(ctx context.Context, uid int64, from, to int) (b
 	tag, err := r.db.Exec(ctx, `UPDATE users SET locked = $3, token_version = token_version + 1
 		WHERE id = $1 AND role = 'nhathau' AND locked = $2`, uid, from, to)
 	return err == nil && tag.RowsAffected() > 0, err
+}
+
+func (r *ntRepository) UserPhone(ctx context.Context, uid int64) (string, error) {
+	var p string
+	err := r.db.QueryRow(ctx, `SELECT username FROM users WHERE id = $1 AND role = 'nhathau'`, uid).Scan(&p)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return p, err
 }

@@ -158,6 +158,8 @@ type NTProjectInput struct {
 	Street   string   `json:"street"`   // số nhà, tên đường
 	Kind     string   `json:"kind"`
 	Status   string   `json:"status"`
+	// FinishedYear: form Đăng dự án, Tình trạng "Đã hoàn thành" -> Năm hoàn thành
+	FinishedYear *int `json:"finished_year"`
 	Progress *int     `json:"progress"`
 	Lat      *float64 `json:"lat"`
 	Lng      *float64 `json:"lng"`
@@ -345,7 +347,24 @@ func (s *NTService) CreateProject(ctx context.Context, u *model.User, in NTProje
 	if err := s.repo.CreateProject(ctx, p); err != nil {
 		return nil, err
 	}
+	// form Đăng dự án: Tình trạng "Đã hoàn thành" + Năm hoàn thành (dự án cũ đưa vào hồ sơ năng lực)
+	if in.Status == NTStatusDone {
+		p.Status, p.Progress, p.FinishedOn = NTStatusDone, 100, s.finishedOn(in.FinishedYear)
+		if err := s.repo.UpdateProject(ctx, p); err != nil {
+			return nil, err
+		}
+	}
 	return s.repo.Project(ctx, p.ID)
+}
+
+// finishedOn: ngày hoàn thành theo năm chọn ở form (năm nay / không chọn: hôm nay; năm trước: 31/12 năm đó).
+func (s *NTService) finishedOn(year *int) *time.Time {
+	now := s.now()
+	if year == nil || *year >= now.Year() || *year < 1990 {
+		return &now
+	}
+	t := time.Date(*year, 12, 31, 12, 0, 0, 0, VN)
+	return &t
 }
 
 func validLatLng(lat, lng *float64) bool {
@@ -370,8 +389,8 @@ func (s *NTService) UpdateProject(ctx context.Context, u *model.User, id int64, 
 	}
 	switch in.Status {
 	case NTStatusDone:
-		if p.Status != NTStatusDone {
-			p.FinishedOn = ptr(s.now())
+		if p.Status != NTStatusDone || in.FinishedYear != nil {
+			p.FinishedOn = s.finishedOn(in.FinishedYear)
 		}
 		p.Status, p.Progress = NTStatusDone, 100
 	case NTStatusRunning:
@@ -431,7 +450,8 @@ func (s *NTService) Project(ctx context.Context, u *model.User, id int64) (*NTPr
 	}
 	one := []repository.NTProject{*p}
 	s.covers(one)
-	return &NTProjectDetail{Project: &one[0], Photos: photos, Logs: logs, Days: int(end.Sub(p.StartedOn).Hours()/24) + 1}, nil
+	// dự án cũ đưa vào hồ sơ (hoàn thành năm trước, ngày bắt đầu = ngày đăng): không ra số ngày âm
+	return &NTProjectDetail{Project: &one[0], Photos: photos, Logs: logs, Days: max(1, int(end.Sub(p.StartedOn).Hours()/24)+1)}, nil
 }
 
 // MaxNTProjectPhotos: ảnh dự án tối đa (thiết kế: "Ảnh bìa đặt ở ô đầu tiên · tối đa 20 ảnh").
@@ -541,18 +561,39 @@ func (s *NTService) Report(ctx context.Context, u *model.User, projectID, logID 
 // NTPublicReport: trang báo cáo công khai (chủ nhà xem). Không có SĐT / tài khoản nhà thầu.
 type NTPublicReport struct {
 	Company  string    `json:"company"`
+	Regions  string    `json:"regions"` // khu vực hoạt động (đầu trang báo cáo)
 	Verified bool      `json:"verified"`
+	Phone    string    `json:"phone"` // SĐT nhà thầu: nút Gọi nhà thầu / Nhắn Zalo (nhà thầu tự gửi link nên chủ nhà được thấy)
 	Project  string    `json:"project"`
 	Address  string    `json:"address"`
 	Kind     string    `json:"kind"`
 	Status   string    `json:"status"`
 	Progress int       `json:"progress"`
+	Days     int       `json:"days"`   // ngày thi công thứ mấy
+	Logs     int       `json:"logs"`   // số nhật ký của dự án
+	Total    int       `json:"total"`  // số ảnh của dự án
 	Note     string    `json:"note"`
 	TakenAt  time.Time `json:"taken_at"`
 	GPS      bool      `json:"gps"` // ảnh có toạ độ GPS + giờ chụp in trên ảnh
+	Lat      *float64  `json:"lat"`
+	Lng      *float64  `json:"lng"`
+	LogAddr  string    `json:"log_address"` // địa chỉ in trên ảnh (màn xem ảnh)
 	Photos   []string  `json:"photos"`
 	Videos   int       `json:"videos"`
+	Earlier  []NTPublicLog `json:"earlier"` // nhật ký trước đây của dự án (mới trước)
 }
+
+// NTPublicLog: 1 nhật ký trước đây trên trang báo cáo.
+type NTPublicLog struct {
+	TakenAt time.Time `json:"taken_at"`
+	Note    string    `json:"note"`
+	GPS     bool      `json:"gps"`
+	Address string    `json:"address"`
+	Photos  []string  `json:"photos"`
+}
+
+// maxEarlierLogs: trang báo cáo hiện tối đa bấy nhiêu nhật ký trước đây.
+const maxEarlierLogs = 30
 
 func (s *NTService) PublicReport(ctx context.Context, code string) (*NTPublicReport, error) {
 	id, ok := s.reportLog(code)
@@ -577,30 +618,70 @@ func (s *NTService) PublicReport(ctx context.Context, code string) (*NTPublicRep
 	if err != nil {
 		return nil, err
 	}
-	r := &NTPublicReport{Company: prof.Company, Verified: prof.Verified, Project: p.Name, Address: p.Address, Kind: p.Kind,
-		Status: p.Status, Progress: p.Progress, Note: l.Note, TakenAt: l.TakenAt, GPS: l.Lat != nil, Photos: []string{}}
+	phone, err := s.repo.UserPhone(ctx, p.UserID)
+	if err != nil {
+		return nil, err
+	}
+	end := s.now()
+	if p.FinishedOn != nil {
+		end = *p.FinishedOn
+	}
+	url := func(mid int64) string { return fmt.Sprintf("/api/v1/public/bc/%s/photos/%d", code, mid) }
+	r := &NTPublicReport{Company: prof.Company, Regions: prof.Regions, Verified: prof.Verified, Phone: phone, Project: p.Name,
+		Address: p.Address, Kind: p.Kind, Status: p.Status, Progress: p.Progress, Days: max(1, int(end.Sub(p.StartedOn).Hours()/24)+1),
+		Logs: p.Logs, Total: p.Photos, Note: l.Note, TakenAt: l.TakenAt, GPS: l.Lat != nil, Lat: l.Lat, Lng: l.Lng, LogAddr: l.Address,
+		Photos: []string{}, Earlier: []NTPublicLog{}}
 	for _, m := range l.Media {
 		if m.Kind == "photo" {
-			r.Photos = append(r.Photos, fmt.Sprintf("/api/v1/public/bc/%s/photos/%d", code, m.ID))
+			r.Photos = append(r.Photos, url(m.ID))
 		} else {
 			r.Videos++
+		}
+	}
+	logs, err := s.repo.Logs(ctx, p.ID) // mới trước
+	if err != nil {
+		return nil, err
+	}
+	for _, x := range logs {
+		if x.ID == l.ID || len(r.Earlier) >= maxEarlierLogs || x.TakenAt.After(l.TakenAt) {
+			continue // chỉ nhật ký TRƯỚC lần báo cáo này
+		}
+		e := NTPublicLog{TakenAt: x.TakenAt, Note: x.Note, GPS: x.Lat != nil, Address: x.Address, Photos: []string{}}
+		for _, m := range x.Media {
+			if m.Kind == "photo" {
+				e.Photos = append(e.Photos, url(m.ID))
+			}
+		}
+		if len(e.Photos) > 0 {
+			r.Earlier = append(r.Earlier, e)
 		}
 	}
 	return r, nil
 }
 
-// PublicReportPhoto: ảnh của báo cáo (chỉ ảnh thuộc đúng nhật ký trong mã).
+// PublicReportPhoto: ảnh của báo cáo: ảnh nhật ký trong mã, hoặc nhật ký TRƯỚC đó của cùng dự án ("Nhật ký trước đây").
+// Ảnh dự án (không thuộc nhật ký) và nhật ký sau lần báo cáo: không.
 func (s *NTService) PublicReportPhoto(ctx context.Context, code string, mediaID int64, small bool) ([]byte, error) {
 	id, ok := s.reportLog(code)
 	if !ok {
 		return nil, fail(ErrNotFound, "Không tìm thấy ảnh.")
 	}
 	m, err := s.repo.Media(ctx, mediaID)
-	if errors.Is(err, repository.ErrNotFound) || (err == nil && (m.LogID != id || m.Kind != "photo")) {
+	if errors.Is(err, repository.ErrNotFound) || (err == nil && (m.Kind != "photo" || m.LogID == 0)) {
 		return nil, fail(ErrNotFound, "Không tìm thấy ảnh.")
 	}
 	if err != nil {
 		return nil, err
+	}
+	if m.LogID != id {
+		base, err := s.repo.Log(ctx, id)
+		if err != nil {
+			return nil, fail(ErrNotFound, "Không tìm thấy ảnh.")
+		}
+		other, err := s.repo.Log(ctx, m.LogID)
+		if err != nil || other.ProjectID != base.ProjectID || other.TakenAt.After(base.TakenAt) {
+			return nil, fail(ErrNotFound, "Không tìm thấy ảnh.")
+		}
 	}
 	b, err := s.files.ReadPhoto(m.SHA256, small)
 	if err != nil {

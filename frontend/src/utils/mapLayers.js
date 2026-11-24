@@ -1,5 +1,6 @@
 // Lớp bản đồ (layout 21/11/2026): hằng số + hook nhớ lớp đang bật. Giao diện ở components/explore/layers.jsx.
 import { useState } from 'react'
+import { isStale } from '@/utils/format'
 
 export const LAYER_META = {
   pending: { label: 'Chưa tới lúc chụp', color: '#F5B301' },
@@ -83,17 +84,23 @@ export const ctvStatusLabel = (c) => (c.status === 'active' ? 'Tích cực' : '�
 // ---- Bộ lọc tab Công trình và tab Cộng tác viên (góp ý 23/11/2026) ----
 const dAgo = (s) => (s ? (Date.now() - new Date(s).getTime()) / 864e5 : Infinity)
 
-/** Tab Công trình: giai đoạn, ngày chụp gần nhất, CTV. */
-export const NO_P_FILTER = { stage: '', age: '', ctv: '' }
+/** Bỏ dấu, chữ thường (tìm nhanh, so tên tỉnh) */
+export const fold = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[đĐ]/g, 'd').toLowerCase()
+
+/** Tab Công trình: giai đoạn, lần chụp (chưa tới lúc / cần chụp, như chú thích), ngày chụp gần nhất, CTV.
+ *  Tỉnh thành dùng chung ô Tỉnh thành của thanh tìm (lọc ở máy chủ). */
+export const NO_P_FILTER = { stage: '', shot: '', age: '', ctv: '' }
 export const P_AGES = [
   { value: '1d', label: 'Hôm nay, hôm qua' },
   { value: '7d', label: '7 ngày qua' },
   { value: '30d', label: '30 ngày qua' },
   { value: 'old', label: 'Quá 30 ngày' },
 ]
-export function pMatch(p, f) {
+/** staleDays: số ngày tới lúc chụp lại (ô Lần chụp) */
+export function pMatch(p, f, staleDays = 30) {
   if (f.stage && (p.stage || '').trim() !== (f.stage === '-' ? '' : f.stage)) return false
   if (f.ctv && String(p.ctv_id || '') !== f.ctv) return false
+  if (f.shot && (isStale(p.last_at || p.at, staleDays) ? 'shoot' : 'pending') !== f.shot) return false
   if (f.age) {
     const d = dAgo(p.last_at || p.at)
     if (f.age === '1d' && d > 2) return false
@@ -104,9 +111,11 @@ export function pMatch(p, f) {
   return true
 }
 
-/** Tab Cộng tác viên: loại, trạng thái, có công trình chưa, lần gửi gần nhất. */
-export const NO_V_FILTER = { type: '', status: '', has: '', last: '' }
-export function vMatch(c, f) {
+/** Tab Cộng tác viên: tỉnh thành, loại, trạng thái, có công trình chưa, lần gửi gần nhất.
+ *  prov: mã tỉnh của CTV (xem ctvProvinces), '' chưa rõ. */
+export const NO_V_FILTER = { prov: '', type: '', status: '', has: '', last: '' }
+export function vMatch(c, f, prov = '') {
+  if (f.prov && prov !== (f.prov === '-' ? '' : f.prov)) return false
   if (f.type && (c.type === 'sales' ? 'sales' : 'update') !== f.type) return false
   if (f.status && (c.status === 'active' ? 'active' : 'registered') !== f.status) return false
   if (f.has === 'yes' && !(c.count > 0)) return false
@@ -118,6 +127,36 @@ export function vMatch(c, f) {
     if (f.last === 'none' && c.last) return false
   }
   return true
+}
+
+/**
+ * Tỉnh của từng CTV (hồ sơ CTV chưa có ô tỉnh): tên tỉnh có trong địa chỉ (lấy tên nằm sau cùng),
+ * không có thì tỉnh CTV đó chụp nhiều công trình nhất. Trả Map id CTV -> mã tỉnh ('' chưa rõ).
+ */
+export function ctvProvinces(ctvs, provinces, points) {
+  const names = (provinces || [])
+    .map((p) => [p.code, fold(p.name).replace(/^(thanh pho|tp\.?|tinh)\s+/, '').trim()])
+    .filter(([, n]) => n)
+    .map(([code, n]) => [code, new RegExp('(^|[^a-z])' + n.replace(/[^a-z0-9 ]/g, '.') + '($|[^a-z])', 'g')])
+  const most = new Map() // id CTV -> Map(mã tỉnh -> số công trình)
+  for (const p of points || []) {
+    if (!p.ctv_id || !p.province) continue
+    const m = most.get(p.ctv_id) || new Map()
+    m.set(p.province, (m.get(p.province) || 0) + 1)
+    most.set(p.ctv_id, m)
+  }
+  const out = new Map()
+  for (const c of ctvs || []) {
+    const a = fold(c.address)
+    let best = ''
+    let at = -1
+    for (const [code, re] of names) {
+      for (const m of a.matchAll(re)) if (m.index > at) [at, best] = [m.index, code]
+    }
+    if (!best && most.has(c.id)) best = [...most.get(c.id)].sort((x, y) => y[1] - x[1])[0][0]
+    out.set(c.id, best)
+  }
+  return out
 }
 
 /** đếm khách theo 1 ô (cả danh sách), xếp nhiều trước; '' gom thành '-' (chưa rõ) */

@@ -1,10 +1,12 @@
-// Lớp bản đồ (layout 21/11/2026): bật / tắt từng loại ghim công trình và cộng tác viên.
+// Lớp bản đồ (layout 21/11/2026): bật / tắt từng loại ghim công trình, cộng tác viên, khách hàng.
 //   Công trình: Chưa tới lúc chụp (vàng) · Cần chụp (xanh lá) · Dezon (xanh dương)
-//   Cộng tác viên: CTV cập nhật (hồng) · CTV kinh doanh (đỏ); trạng thái: Tích cực (ghim đặc) · Đã đăng ký (ghim rỗng)
+//   Cộng tác viên (bộ icon 23/11/2026): CTV cam (đặc: tích cực, viền: đã đăng ký) · SALE tím (CTV kinh doanh)
+//   Khách hàng: KH đỏ. Chú thích vẽ đúng ghim trên bản đồ (pins.js).
 import { useState } from 'react'
 import { initials } from '@/utils/format'
 import { cusGmap } from '@/utils/siteTip'
 import { LAYER_META, NO_CUS_FILTER, facet, RATING_LABEL, ctvKey, ctvStatusLabel, ctvTypeLabel } from '@/utils/mapLayers'
+import { MK, badgePin } from './pins'
 
 function Switch({ on, onClick, label }) {
   return (
@@ -14,12 +16,24 @@ function Switch({ on, onClick, label }) {
   )
 }
 
-function Row({ k, on, count, round, square, onToggle }) {
+/** Ghim nhỏ trong chú thích, giống hệt ghim trên bản đồ (SVG tĩnh, không có dữ liệu người dùng) */
+function Ico({ html }) {
+  return <span className="lp-ico" dangerouslySetInnerHTML={{ __html: html }} />
+}
+const ICO = {
+  ctvUpdate: badgePin('CTV', MK.ctv, false, 16),
+  ctvSales: badgePin('SALE', MK.sale, false, 16),
+  ctvReg: badgePin('CTV', MK.ctv, true, 14),
+  ctvActive: badgePin('CTV', MK.ctv, false, 14),
+  customer: badgePin('KH', MK.kh, false, 16),
+}
+
+function Row({ k, on, count, onToggle }) {
   const m = LAYER_META[k]
   return (
     <label className={`lp-row ${on ? '' : 'off'}`}>
       <input type="checkbox" checked={on} onChange={onToggle} />
-      <span className={`lp-dot ${round ? 'round' : square ? 'square' : ''}`} style={{ '--c': m.color }} />
+      {ICO[k] ? <Ico html={ICO[k]} /> : <span className="lp-dot" style={{ '--c': m.color }} />}
       <span className="lp-name">{m.label}</span>
       <span className="lp-n">{count}</span>
     </label>
@@ -77,15 +91,15 @@ export function LayerPanel({ layers: L, set, counts }) {
               <Switch on={cOn} label="Bật / tắt cộng tác viên" onClick={() => set(Object.fromEntries(C.map((k) => [k, !cOn])))} />
             </div>
             {C.map((k) => (
-              <Row key={k} k={k} round on={L[k]} count={counts[k]} onToggle={() => set({ [k]: !L[k] })} />
+              <Row key={k} k={k} on={L[k]} count={counts[k]} onToggle={() => set({ [k]: !L[k] })} />
             ))}
             <div className="lp-chips">
               <span>Trạng thái CTV</span>
               <button type="button" className={`lp-chip ${L.ctvActive ? 'on' : ''}`} aria-pressed={L.ctvActive} onClick={() => set({ ctvActive: !L.ctvActive })}>
-                <i className="solid" /> Tích cực <em>{counts.ctvActive}</em>
+                <Ico html={ICO.ctvActive} /> Tích cực <em>{counts.ctvActive}</em>
               </button>
               <button type="button" className={`lp-chip ${L.ctvReg ? 'on' : ''}`} aria-pressed={L.ctvReg} onClick={() => set({ ctvReg: !L.ctvReg })}>
-                <i /> Đã đăng ký <em>{counts.ctvReg}</em>
+                <Ico html={ICO.ctvReg} /> Đã đăng ký <em>{counts.ctvReg}</em>
               </button>
             </div>
           </div>
@@ -95,7 +109,7 @@ export function LayerPanel({ layers: L, set, counts }) {
               <span className="lp-n">{counts.customer}</span>
               <Switch on={L.customer} label="Bật / tắt khách hàng" onClick={() => set({ customer: !L.customer })} />
             </div>
-            <Row k="customer" square on={L.customer} count={counts.customer} onToggle={() => set({ customer: !L.customer })} />
+            <Row k="customer" on={L.customer} count={counts.customer} onToggle={() => set({ customer: !L.customer })} />
           </div>
         </div>
       )}
@@ -103,8 +117,21 @@ export function LayerPanel({ layers: L, set, counts }) {
   )
 }
 
-/** Danh sách khách hàng (tab Khách hàng, lấy từ Dezon Pro) + ô lọc Phụ trách. onPick(k): bay tới ghim khách.
- *  synced: false khi máy chủ chưa kết nối dezon.tech. */
+/**
+ * Hàng ô lọc dùng chung 3 tab Công trình | Cộng tác viên | Khách hàng (góp ý 24/11/2026: các ô cùng cao, cách đều,
+ * 1 hàng gọn; màn hẹp thì xuống dòng; "Bỏ lọc" luôn nằm cuối hàng). any: đang lọc; onClear: bỏ mọi ô.
+ */
+export function FilterBar({ any, onClear, children }) {
+  return (
+    <div className="ex-filters">
+      {children}
+      <button type="button" className="ex-filters-clear" onClick={onClear} disabled={!any} aria-hidden={!any} tabIndex={any ? 0 : -1}>
+        Bỏ lọc ✕
+      </button>
+    </div>
+  )
+}
+
 /** Ô lọc dạng viên thuốc: nhãn + giá trị đang chọn, bấm mở danh sách (select trong suốt phủ lên). */
 export function Pill({ label, value, options, onChange }) {
   const cur = options.find((o) => o.value === value)
@@ -124,6 +151,7 @@ export function Pill({ label, value, options, onChange }) {
   )
 }
 
+/** Danh sách khách hàng (tab Khách hàng, lấy từ Dezon Pro) + hàng ô lọc. onPick(k): bay tới ghim khách. */
 export function CustomerList({ rows, all, filter: f, setFilter, onPick, active, onHover }) {
   const set = (patch) => setFilter({ ...f, ...patch })
   const owners = facet(all, (k) => k.owner, 'Chưa có').filter((o) => o.value !== '-')
@@ -149,23 +177,15 @@ export function CustomerList({ rows, all, filter: f, setFilter, onPick, active, 
   }
   return (
     <>
-      <div className="cus-head">
-        <p className="muted">
-          {rows.length} khách hàng{kinds.length ? ' · ' + kinds.map(([kd, n]) => `${n} ${kd.toLowerCase()}`).join(', ') : ''}
-        </p>
-        {any && (
-          <button type="button" className="cus-clear" onClick={() => setFilter(NO_CUS_FILTER)}>
-            Bỏ lọc ✕
-          </button>
-        )}
-      </div>
-      <div className="ex-filters">
-        <Pill label="Phụ trách" value={f.owner} options={owners} onChange={(v) => set({ owner: v })} />
+      <FilterBar any={any} onClear={() => setFilter(NO_CUS_FILTER)}>
         <Pill label="Tỉnh thành" value={f.province} options={provinces} onChange={(v) => set({ province: v })} />
         <Pill label="Nguồn" value={f.source} options={sources} onChange={(v) => set({ source: v })} />
         <Pill label="Giao tiếp" value={f.rating} options={ratings} onChange={(v) => set({ rating: v })} />
         <Pill label="Ngày tạo" value={f.date} options={dates} onChange={(v) => set({ date: v, ...(v === 'custom' ? {} : { from: '', to: '' }) })} />
-      </div>
+        <Pill label="Phụ trách" value={f.owner} options={owners} onChange={(v) => set({ owner: v })} />
+      </FilterBar>
+      {/* số khách đã có trên tab: ở đây chỉ chia theo loại công trình */}
+      {kinds.length > 0 && <p className="muted ex-sum">{kinds.map(([kd, n]) => `${n} ${kd.toLowerCase()}`).join(' · ')}</p>}
       {f.date === 'custom' && (
         <div className="cus-filters">
           <span className="cus-dates">
@@ -179,14 +199,8 @@ export function CustomerList({ rows, all, filter: f, setFilter, onPick, active, 
       {rows.length ? (
         <ul className="ctv-list">
           {rows.map((k) => (
-            <li key={k.id}>
-              <button
-                type="button"
-                className={`ctv-item ${active === `kh${k.id}` ? 'on' : ''}`}
-                onClick={() => onPick(k)}
-                onMouseEnter={() => onHover?.(`kh${k.id}`)}
-                onMouseLeave={() => onHover?.(null)}
-              >
+            <li key={k.id} className={`cus-li ${active === `kh${k.id}` ? 'on' : ''}`} onMouseEnter={() => onHover?.(`kh${k.id}`)} onMouseLeave={() => onHover?.(null)}>
+              <button type="button" className="ctv-item" onClick={() => onPick(k)}>
                 <span className="cus-av">KH</span>
                 <span className="ctv-main">
                   <span className="ctv-line">
@@ -203,31 +217,17 @@ export function CustomerList({ rows, all, filter: f, setFilter, onPick, active, 
                     {k.lat == null ? ' · chưa có vị trí trên bản đồ' : ''}
                   </span>
                 </span>
-                {cusGmap(k) && (
-                  <span
-                    role="link"
-                    tabIndex={0}
-                    className="gmap-btn"
-                    title="Mở vị trí khách trên Google Maps"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      window.open(cusGmap(k), '_blank', 'noopener')
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.stopPropagation()
-                        window.open(cusGmap(k), '_blank', 'noopener')
-                      }
-                    }}
-                  >
-                    Google Maps
-                  </span>
-                )}
                 <span className="cus-owner-col">
                   <small>Phụ trách</small>
                   <b>{k.owner || '—'}</b>
                 </span>
               </button>
+              {/* chỉ khách đã có vị trí: mở Google Maps ở tab mới (link riêng, không lồng trong nút của dòng) */}
+              {cusGmap(k) && (
+                <a className="gmap-btn" href={cusGmap(k)} target="_blank" rel="noreferrer" title="Mở vị trí khách trên Google Maps">
+                  Xem Google Map
+                </a>
+              )}
             </li>
           ))}
         </ul>
