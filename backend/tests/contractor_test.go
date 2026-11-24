@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"vuathau/backend/internal/integration/lark"
@@ -233,5 +234,51 @@ func TestContractorLarkAccounts(t *testing.T) {
 	decodeData(t, phoneLogin(pending), &lg)
 	if !lg.Registered || lg.User.Name != "Tổ đội Minh" {
 		t.Fatalf("vừa xác minh: %+v", lg)
+	}
+
+	// bỏ tích "Xác minh tham gia" của Smartcons trên Lark -> khoá, phiên đang mở hết hiệu lực, đăng nhập báo đang xác minh lại
+	r = phoneLogin(verified)
+	decodeData(t, r, &lg)
+	oldTok := lg.AccessToken
+	fl.recs[0] = larkRec(t, `{"record_id":"a1","fields":{"Tên công ty / Cá nhân":"Công ty Smartcons","Số điện thoại (có Zalo)":"`+verified+`","Họ tên người liên hệ":"Anh Hưng","Xác minh tham gia":false}}`)
+	if _, err := e.nt.SyncLark(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if st := e.do(t, http.MethodGet, "/api/v1/nt/home", oldTok, nil).Status; st == http.StatusOK {
+		t.Fatalf("phiên cũ vẫn dùng được sau khi khoá")
+	}
+	r = phoneLogin(verified)
+	if r.Status == http.StatusOK || !strings.Contains(string(r.Raw), "xác minh lại") {
+		t.Fatalf("bỏ tích: %d %s", r.Status, r.Raw)
+	}
+	// tích lại -> mở, dữ liệu vẫn còn
+	fl.recs[0] = larkRec(t, `{"record_id":"a1","fields":{"Tên công ty / Cá nhân":"Công ty Smartcons","Số điện thoại (có Zalo)":"`+verified+`","Họ tên người liên hệ":"Anh Hưng","Xác minh tham gia":true}}`)
+	if _, err := e.nt.SyncLark(ctx); err != nil {
+		t.Fatal(err)
+	}
+	r = phoneLogin(verified)
+	expectStatus(t, r, http.StatusOK)
+	decodeData(t, r, &lg)
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/nt/home", lg.AccessToken, nil), &home)
+	if home.Profile.Company != "Smartcons Việt Nam" || !home.Profile.Verified {
+		t.Fatalf("mở lại: %+v", home.Profile)
+	}
+	// cùng SĐT đăng ký thêm 1 dòng chưa tích: vẫn coi là đã xác minh, không khoá
+	fl.recs = append(fl.recs, larkRec(t, `{"record_id":"a4","fields":{"Tên công ty / Cá nhân":"Smartcons (đăng ký lại)","Số điện thoại (có Zalo)":"`+verified+`"}}`))
+	if _, err := e.nt.SyncLark(ctx); err != nil {
+		t.Fatal(err)
+	}
+	expectStatus(t, phoneLogin(verified), http.StatusOK)
+	// admin khoá tay: đồng bộ (vẫn đang tích) không tự mở
+	var uid int64
+	_ = e.db.QueryRow(ctx, `SELECT id FROM users WHERE username = $1`, verified).Scan(&uid)
+	if _, err := e.db.Exec(ctx, `UPDATE users SET locked = 1 WHERE id = $1`, uid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.nt.SyncLark(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if r := phoneLogin(verified); r.Status == http.StatusOK {
+		t.Fatalf("đồng bộ mở khoá của admin: %s", r.Raw)
 	}
 }

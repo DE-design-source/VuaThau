@@ -16,6 +16,8 @@ const (
 	LockedNone    = 0
 	LockedByAdmin = 1
 	LockedDeleted = 2 // CTV tự xoá tài khoản
+	// LockedUnverified: nhà thầu bị bỏ tích "Xác minh tham gia" trên form Lark (tự mở lại khi tích lại)
+	LockedUnverified = 3
 )
 
 // User: CTV, admin hoặc kế toán. Username là tên đăng nhập (SĐT với CTV).

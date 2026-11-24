@@ -54,13 +54,17 @@ type ContractorService struct {
 	repo   repository.ContractorRepository
 	houses repository.HouseRepository
 	lark   LarkCTVSource // nil: không đồng bộ form
-	// accounts: tạo tài khoản app cho nhà thầu đã xác minh (NTService.EnsureFromLark); nil: không tạo
+	// accounts: tạo / mở lại tài khoản app cho nhà thầu đã xác minh (NTService.EnsureFromLark); nil: không tạo
 	accounts func(ctx context.Context, c *repository.RegContractor) (bool, error)
+	// revoke: SĐT không còn dòng nào được tích xác minh -> khoá tài khoản (NTService.RevokeFromLark); nil: không khoá
+	revoke func(ctx context.Context, phone string) (bool, error)
 }
 
-// WithAccounts: mỗi lượt đồng bộ form, nhà thầu đã tích "Xác minh tham gia" tự có tài khoản app.
-func (s *ContractorService) WithAccounts(fn func(ctx context.Context, c *repository.RegContractor) (bool, error)) *ContractorService {
-	s.accounts = fn
+// WithAccounts: mỗi lượt đồng bộ form, nhà thầu đã tích "Xác minh tham gia" tự có tài khoản app;
+// bỏ tích thì tài khoản (gắn với form) bị khoá, tích lại thì mở.
+func (s *ContractorService) WithAccounts(ensure func(ctx context.Context, c *repository.RegContractor) (bool, error),
+	revoke func(ctx context.Context, phone string) (bool, error)) *ContractorService {
+	s.accounts, s.revoke = ensure, revoke
 	return s
 }
 
@@ -107,6 +111,7 @@ func (s *ContractorService) SyncLark(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	n := 0
+	byPhone := map[string]*repository.RegContractor{}
 	for _, r := range recs {
 		f := r.Fields
 		name := truncate(lark.Text(col(f, "ten cong ty")), 200)
@@ -151,12 +156,27 @@ func (s *ContractorService) SyncLark(ctx context.Context) (int, error) {
 			return n, err
 		}
 		n++
-		if c.Verified && s.accounts != nil {
-			// lỗi 1 dòng (SĐT trùng kiểu lạ...) không chặn cả lượt đồng bộ
+		// gộp theo SĐT: 1 số đăng ký nhiều lần, chỉ cần 1 dòng được tích là coi như đã xác minh (không khoá / mở qua lại)
+		if k := ntKey(c.Phone); len(k) >= 9 {
+			if cur, ok := byPhone[k]; !ok || (c.Verified && !cur.Verified) {
+				byPhone[k] = c
+			}
+		}
+	}
+	for _, c := range byPhone {
+		// lỗi 1 số (SĐT trùng kiểu lạ...) không chặn cả lượt đồng bộ
+		switch {
+		case c.Verified && s.accounts != nil:
 			if created, err := s.accounts(ctx, c); err != nil {
 				log.Printf("Nhà thầu từ form Lark: không tạo được tài khoản %s: %v", c.Phone, err)
 			} else if created {
 				log.Printf("Nhà thầu từ form Lark: tạo tài khoản app %s (%s)", c.Phone, c.Name)
+			}
+		case !c.Verified && s.revoke != nil:
+			if locked, err := s.revoke(ctx, c.Phone); err != nil {
+				log.Printf("Nhà thầu từ form Lark: không khoá được %s: %v", c.Phone, err)
+			} else if locked {
+				log.Printf("Nhà thầu từ form Lark: bỏ tích xác minh, khoá tài khoản %s (%s)", c.Phone, c.Name)
 			}
 		}
 	}

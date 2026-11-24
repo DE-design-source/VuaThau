@@ -89,6 +89,11 @@ type NTRepository interface {
 	AddMedia(ctx context.Context, m *NTMedia) error
 	Media(ctx context.Context, id int64) (*NTMedia, error)
 	ProjectByHouse(ctx context.Context, uid, hid int64) (*NTProject, error)
+	// SetLarkRecord: tài khoản gắn với dòng form đăng ký nhà thầu trên Lark (đồng bộ xác minh / bỏ xác minh)
+	SetLarkRecord(ctx context.Context, uid int64, record string) error
+	LarkRecord(ctx context.Context, uid int64) (string, error)
+	// SwapLock: đổi trạng thái khoá nhà thầu from -> to (chỉ khi đang đúng from: không đè khoá của admin); đăng xuất mọi máy.
+	SwapLock(ctx context.Context, uid int64, from, to int) (bool, error)
 	// ProjectPhotos: ảnh dự án (không thuộc nhật ký), ảnh bìa trước
 	ProjectPhotos(ctx context.Context, projectID int64) ([]NTMedia, error)
 	// Log: 1 nhật ký kèm ảnh / video (báo cáo gửi chủ nhà)
@@ -357,4 +362,25 @@ func (r *ntRepository) Contractors(ctx context.Context) ([]NTContractor, error) 
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+func (r *ntRepository) SetLarkRecord(ctx context.Context, uid int64, record string) error {
+	_, err := r.db.Exec(ctx, `INSERT INTO nt_profiles (user_id, lark_record) VALUES ($1, $2)
+		ON CONFLICT (user_id) DO UPDATE SET lark_record = EXCLUDED.lark_record WHERE nt_profiles.lark_record IS DISTINCT FROM EXCLUDED.lark_record`, uid, record)
+	return err
+}
+
+func (r *ntRepository) LarkRecord(ctx context.Context, uid int64) (string, error) {
+	var rec string
+	err := r.db.QueryRow(ctx, `SELECT lark_record FROM nt_profiles WHERE user_id = $1`, uid).Scan(&rec)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return rec, err
+}
+
+func (r *ntRepository) SwapLock(ctx context.Context, uid int64, from, to int) (bool, error) {
+	tag, err := r.db.Exec(ctx, `UPDATE users SET locked = $3, token_version = token_version + 1
+		WHERE id = $1 AND role = 'nhathau' AND locked = $2`, uid, from, to)
+	return err == nil && tag.RowsAffected() > 0, err
 }

@@ -848,6 +848,19 @@ func (s *NTService) EnsureFromLark(ctx context.Context, c *repository.RegContrac
 		if u.Role != model.RoleNhaThau {
 			return false, nil
 		}
+		// gắn dòng Lark (để lần sau bỏ tích thì khoá được); bị khoá vì bỏ tích trước đó mà nay tích lại: mở lại
+		if c.LarkRecord != "" {
+			if err := s.repo.SetLarkRecord(ctx, u.ID, c.LarkRecord); err != nil {
+				return false, err
+			}
+		}
+		if u.Locked == model.LockedUnverified {
+			if ok, err := s.repo.SwapLock(ctx, u.ID, model.LockedUnverified, model.LockedNone); err != nil {
+				return false, err
+			} else if ok {
+				_ = s.logs.Add(ctx, 0, ActUnlock, nil, nil, fmt.Sprintf("Nhà thầu %s (%s): tích lại Xác minh tham gia trên form Lark", u.Name, phone))
+			}
+		}
 		prof, err := s.repo.Profile(ctx, u.ID)
 		if err != nil {
 			return false, err
@@ -884,7 +897,44 @@ func (s *NTService) EnsureFromLark(ctx context.Context, c *repository.RegContrac
 	if err := s.repo.UpsertProfile(ctx, &repository.NTProfile{UserID: nu.ID, Company: company, Regions: truncate(c.Areas, 200), Verified: true}); err != nil {
 		return false, err
 	}
+	if err := s.repo.SetLarkRecord(ctx, nu.ID, c.LarkRecord); err != nil {
+		return false, err
+	}
 	_ = s.logs.Add(ctx, 0, ActAddNT, nil, nil, fmt.Sprintf("%s (%s) %s · tự tạo từ form Lark đã xác minh", person, phone, company))
+	return true, nil
+}
+
+// RevokeFromLark: SĐT trên form Lark không còn dòng nào được tích "Xác minh tham gia" -> khoá tài khoản nhà thầu
+// (chỉ tài khoản gắn với form Lark; tài khoản admin tạo tay mà không có trên form thì không đụng). Đăng xuất mọi máy.
+// Khoá kiểu LockedUnverified: tích lại thì EnsureFromLark tự mở; admin khoá tay (LockedByAdmin) không bị mở. Trả true khi vừa khoá.
+func (s *NTService) RevokeFromLark(ctx context.Context, phone string) (bool, error) {
+	phone = normPhone(phone)
+	if !ValidPhone(phone) {
+		return false, nil
+	}
+	u, err := s.auth.FindByLogin(ctx, phone)
+	if errors.Is(err, repository.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if u.Role != model.RoleNhaThau || u.Locked != model.LockedNone {
+		return false, nil
+	}
+	rec, err := s.repo.LarkRecord(ctx, u.ID)
+	if err != nil || rec == "" {
+		return false, err
+	}
+	ok, err := s.repo.SwapLock(ctx, u.ID, model.LockedNone, model.LockedUnverified)
+	if err != nil || !ok {
+		return false, err
+	}
+	if prof, err := s.repo.Profile(ctx, u.ID); err == nil && prof.Verified {
+		prof.Verified = false
+		_ = s.repo.UpsertProfile(ctx, prof)
+	}
+	_ = s.logs.Add(ctx, 0, ActLock, nil, nil, fmt.Sprintf("Nhà thầu %s (%s): bỏ tích Xác minh tham gia trên form Lark", u.Name, phone))
 	return true, nil
 }
 

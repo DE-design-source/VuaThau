@@ -207,6 +207,9 @@ func (s *authService) PhoneLogin(ctx context.Context, raw, as string) (*PhoneRes
 	if u.Locked == model.LockedDeleted {
 		return nil, fail(ErrLocked, "Tài khoản của số này đã xoá. Liên hệ admin Vua Thầu để mở lại.")
 	}
+	if u.Locked == model.LockedUnverified {
+		return nil, fail(ErrLocked, "Vua Thầu đang xác minh lại hồ sơ nhà thầu của bạn. Xác minh xong, nhập lại số này để vào.")
+	}
 	res, err := s.signIn(u, "")
 	if err != nil {
 		return nil, err
