@@ -142,6 +142,16 @@ func (h *NTHandler) AddLog(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusCreated, res)
 }
 
+// Sites handles GET /api/v1/nt/sites: công trình CTV đã chụp có SĐT nhà thầu này ({rows})
+func (h *NTHandler) Sites(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.svc.Sites(r.Context(), me(r))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"rows": rows})
+}
+
 // AddProjectPhotos handles POST /api/v1/nt/projects/{id}/photos (multipart files): ảnh dự án, ảnh đầu = ảnh bìa.
 func (h *NTHandler) AddProjectPhotos(w http.ResponseWriter, r *http.Request) {
 	id, valid := idOr400(w, r, "id")

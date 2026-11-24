@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -145,5 +146,54 @@ func (s *houseService) PublicProject(ctx context.Context, id int64) (*PublicProj
 	for _, ph := range p.PhotoList {
 		out.Photos = append(out.Photos, PublicPhotoRef{URL: fmt.Sprintf("/api/v1/public/photos/%d?s=%s", ph.ID, s.publicSig(ph.ID)), Time: ph.Time})
 	}
+	return out, nil
+}
+
+// NTSite: 1 công trình CTV đã chụp có bảng hiệu ghi SĐT của nhà thầu (app nhà thầu: "Công trình Vua Thầu ghi nhận").
+// Chỉ thông tin công trình như bản đồ công khai: không CTV, không tiền; ảnh qua link công khai đã che SĐT.
+type NTSite struct {
+	ID           int64     `json:"id"`
+	Address      string    `json:"address"`
+	ProvinceName string    `json:"province_name"`
+	Stage        string    `json:"stage"`
+	Contractor   string    `json:"contractor"`
+	At           time.Time `json:"at"`
+	Photos       int       `json:"photos"`
+	CoverURL     string    `json:"cover_url,omitempty"`
+	Lat          *float64  `json:"lat"`
+	Lng          *float64  `json:"lng"`
+}
+
+// ContractorSites: công trình (đã gửi duyệt, không bị từ chối) có SĐT nhà thầu trùng phone (0xxx hay 84xxx đều khớp).
+func (s *houseService) ContractorSites(ctx context.Context, phone string) ([]NTSite, error) {
+	p := normPhone(phone)
+	out := []NTSite{}
+	if !ValidPhone(p) {
+		return out, nil
+	}
+	keys := []string{nonDigit.ReplaceAllString(p, "")}
+	if strings.HasPrefix(keys[0], "0") {
+		keys = append(keys, "84"+keys[0][1:])
+	}
+	seen := map[int64]bool{}
+	for _, k := range keys {
+		rows, _, err := s.houses.SaleProjects(ctx, repository.SaleFilter{Contractor: k}, 200, 0)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			if seen[r.ID] {
+				continue
+			}
+			seen[r.ID] = true
+			site := NTSite{ID: r.ID, Address: r.Address, ProvinceName: provinceName(r.Province), Stage: r.Stage, Contractor: r.ContractorName,
+				At: r.At, Photos: r.Photos, Lat: r.Lat, Lng: r.Lng}
+			if r.CoverID != nil {
+				site.CoverURL = fmt.Sprintf("/api/v1/public/photos/%d?s=%s", *r.CoverID, s.publicSig(*r.CoverID))
+			}
+			out = append(out, site)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].At.After(out[j].At) })
 	return out, nil
 }

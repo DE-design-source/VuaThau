@@ -39,6 +39,7 @@ type NTService struct {
 	files    *storage.Files
 	logs     repository.LogRepository
 	geo      NTGeocoder
+	sites    NTSites
 	mediaKey []byte
 	now      func() time.Time
 }
@@ -67,7 +68,9 @@ type NTHome struct {
 	User     *model.User            `json:"user"`
 	Profile  *repository.NTProfile  `json:"profile"`
 	Projects []repository.NTProject `json:"projects"`
+	Sites    []NTSite               `json:"sites"` // công trình Vua Thầu ghi nhận (CTV chụp bảng hiệu có SĐT nhà thầu)
 	Stats    struct {
+		Sites    int `json:"sites"`
 		Projects int `json:"projects"`
 		Running  int `json:"running"`
 		Done     int `json:"done"`
@@ -85,7 +88,12 @@ func (s *NTService) Home(ctx context.Context, u *model.User) (*NTHome, error) {
 	if err != nil {
 		return nil, err
 	}
-	h := &NTHome{User: u, Profile: prof, Projects: ps}
+	sites, err := s.Sites(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	h := &NTHome{User: u, Profile: prof, Projects: ps, Sites: sites}
+	h.Stats.Sites = len(sites)
 	for _, p := range ps {
 		h.Stats.Projects++
 		h.Stats.Logs += p.Logs
@@ -153,6 +161,25 @@ type NTProjectInput struct {
 // NTGeocoder: tra toạ độ từ địa chỉ dự án khi nhà thầu không ghim trên bản đồ.
 type NTGeocoder interface {
 	Search(ctx context.Context, q string) ([]geo.Place, error)
+}
+
+// NTSites: công trình CTV đã chụp theo SĐT nhà thầu (houseService.ContractorSites).
+type NTSites interface {
+	ContractorSites(ctx context.Context, phone string) ([]NTSite, error)
+}
+
+// WithSites: Trang chủ / Dự án của nhà thầu có thêm công trình Vua Thầu ghi nhận theo SĐT (nil: không có).
+func (s *NTService) WithSites(src NTSites) *NTService {
+	s.sites = src
+	return s
+}
+
+// Sites: công trình CTV đã chụp có bảng hiệu ghi SĐT của nhà thầu này.
+func (s *NTService) Sites(ctx context.Context, u *model.User) ([]NTSite, error) {
+	if s.sites == nil {
+		return []NTSite{}, nil
+	}
+	return s.sites.ContractorSites(ctx, u.Username)
 }
 
 // WithGeo: bật tra toạ độ theo địa chỉ (nil: tắt).

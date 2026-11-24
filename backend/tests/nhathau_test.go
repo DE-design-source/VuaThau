@@ -323,3 +323,61 @@ func TestNhaThauFormVaBaoCao(t *testing.T) {
 	decodeData(t, r, &lg)
 	expectStatus(t, e.do(t, http.MethodGet, fmt.Sprintf("%s/logs/%d/report", path, lr.Log.ID), lg.AccessToken, nil), http.StatusNotFound)
 }
+
+// Nhà thầu có tài khoản app thấy công trình CTV đã chụp có bảng hiệu ghi SĐT của mình (0xxx hay 84xxx đều khớp),
+// không thấy công trình nhà thầu khác; ảnh bìa qua link công khai; không có CTV / tiền.
+func TestNhaThauSites(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	admin := e.staff(t, model.RoleAdmin)
+	ctv := e.register(t, "CTV chụp Duy Bình")
+	phone, other := e.newPhone(), e.newPhone()
+	h1 := e.newHouseP(t, ctv, 5, 9310, 10.70, phone)
+	h2 := e.newHouseP(t, ctv, 5, 9410, 10.71, "+84"+phone[1:])
+	e.newHouseP(t, ctv, 5, 9510, 10.72, other)
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/admin/nt", admin.AccessToken, map[string]string{"phone": phone, "name": "Duy Bình"}), http.StatusOK)
+	r := e.do(t, http.MethodPost, "/api/v1/auth/phone", "", map[string]string{"phone": phone, "as": "nhathau"})
+	var lg struct {
+		AccessToken string `json:"access_token"`
+	}
+	decodeData(t, r, &lg)
+
+	var sites struct {
+		Rows []struct {
+			ID       int64  `json:"id"`
+			CoverURL string `json:"cover_url"`
+			Photos   int    `json:"photos"`
+		} `json:"rows"`
+	}
+	r = e.do(t, http.MethodGet, "/api/v1/nt/sites", lg.AccessToken, nil)
+	decodeData(t, r, &sites)
+	got := map[int64]bool{}
+	for _, s := range sites.Rows {
+		got[s.ID] = true
+		if s.CoverURL == "" || s.Photos == 0 {
+			t.Fatalf("công trình thiếu ảnh: %s", r.Raw)
+		}
+	}
+	if len(sites.Rows) != 2 || !got[h1] || !got[h2] {
+		t.Fatalf("công trình theo SĐT: %s", r.Raw)
+	}
+	if bytes.Contains(r.Raw, []byte("CTV chụp Duy Bình")) || bytes.Contains(r.Raw, []byte("amount")) {
+		t.Fatalf("lộ CTV / tiền: %s", r.Raw)
+	}
+	if pr, err := http.Get(e.srv.URL + sites.Rows[0].CoverURL); err != nil || pr.StatusCode != http.StatusOK {
+		t.Fatalf("ảnh bìa công khai: %v %+v", err, pr)
+	} else {
+		_ = pr.Body.Close()
+	}
+	var home struct {
+		Stats struct {
+			Sites int `json:"sites"`
+		} `json:"stats"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/nt/home", lg.AccessToken, nil), &home)
+	if home.Stats.Sites != 2 {
+		t.Fatalf("trang chủ: %+v", home)
+	}
+	// CTV không gọi được API nhà thầu
+	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/nt/sites", ctv.AccessToken, nil), http.StatusForbidden)
+}

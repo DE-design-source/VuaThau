@@ -140,7 +140,7 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 		Inbox: settings.inbox, Auth: authRepo, Sync: repository.NewSyncRepository(db), AI: settings.ai, OCR: settings.ocr,
 		Customers: repository.NewCustomerRepository(db), Leads: settings.leads})
 	paySvc := service.NewPaymentService(payRepo, houseRepo, photoRepo, userRepo, logRepo, settingsRepo, files)
-	ntApp := service.NewNTService(repository.NewNTRepository(db), authRepo, files, logRepo, cfg.JWTSecret)
+	ntApp := service.NewNTService(repository.NewNTRepository(db), authRepo, files, logRepo, cfg.JWTSecret).WithSites(houseSvc)
 	ntSvc := service.NewContractorService(repository.NewContractorRepository(db), houseRepo, settings.ntLark).WithAccounts(ntApp.EnsureFromLark)
 
 	deps := router.Deps{

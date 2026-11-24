@@ -224,6 +224,8 @@ type HouseService interface {
 	// Bản đồ công khai (chưa đăng nhập): như sale, không tên CTV; ảnh đại diện qua link có chữ ký.
 	PublicMap(ctx context.Context, province string) (*SaleMapData, error)
 	PublicProject(ctx context.Context, id int64) (*PublicProject, error)
+	// ContractorSites: công trình CTV chụp có SĐT nhà thầu trùng phone (app nhà thầu)
+	ContractorSites(ctx context.Context, phone string) ([]NTSite, error)
 	PublicPhoto(ctx context.Context, pid int64, sig string) ([]byte, error)
 	PublicSearchPlace(ctx context.Context, q string) (*PlaceSearch, error)
 	SaleProjects(ctx context.Context, f repository.SaleFilter, page int) (*SaleProjectList, error)

@@ -129,6 +129,7 @@ func run() error {
 		Inbox: inboxSrc, Auth: authRepo, Sync: repository.NewSyncRepository(db), Customers: repository.NewCustomerRepository(db), Leads: leads,
 	})
 	paySvc := service.NewPaymentService(payRepo, houseRepo, photoRepo, userRepo, logRepo, settingsRepo, files)
+	ntApp.WithSites(houseSvc) // app nhà thầu thấy công trình CTV đã chụp có SĐT của mình
 
 	log.Printf("AI đọc ảnh: %v (%s) · Google Drive: %v · đăng nhập Google: %v", cfg.AIEnabled, cfg.AIModel, drive != nil, gVerifier.Enabled())
 	log.Printf("Hồ sơ Messenger (dezon-inbox): %v, mỗi %s", inboxSrc != nil, cfg.InboxSyncEvery)
