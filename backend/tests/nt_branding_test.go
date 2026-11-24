@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -73,6 +74,24 @@ func TestNhaThauBranding(t *testing.T) {
 	// Khám phá: chạy được truy vấn (lọc, tìm, toạ độ)
 	for _, q := range []string{"", "?filter=near&lat=10.78&lng=106.7", "?filter=tong_thau&q=nha"} {
 		expectStatus(t, e.do(t, http.MethodGet, "/api/v1/nt/explore"+q, tok, nil), http.StatusOK)
+	}
+	// dự án cũ "Đã hoàn thành" năm trước: ngày bắt đầu không sau ngày hoàn thành (app từng hiện "Ngày -692")
+	var cp struct {
+		Project struct {
+			ID int64 `json:"id"`
+		} `json:"project"`
+	}
+	decodeData(t, e.do(t, http.MethodPost, "/api/v1/nt/projects", tok, map[string]any{"name": "Nhà phố chú Lộc", "address": "Bắc Ninh", "status": "hoan_thanh", "finished_year": 2024}), &cp)
+	var det struct {
+		Project struct {
+			StartedOn  string `json:"started_on"`
+			FinishedOn string `json:"finished_on"`
+		} `json:"project"`
+		Days int `json:"days"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/nt/projects/%d", cp.Project.ID), tok, nil), &det)
+	if det.Project.FinishedOn[:4] != "2024" || det.Project.StartedOn > det.Project.FinishedOn || det.Days < 1 {
+		t.Fatalf("hoàn thành năm trước: %+v", det)
 	}
 	// bỏ logo
 	expectStatus(t, e.do(t, http.MethodDelete, "/api/v1/nt/logo", tok, nil), http.StatusOK)

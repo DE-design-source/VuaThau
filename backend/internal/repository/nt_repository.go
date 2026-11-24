@@ -229,6 +229,7 @@ func (r *ntRepository) CreateProject(ctx context.Context, p *NTProject) error {
 
 func (r *ntRepository) UpdateProject(ctx context.Context, p *NTProject) error {
 	_, err := r.db.Exec(ctx, `UPDATE nt_projects SET name = $2, address = $3, kind = $4, status = $5, progress = $6, finished_on = $7,
+		started_on = LEAST(started_on, COALESCE($7::date, started_on)), -- dự án cũ hoàn thành năm trước: bắt đầu không sau hoàn thành
 		lat = COALESCE($8, lat), lng = COALESCE($9, lng), province = $10, ward = $11, street = $12, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`,
 		p.ID, p.Name, p.Address, p.Kind, p.Status, p.Progress, p.FinishedOn, p.Lat, p.Lng, p.Province, p.Ward, p.Street)
 	return err
