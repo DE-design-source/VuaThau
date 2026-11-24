@@ -51,4 +51,5 @@ scp -q "$stage\docker-compose.yml" "${HostName}:$Dir/docker-compose.yml"
 
 Write-Host "== dựng image, chạy migration, khởi động lại"
 ssh $HostName "set -e; cd $Dir; rm -rf api.old; [ -d api ] && mv api api.old; mv api.new api; if [ ! -d api/web/app ] && [ -d api.old/web/app ]; then cp -r api.old/web/app api/web/app; echo 'giu ban /app/ dang chay'; fi; chmod +x api/bin/*; docker compose build -q api; for f in api/migrations/*.sql; do docker exec -i vtnt-db psql -q -v ON_ERROR_STOP=1 --single-transaction -U vuathau -d vuathau < `$f; done; docker compose up -d api; sleep 8; docker inspect -f 'vtnt-api {{.State.Health.Status}}' vtnt-api; curl -s -w ' [%{http_code}]\n' http://127.0.0.1:8095/health"
+if ($LASTEXITCODE) { throw "Bước trên máy chủ lỗi (migration / khởi động). API cũ vẫn chạy; thư mục api đã đổi sang bản mới, bản trước ở $Dir/api.old." }
 Write-Host "Xong. Bản trước nằm ở $Dir/api.old (quay lại: mv api.old api && docker compose build api && docker compose up -d api)"
