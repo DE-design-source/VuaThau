@@ -632,27 +632,29 @@ func (s *NTService) Report(ctx context.Context, u *model.User, projectID, logID 
 
 // NTPublicReport: trang báo cáo công khai (chủ nhà xem). Không có SĐT / tài khoản nhà thầu.
 type NTPublicReport struct {
-	Company  string        `json:"company"`
-	Regions  string        `json:"regions"` // khu vực hoạt động (đầu trang báo cáo)
-	Verified bool          `json:"verified"`
-	Phone    string        `json:"phone"` // SĐT nhà thầu: nút Gọi nhà thầu / Nhắn Zalo (nhà thầu tự gửi link nên chủ nhà được thấy)
-	Project  string        `json:"project"`
-	Address  string        `json:"address"`
-	Kind     string        `json:"kind"`
-	Status   string        `json:"status"`
-	Progress int           `json:"progress"`
-	Days     int           `json:"days"`  // ngày thi công thứ mấy
-	Logs     int           `json:"logs"`  // số nhật ký của dự án
-	Total    int           `json:"total"` // số ảnh của dự án
-	Note     string        `json:"note"`
-	TakenAt  time.Time     `json:"taken_at"`
-	GPS      bool          `json:"gps"` // ảnh có toạ độ GPS + giờ chụp in trên ảnh
-	Lat      *float64      `json:"lat"`
-	Lng      *float64      `json:"lng"`
-	LogAddr  string        `json:"log_address"` // địa chỉ in trên ảnh (màn xem ảnh)
-	Photos   []string      `json:"photos"`
-	Videos   int           `json:"videos"`
-	Earlier  []NTPublicLog `json:"earlier"` // nhật ký trước đây của dự án (mới trước)
+	Company  string `json:"company"`
+	Regions  string `json:"regions"` // khu vực hoạt động (đầu trang báo cáo)
+	Verified bool   `json:"verified"`
+	Phone    string `json:"phone"` // SĐT nhà thầu: nút Gọi nhà thầu / Nhắn Zalo (nhà thầu tự gửi link nên chủ nhà được thấy)
+	// Portfolio: hồ sơ năng lực của nhà thầu (/nt/<mã>): nút "<" khi mở thẳng link báo cáo (không có trang trước)
+	Portfolio string        `json:"portfolio"`
+	Project   string        `json:"project"`
+	Address   string        `json:"address"`
+	Kind      string        `json:"kind"`
+	Status    string        `json:"status"`
+	Progress  int           `json:"progress"`
+	Days      int           `json:"days"`  // ngày thi công thứ mấy
+	Logs      int           `json:"logs"`  // số nhật ký của dự án
+	Total     int           `json:"total"` // số ảnh của dự án
+	Note      string        `json:"note"`
+	TakenAt   time.Time     `json:"taken_at"`
+	GPS       bool          `json:"gps"` // ảnh có toạ độ GPS + giờ chụp in trên ảnh
+	Lat       *float64      `json:"lat"`
+	Lng       *float64      `json:"lng"`
+	LogAddr   string        `json:"log_address"` // địa chỉ in trên ảnh (màn xem ảnh)
+	Photos    []string      `json:"photos"`
+	Videos    int           `json:"videos"`
+	Earlier   []NTPublicLog `json:"earlier"` // nhật ký trước đây của dự án (mới trước)
 }
 
 // NTPublicLog: 1 nhật ký trước đây trên trang báo cáo.
@@ -704,7 +706,8 @@ func (s *NTService) PublicReport(ctx context.Context, code string) (*NTPublicRep
 	}
 	url := func(mid int64) string { return fmt.Sprintf("/api/v1/public/bc/%s/photos/%d", code, mid) }
 	r := &NTPublicReport{Company: prof.Company, Regions: prof.Regions, Verified: prof.Verified, Phone: phone, Project: p.Name,
-		Address: p.Address, Kind: p.Kind, Status: p.Status, Progress: p.Progress, Days: max(1, int(end.Sub(p.StartedOn).Hours()/24)+1),
+		Portfolio: fmt.Sprintf("/nt/%d-%s", p.UserID, s.portfolioSig(p.UserID)),
+		Address:   p.Address, Kind: p.Kind, Status: p.Status, Progress: p.Progress, Days: max(1, int(end.Sub(p.StartedOn).Hours()/24)+1),
 		Logs: p.Logs, Total: p.Photos, Note: l.Note, TakenAt: l.TakenAt, GPS: l.Lat != nil, Lat: l.Lat, Lng: l.Lng, LogAddr: l.Address,
 		Photos: []string{}, Earlier: []NTPublicLog{}}
 	for _, m := range l.Media {

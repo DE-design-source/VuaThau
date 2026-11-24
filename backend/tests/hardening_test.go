@@ -249,6 +249,19 @@ func TestNhaThauLogRetry(t *testing.T) {
 	if err := e.db.QueryRow(context.Background(), `SELECT COUNT(*) FROM nt_logs WHERE project_id = $1`, cp.Project.ID).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("số nhật ký: %d %v", n, err)
 	}
+	// trang báo cáo gửi chủ nhà có link hồ sơ năng lực (nút < khi mở thẳng link báo cáo), link mở được
+	var link struct {
+		Code string `json:"code"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/nt/projects/%d/logs/%d/report", cp.Project.ID, first.Log.ID), tok, nil), &link)
+	var rep struct {
+		Portfolio string `json:"portfolio"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/public/bc/"+link.Code, "", nil), &rep)
+	if !strings.HasPrefix(rep.Portfolio, "/nt/") {
+		t.Fatalf("báo cáo thiếu link hồ sơ năng lực: %q", rep.Portfolio)
+	}
+	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/public"+rep.Portfolio, "", nil), http.StatusOK)
 }
 
 // Đợt 2: CTV tự xoá tài khoản rồi đồng bộ form Lark chạy lại: không tạo lại tài khoản cho số đó.

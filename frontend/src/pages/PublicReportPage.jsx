@@ -3,7 +3,7 @@
 // nút Gọi nhà thầu / Nhắn Zalo. Bấm ảnh: xem toàn màn hình (thiết kế "Xem ảnh toàn màn hình").
 // Không cần đăng nhập, không menu quản lý; xem trên điện thoại là chính.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import usePage from '@/hooks/usePage'
 import publicApi from '@/api/publicApi'
 import './publicReport.css'
@@ -156,6 +156,10 @@ export default function PublicReportPage() {
   const { code } = useParams()
   const { data: r, err } = usePage(() => publicApi.report(code), [code])
   const [view, setView] = useState(null) // { set, start }
+  const navigate = useNavigate()
+  // vào từ trang khác trong web (hồ sơ năng lực -> dự án): quay lại trang đó; mở thẳng link (Zalo): sang hồ sơ năng lực
+  const fromInside = useLocation().key !== 'default'
+  const back = () => (fromInside ? navigate(-1) : navigate(r?.portfolio || '/'))
 
   useEffect(() => {
     if (r) document.title = `${r.project} · Báo cáo thi công`
@@ -176,6 +180,14 @@ export default function PublicReportPage() {
   return (
     <main className="rp">
       <header className="rp-top">
+        {/* góp ý 25/11/2026: nút < về lại trang trước đó */}
+        {(fromInside || r.portfolio) && (
+          <button type="button" className="rp-back" onClick={back} aria-label={fromInside ? 'Quay lại trang trước' : 'Xem hồ sơ năng lực nhà thầu'} title={fromInside ? 'Quay lại' : 'Hồ sơ năng lực nhà thầu'}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M15 5l-7 7 7 7" />
+            </svg>
+          </button>
+        )}
         <span className="rp-logo">{initials(r.company)}</span>
         <div className="rp-co">
           <b>{r.company || 'Nhà thầu'}</b>

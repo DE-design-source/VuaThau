@@ -39,6 +39,28 @@
   box-sizing: border-box;
   background: linear-gradient(100deg, #0b2340 0%, #102c5e 55%, #1b3f94 100%);
 }
+/* nút < về trang trước (góp ý 25/11/2026) */
+.rp-back {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-left: -6px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  cursor: pointer;
+}
+.rp-back:active,
+.rp-back:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+.rp-back:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
 .rp-logo {
   flex-shrink: 0;
   display: grid;
