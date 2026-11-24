@@ -74,7 +74,8 @@ func (s *NTService) PublicPortfolio(ctx context.Context, code string) (*NTPublic
 	if !ok {
 		return nil, fail(ErrNotFound, "Link hồ sơ không đúng.")
 	}
-	phone, err := s.repo.UserPhone(ctx, uid)
+	// nhà thầu bị khoá (admin, bỏ xác minh trên Lark) hoặc đã xoá: trang công khai thôi hiện
+	phone, err := s.repo.PublicPhone(ctx, uid)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +133,7 @@ func (s *NTService) PublicPortfolioPhoto(ctx context.Context, code string, media
 		return nil, err
 	}
 	p, err := s.repo.Project(ctx, m.ProjectID)
-	if err != nil || p.UserID != uid {
+	if err != nil || p.UserID != uid || !s.publicOpen(ctx, uid) {
 		return nil, fail(ErrNotFound, "Không tìm thấy ảnh.")
 	}
 	b, err := s.files.ReadPhoto(m.SHA256, small)
@@ -183,7 +184,11 @@ func (s *NTService) SaveLogo(ctx context.Context, u *model.User, data []byte) (*
 			return nil, fail(ErrInvalidInput, "File logo không phải ảnh (PNG hoặc JPG).")
 		}
 		if cfg.Width < 100 || cfg.Height < 100 {
-			return nil, fail(ErrInvalidInput, "Logo nhỏ quá (%dx%d), cần tối thiểu 300×300px để in rõ.", cfg.Width, cfg.Height)
+			return nil, fail(ErrInvalidInput, "Logo nhỏ quá (%dx%d), cần tối thiểu 100×100px.", cfg.Width, cfg.Height)
+		}
+		// app giải nén logo để in lên mọi ảnh: logo khổng lồ (PNG nén nhỏ) làm app hết bộ nhớ
+		if cfg.Width > 4096 || cfg.Height > 4096 {
+			return nil, fail(ErrInvalidInput, "Logo lớn quá (%dx%d), tối đa 4096×4096px.", cfg.Width, cfg.Height)
 		}
 		sum := sha256.Sum256(data)
 		sha = hex.EncodeToString(sum[:])

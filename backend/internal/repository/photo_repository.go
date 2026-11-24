@@ -20,6 +20,12 @@ type DHashRow struct {
 
 type PhotoRepository interface {
 	Insert(ctx context.Context, p *model.Photo) error
+	// InsertDraft / DeleteDraft / InsertVideoDraft / DeleteVideoDraft: CTV thêm / xoá trên hồ sơ đang soạn,
+	// khoá dòng hồ sơ + kiểm trạng thái, số tối đa trong cùng giao dịch (draft.go)
+	InsertDraft(ctx context.Context, p *model.Photo, max int) error
+	DeleteDraft(ctx context.Context, id, houseID int64) (*model.Photo, error)
+	InsertVideoDraft(ctx context.Context, v *model.Video, max int) error
+	DeleteVideoDraft(ctx context.Context, id, houseID int64) (*model.Video, error)
 	// HouseOfSHA: hồ sơ đã có ảnh trùng hệt (sha256), 0 nếu chưa có.
 	HouseOfSHA(ctx context.Context, sha string) (int64, error)
 	AllDHashes(ctx context.Context) ([]DHashRow, error)

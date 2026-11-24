@@ -22,6 +22,7 @@ import (
 	"vuathau/backend/internal/integration/inbox"
 	"vuathau/backend/internal/integration/lark"
 	"vuathau/backend/internal/integration/ocr"
+	"vuathau/backend/internal/pkg/safe"
 	"vuathau/backend/internal/repository"
 	"vuathau/backend/internal/router"
 	"vuathau/backend/internal/service"
@@ -145,13 +146,13 @@ func run() error {
 	dezonRepo := repository.NewDezonRepository(db)
 	log.Printf("Công trình Dezon: tra toạ độ bằng %s, mỗi 6h", map[bool]string{true: "Google", false: "OpenStreetMap"}[geocoder.Google()])
 	service.NewDezonSync(dezonRepo, geocoder, dezon.ProjectsURL).Start(6 * time.Hour)
-	go func() { // gán tỉnh mới (34 tỉnh) cho hồ sơ cũ
+	safe.Go("gán tỉnh", func() { // gán tỉnh mới (34 tỉnh) cho hồ sơ cũ
 		if n, err := houseSvc.BackfillProvinces(context.Background()); err != nil {
 			log.Printf("gán tỉnh: %v", err)
 		} else if n > 0 {
 			log.Printf("đã gán tỉnh cho %d hồ sơ", n)
 		}
-	}()
+	})
 
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,

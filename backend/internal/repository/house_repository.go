@@ -105,6 +105,8 @@ type HouseRepository interface {
 	AmountByStatus(ctx context.Context) (map[string]int64, error)
 
 	UpdateFields(ctx context.Context, id int64, f model.HouseFields) error
+	// UpdateDraftFields: như UpdateFields, chỉ khi hồ sơ còn nháp / bị trả lại (draft.go)
+	UpdateDraftFields(ctx context.Context, id int64, f model.HouseFields) error
 	FillAddressIfEmpty(ctx context.Context, id int64, addr string) error
 	// FillContractorIfEmpty: tên / SĐT nhà thầu app quét trên bảng hiệu, chỉ điền ô còn trống.
 	FillContractorIfEmpty(ctx context.Context, id int64, name, phone string) error
@@ -112,6 +114,8 @@ type HouseRepository interface {
 	SetScopeAI(ctx context.Context, id int64, scope string) error
 	SetAddress(ctx context.Context, id int64, addr string) error
 	Submit(ctx context.Context, id int64, amount int64, lat, lng *float64, dup string, queueDrive bool) error
+	// SubmitDraft: CTV gửi duyệt, chỉ khi bộ ảnh / video còn đúng sig (draft.go)
+	SubmitDraft(ctx context.Context, id int64, amount int64, lat, lng *float64, dup string, queueDrive bool, sig MediaSig) error
 	SetStatus(ctx context.Context, id int64, from []string, to, note string) (bool, error)
 	ApproveMany(ctx context.Context, ids []int64) ([]int64, error)
 	SetAmount(ctx context.Context, id int64, amount int64) error

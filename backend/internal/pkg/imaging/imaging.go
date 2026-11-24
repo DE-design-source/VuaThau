@@ -25,26 +25,64 @@ type Info struct {
 	Lat, Lng *float64
 }
 
-var ErrNotImage = errors.New("không đọc được file ảnh (chỉ nhận JPG/PNG)")
+var (
+	ErrNotImage = errors.New("không đọc được file ảnh (chỉ nhận JPG/PNG)")
+	ErrTooBig   = errors.New("ảnh quá lớn (trên 64 triệu điểm ảnh), chụp lại ở độ phân giải thấp hơn")
+)
+
+// Giới hạn kích thước ảnh trước khi giải nén: file 20MB vẫn có thể khai 50000×50000 điểm ảnh
+// (PNG một màu nén rất nhỏ), giải nén cần hơn 10GB RAM và làm sập máy chủ.
+// 64MP (~256MB RAM khi giải nén) đủ cho ảnh điện thoại thường (12-50MP).
+const (
+	MaxPixels = 64_000_000
+	MaxSide   = 16384
+)
+
+// checkSize: đọc phần đầu file (không giải nén), trả định dạng. Không phải ảnh: ErrNotImage; quá lớn: ErrTooBig.
+func checkSize(data []byte) (string, error) {
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return "", ErrNotImage
+	}
+	if cfg.Width <= 0 || cfg.Height <= 0 {
+		return "", ErrNotImage
+	}
+	if cfg.Width > MaxSide || cfg.Height > MaxSide || int64(cfg.Width)*int64(cfg.Height) > MaxPixels {
+		return "", ErrTooBig
+	}
+	return format, nil
+}
+
+// Decode: giải mã ảnh sau khi đã kiểm kích thước (mọi chỗ giải mã ảnh người dùng gửi phải đi qua đây).
+func Decode(data []byte) (image.Image, string, error) {
+	if _, err := checkSize(data); err != nil {
+		return nil, "", err
+	}
+	img, format, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, "", ErrNotImage
+	}
+	return img, format, nil
+}
 
 // Open giải mã ảnh, đọc EXIF (trước khi xoay) và trả ảnh đã xoay đúng chiều. Trả thêm định dạng: jpeg | png | webp.
 func Open(data []byte) (image.Image, Info, string, error) {
-	img, format, err := image.Decode(bytes.NewReader(data))
+	img, format, err := Decode(data)
 	if err != nil {
-		return nil, Info{}, "", ErrNotImage
+		return nil, Info{}, "", err
 	}
 	info, orient := readExif(data)
 	return orient8(img, orient), info, format, nil
 }
 
-// Probe: kiểu ảnh + EXIF mà không giải nén cả ảnh (chỉ đọc phần đầu file). Không phải ảnh: ErrNotImage.
+// Probe: kiểu ảnh + EXIF mà không giải nén cả ảnh (chỉ đọc phần đầu file). Không phải ảnh: ErrNotImage; quá lớn: ErrTooBig.
 func Probe(data []byte) (Info, string, error) {
-	if _, format, err := image.DecodeConfig(bytes.NewReader(data)); err != nil {
-		return Info{}, "", ErrNotImage
-	} else {
-		info, _ := readExif(data)
-		return info, format, nil
+	format, err := checkSize(data)
+	if err != nil {
+		return Info{}, "", err
 	}
+	info, _ := readExif(data)
+	return info, format, nil
 }
 
 func readExif(data []byte) (Info, int) {

@@ -58,3 +58,36 @@ func TestRateLimitPerClient(t *testing.T) {
 		t.Fatalf("IP khác: %d", c)
 	}
 }
+
+// Đăng nhập / trang công khai: token giả không tạo xô mới (chặn dò SĐT bằng "Bearer <ngẫu nhiên>")
+func TestRateLimitAuthIgnoresToken(t *testing.T) {
+	h := RateLimit(1, 2)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	var codes []int
+	for i := range 3 {
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/phone", nil)
+		r.RemoteAddr = "172.20.0.5:4000"
+		r.Header.Set("X-Forwarded-For", "1.2.3.4")
+		r.Header.Set("Authorization", "Bearer token-gia-moi-lan-khac-nhau-"+string(rune('a'+i)))
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		codes = append(codes, w.Code)
+	}
+	if codes[2] != http.StatusTooManyRequests {
+		t.Fatalf("lần 3 phải bị chặn: %v", codes)
+	}
+}
+
+func TestRateLimitIP(t *testing.T) {
+	h := RateLimitIP(1, 1)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	hit := func(ip string) int {
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+		r.RemoteAddr = "172.20.0.5:4000"
+		r.Header.Set("X-Forwarded-For", ip)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	if hit("1.2.3.4") != http.StatusOK || hit("1.2.3.4") != http.StatusTooManyRequests || hit("5.6.7.8") != http.StatusOK {
+		t.Fatal("RateLimitIP phải giới hạn theo từng IP")
+	}
+}

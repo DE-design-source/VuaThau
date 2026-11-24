@@ -562,7 +562,7 @@ func (s *NTService) AddProjectPhotos(ctx context.Context, u *model.User, id int6
 			continue
 		}
 		if _, _, err := imaging.Probe(data); err != nil {
-			res.Skipped = append(res.Skipped, part.Name+": không phải ảnh")
+			res.Skipped = append(res.Skipped, part.Name+": "+probeWhy(err))
 			continue
 		}
 		sum := sha256.Sum256(data)
@@ -684,11 +684,15 @@ func (s *NTService) PublicReport(ctx context.Context, code string) (*NTPublicRep
 	if err != nil {
 		return nil, err
 	}
-	prof, err := s.repo.Profile(ctx, p.UserID)
+	// nhà thầu bị khoá hoặc đã xoá: link báo cáo thôi hiện
+	phone, err := s.repo.PublicPhone(ctx, p.UserID)
 	if err != nil {
 		return nil, err
 	}
-	phone, err := s.repo.UserPhone(ctx, p.UserID)
+	if phone == "" {
+		return nil, fail(ErrNotFound, "Báo cáo này không còn.")
+	}
+	prof, err := s.repo.Profile(ctx, p.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -743,11 +747,14 @@ func (s *NTService) PublicReportPhoto(ctx context.Context, code string, mediaID 
 	if err != nil {
 		return nil, err
 	}
+	base, err := s.repo.Log(ctx, id)
+	if err != nil {
+		return nil, fail(ErrNotFound, "Không tìm thấy ảnh.")
+	}
+	if bp, err := s.repo.Project(ctx, base.ProjectID); err != nil || !s.publicOpen(ctx, bp.UserID) {
+		return nil, fail(ErrNotFound, "Không tìm thấy ảnh.")
+	}
 	if m.LogID != id {
-		base, err := s.repo.Log(ctx, id)
-		if err != nil {
-			return nil, fail(ErrNotFound, "Không tìm thấy ảnh.")
-		}
 		other, err := s.repo.Log(ctx, m.LogID)
 		if err != nil || other.ProjectID != base.ProjectID || other.TakenAt.After(base.TakenAt) {
 			return nil, fail(ErrNotFound, "Không tìm thấy ảnh.")
@@ -862,7 +869,7 @@ func (s *NTService) AddLog(ctx context.Context, u *model.User, id int64, next fu
 			continue
 		}
 		if _, _, err := imaging.Probe(data); err != nil {
-			res.Skipped = append(res.Skipped, name+": không phải ảnh")
+			res.Skipped = append(res.Skipped, name+": "+probeWhy(err))
 			continue
 		}
 		sum := sha256.Sum256(data)
@@ -1117,4 +1124,18 @@ func (s *NTService) AddContractor(ctx context.Context, by *model.User, in NTAddI
 	}
 	_ = s.logs.Add(ctx, by.ID, ActAddNT, nil, nil, fmt.Sprintf("%s (%s) %s", name, phone, in.Company))
 	return fmt.Sprintf("Đã thêm nhà thầu %s. Mở app Vua Thầu Map, nhập SĐT %s là vào.", name, phone), nil
+}
+
+// publicOpen: tài khoản nhà thầu còn mở (trang công khai /nt, /bc và ảnh của chúng chỉ hiện khi còn mở).
+func (s *NTService) publicOpen(ctx context.Context, uid int64) bool {
+	phone, err := s.repo.PublicPhone(ctx, uid)
+	return err == nil && phone != ""
+}
+
+// probeWhy: lý do bỏ 1 file ảnh nhà thầu gửi (không phải ảnh / ảnh quá lớn).
+func probeWhy(err error) string {
+	if errors.Is(err, imaging.ErrTooBig) {
+		return "ảnh quá lớn, chụp lại ở độ phân giải thấp hơn"
+	}
+	return "không phải ảnh"
 }

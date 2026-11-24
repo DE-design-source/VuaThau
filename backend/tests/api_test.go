@@ -79,6 +79,13 @@ func withRateLimit(rps float64, burst int) envOption {
 	}
 }
 
+func withAuthRateLimit(perMin float64, burst int) envOption {
+	return func(s *envSettings) {
+		s.cfg.AuthRateLimitPerMin = perMin
+		s.cfg.AuthRateLimitBurst = burst
+	}
+}
+
 func withHealthChecks(checks map[string]router.HealthCheck) envOption {
 	return func(s *envSettings) { s.healthChecks = checks }
 }
@@ -1143,6 +1150,24 @@ func TestRateLimit(t *testing.T) {
 		if r := e.getRaw(t, "/tiles/20/0/0.png", ""); r.Status != http.StatusNotFound {
 			t.Fatalf("tiles bị giới hạn tốc độ: %d", r.Status)
 		}
+	}
+}
+
+// Dò SĐT qua /auth/phone: gửi token giả khác nhau mỗi lần vẫn bị chặn theo IP; API thường không bị ảnh hưởng.
+func TestAuthRateLimit(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t, withAuthRateLimit(1, 3))
+	var statuses []int
+	for i := range 4 {
+		r := e.do(t, http.MethodPost, "/api/v1/auth/phone", fmt.Sprintf("token-gia-%d-0123456789abcdef", i),
+			map[string]any{"phone": fmt.Sprintf("091234567%d", i), "as": "ctv"})
+		statuses = append(statuses, r.Status)
+	}
+	if statuses[2] == http.StatusTooManyRequests || statuses[3] != http.StatusTooManyRequests {
+		t.Fatalf("statuses = %v, want lần 4 bị 429", statuses)
+	}
+	if r := e.do(t, http.MethodGet, "/api/v1/config", "", nil); r.Status != http.StatusOK {
+		t.Fatalf("/config bị chặn theo: %d", r.Status)
 	}
 }
 

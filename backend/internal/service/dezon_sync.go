@@ -12,6 +12,7 @@ import (
 
 	"vuathau/backend/internal/integration/dezon"
 	"vuathau/backend/internal/integration/geo"
+	"vuathau/backend/internal/pkg/safe"
 	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/repository"
 )
@@ -41,13 +42,15 @@ func NewDezonSync(repo repository.DezonRepository, g DezonGeocoder, pageURL stri
 func (s *DezonSync) Start(every time.Duration) {
 	go func() {
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 40*time.Minute)
-			if added, located, err := s.Run(ctx); err != nil {
-				log.Printf("dezon dự án mới: %v", err)
-			} else if added+located > 0 {
-				log.Printf("dezon dự án mới: thêm %d, tra toạ độ %d", added, located)
-			}
-			cancel()
+			safe.Run("đồng bộ dự án dezon.vn", func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 40*time.Minute)
+				defer cancel()
+				if added, located, err := s.Run(ctx); err != nil {
+					log.Printf("dezon dự án mới: %v", err)
+				} else if added+located > 0 {
+					log.Printf("dezon dự án mới: thêm %d, tra toạ độ %d", added, located)
+				}
+			})
 			time.Sleep(every)
 		}
 	}()

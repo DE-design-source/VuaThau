@@ -10,6 +10,7 @@ import (
 
 	"vuathau/backend/internal/integration/lark"
 	"vuathau/backend/internal/model"
+	"vuathau/backend/internal/pkg/safe"
 	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/repository"
 )
@@ -102,14 +103,16 @@ func (s *userService) StartLarkCTVSync(every time.Duration) {
 	log.Printf("CTV từ form Lark: bật, mỗi %s", every)
 	go func() {
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			n, ok, err := s.SyncLarkCTVs(ctx)
-			cancel()
-			if err != nil {
-				log.Printf("CTV từ form Lark: %v", err)
-			} else if n > 0 {
-				log.Printf("CTV từ form Lark: %d dòng đã duyệt, tạo mới %d CTV", ok, n)
-			}
+			safe.Run("đồng bộ CTV Lark", func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				n, ok, err := s.SyncLarkCTVs(ctx)
+				cancel()
+				if err != nil {
+					log.Printf("CTV từ form Lark: %v", err)
+				} else if n > 0 {
+					log.Printf("CTV từ form Lark: %d dòng đã duyệt, tạo mới %d CTV", ok, n)
+				}
+			})
 			time.Sleep(every)
 		}
 	}()

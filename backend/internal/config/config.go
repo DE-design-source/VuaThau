@@ -29,6 +29,9 @@ type Config struct {
 
 	RateLimitRPS   float64
 	RateLimitBurst int
+	// Đăng nhập / đăng ký: mỗi IP được AuthRateLimitBurst lần liền, sau đó AuthRateLimitPerMin lần / phút. 0: tắt (test)
+	AuthRateLimitBurst  int
+	AuthRateLimitPerMin float64
 
 	// ---- Nghiệm thu ----
 
@@ -140,6 +143,12 @@ func Load() (*Config, error) {
 	}
 	if cfg.RateLimitBurst, err = strconv.Atoi(getEnv("RATE_LIMIT_BURST", "40")); err != nil {
 		return nil, fmt.Errorf("RATE_LIMIT_BURST: %w", err)
+	}
+	if cfg.AuthRateLimitBurst, err = strconv.Atoi(getEnv("AUTH_RATE_LIMIT_BURST", "10")); err != nil {
+		return nil, fmt.Errorf("AUTH_RATE_LIMIT_BURST: %w", err)
+	}
+	if cfg.AuthRateLimitPerMin, err = strconv.ParseFloat(getEnv("AUTH_RATE_LIMIT_PER_MIN", "10"), 64); err != nil {
+		return nil, fmt.Errorf("AUTH_RATE_LIMIT_PER_MIN: %w", err)
 	}
 	if len(cfg.JWTSecret) < 32 {
 		return nil, errors.New("JWT_SECRET is required and must be at least 32 characters")

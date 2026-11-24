@@ -17,6 +17,7 @@ import (
 
 	"vuathau/backend/internal/integration/inbox"
 	"vuathau/backend/internal/model"
+	"vuathau/backend/internal/pkg/safe"
 	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/repository"
 )
@@ -275,7 +276,7 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 		files = append(files, Upload{Name: fmt.Sprintf("Ảnh %d", i+1), Data: b})
 		metas = append(metas, Meta{T: sent, Lat: lat, Lng: lng, Addr: addr})
 	}
-	ok, _, err := s.takeFiles(ctx, hid, files, metas)
+	ok, _, err := s.takeFiles(ctx, hid, files, metas, false)
 	if err != nil {
 		return false, false, err
 	}
@@ -553,9 +554,11 @@ func (s *houseService) StartInboxSync(every time.Duration) {
 	}
 	go func() {
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-			_, _ = s.SyncInbox(ctx)
-			cancel()
+			safe.Run("đồng bộ Messenger", func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+				defer cancel()
+				_, _ = s.SyncInbox(ctx)
+			})
 			time.Sleep(every)
 		}
 	}()

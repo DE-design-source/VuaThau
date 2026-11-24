@@ -146,15 +146,37 @@ func checkLegacy(hash, pw string) bool {
 	return subtle.ConstantTimeCompare([]byte(hex.EncodeToString(got)), []byte(want)) == 1
 }
 
+// reserveAttempt: còn được thử (chưa sai maxFails lần trong failWindow) thì cộng 1 lần thử và trả true.
+// Dọn các mục đã hết hạn khi bảng lớn (tên đăng nhập ngẫu nhiên không làm bảng phình mãi).
+func (s *authService) reserveAttempt(login string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	if len(s.fails) > 5000 {
+		for k, v := range s.fails {
+			if now.Sub(v.since) >= failWindow {
+				delete(s.fails, k)
+			}
+		}
+	}
+	f := s.fails[login]
+	if now.Sub(f.since) >= failWindow {
+		f = failCount{}
+	}
+	if f.n >= maxFails {
+		return false
+	}
+	s.fails[login] = failCount{n: f.n + 1, since: now}
+	return true
+}
+
 func (s *authService) Login(ctx context.Context, in LoginInput) (*AuthResult, error) {
 	login := LoginID(in.Login)
-	s.mu.Lock()
-	f := s.fails[login]
-	if f.n >= maxFails && time.Since(f.since) < failWindow {
-		s.mu.Unlock()
+	// Giữ chỗ 1 lần thử trước khi kiểm mật khẩu (tính là sai cho tới khi đúng): gửi song song nhiều lần đoán
+	// không vượt được maxFails như khi kiểm rồi mới cộng.
+	if !s.reserveAttempt(login) {
 		return nil, ErrTooManyAttempts
 	}
-	s.mu.Unlock()
 
 	u, err := s.repo.FindByLogin(ctx, login)
 	if err != nil && !errors.Is(err, repository.ErrNotFound) {
@@ -165,12 +187,6 @@ func (s *authService) Login(ctx context.Context, in LoginInput) (*AuthResult, er
 			// Tốn cùng thời gian bcrypt để không lộ tên đăng nhập nào tồn tại
 			_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(in.Password))
 		}
-		s.mu.Lock()
-		if time.Since(f.since) >= failWindow {
-			f = failCount{}
-		}
-		s.fails[login] = failCount{n: f.n + 1, since: time.Now()}
-		s.mu.Unlock()
 		return nil, ErrInvalidCredentials
 	}
 	s.mu.Lock()
@@ -236,15 +252,10 @@ func (s *authService) Register(ctx context.Context, in RegisterInput) (*AuthResu
 		if u, err := s.repo.FindByGoogle(ctx, g.Sub); err == nil {
 			return s.signIn(u, "") // Google này đã đăng ký rồi: vào luôn
 		}
-		// CTV cũ (đăng ký bằng SĐT): gắn Google vào tài khoản đó (app vào bằng SĐT nên không hỏi mật khẩu cũ)
-		if old, err := s.repo.FindByLogin(ctx, phone); err == nil {
-			if old.Role != model.RoleCTV || old.GoogleSub != "" || old.Locked != model.LockedNone {
-				return nil, fail(ErrConflict, "Số điện thoại này đã có tài khoản. Quay lại, nhập SĐT để đăng nhập.")
-			}
-			if err := s.repo.LinkGoogle(ctx, old.ID, g.Sub, g.Email); err != nil {
-				return nil, fmt.Errorf("link google: %w", err)
-			}
-			return s.signIn(old, "Đã liên kết Google với tài khoản của bạn. Lần sau bấm Đăng nhập bằng Google.")
+		// SĐT đã có tài khoản: không tự gắn Google này vào (chưa có gì chứng minh người gửi là chủ số đó,
+		// gắn rồi là người lạ vào được mãi bằng Google của họ). Chủ số vào bằng SĐT như cũ.
+		if _, err := s.repo.FindByLogin(ctx, phone); err == nil {
+			return nil, fail(ErrConflict, "Số điện thoại này đã có tài khoản. Quay lại, nhập SĐT để đăng nhập.")
 		}
 	}
 	bank := BankFrom(in.BankName, in.BankNo, in.BankOwner)

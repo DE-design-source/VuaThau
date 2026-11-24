@@ -1,6 +1,8 @@
 package service
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -25,6 +27,8 @@ import (
 
 const (
 	MaxVideoBytes = 200 << 20
+	// MinVideoBytes: video điện thoại 1 giây đã hơn 100KB; nhỏ hơn: không phải video quay công trình
+	MinVideoBytes = 20 << 10
 	videoLinkTTL  = 12 * time.Hour
 )
 
@@ -44,6 +48,22 @@ func videoMime(name, mime string) string {
 		return mime
 	}
 	return videoExt[strings.ToLower(path.Ext(name))]
+}
+
+// looksLikeVideo: đầu file là video thật: MP4 / MOV / 3GP (hộp ISO "ftyp", QuickTime cũ "moov" / "mdat" / "wide" /
+// "free" / "skip" ở byte 4) hoặc WEBM / MKV (EBML 1A 45 DF A3).
+func looksLikeVideo(h []byte) bool {
+	if len(h) >= 4 && bytes.Equal(h[:4], []byte{0x1A, 0x45, 0xDF, 0xA3}) {
+		return true
+	}
+	if len(h) < 8 {
+		return false
+	}
+	switch string(h[4:8]) {
+	case "ftyp", "moov", "mdat", "wide", "free", "skip":
+		return true
+	}
+	return false
 }
 
 func newMediaKey(k string) []byte {
@@ -71,18 +91,29 @@ func (s *houseService) withSrc(vs []model.Video) []model.Video {
 }
 
 // saveVideo: lưu 1 video vào hồ sơ. Trả câu báo nếu không nhận.
-func (s *houseService) saveVideo(ctx context.Context, hid int64, p VideoPart) (string, error) {
+// draft: CTV gửi từ app (hồ sơ phải còn nháp / bị trả lại, kiểm lúc ghi); false: nhập từ Messenger.
+func (s *houseService) saveVideo(ctx context.Context, hid int64, p VideoPart, draft bool) (string, error) {
 	mime := videoMime(p.Name, p.Mime)
 	if mime == "" {
 		_, _ = io.Copy(io.Discard, p.Body)
 		return "không phải file video (MP4, MOV, WEBM)", nil
 	}
-	sha, size, err := s.files.SaveVideo(p.Body, MaxVideoBytes)
+	// thưởng video tính theo số video: chỉ nhận file đúng là video (đầu file MP4 / MOV / 3GP / WEBM / MKV) và không quá nhỏ,
+	// đổi tên file rác thành .mp4 không còn được thưởng
+	br := bufio.NewReaderSize(p.Body, 64)
+	if head, _ := br.Peek(12); !looksLikeVideo(head) {
+		_, _ = io.Copy(io.Discard, br)
+		return "không phải file video (MP4, MOV, WEBM)", nil
+	}
+	sha, size, err := s.files.SaveVideo(br, MaxVideoBytes)
 	if errors.Is(err, storage.ErrTooBig) {
 		return fmt.Sprintf("video quá %dMB", MaxVideoBytes>>20), nil
 	}
 	if err != nil {
-		return "", err
+		return "", fail(ErrInvalidInput, "Không đọc được video gửi lên, thử lại.")
+	}
+	if size < MinVideoBytes {
+		return "video quá ngắn", nil
 	}
 	if other, err := s.photos.HouseOfVideo(ctx, sha); err != nil {
 		return "", err
@@ -93,9 +124,22 @@ func (s *houseService) saveVideo(ctx context.Context, hid int64, p VideoPart) (s
 		return fmt.Sprintf("video này đã nộp ở hồ sơ #%d", other), nil
 	}
 	v := &model.Video{HouseID: hid, SHA256: sha, Mime: mime, Size: size}
-	if err := s.photos.InsertVideo(ctx, v); err != nil {
-		if errors.Is(err, repository.ErrDuplicate) {
+	insert := s.photos.InsertVideo
+	if draft {
+		insert = func(ctx context.Context, v *model.Video) error {
+			return s.photos.InsertVideoDraft(ctx, v, model.MaxVideos)
+		}
+	}
+	if err := insert(ctx, v); err != nil {
+		switch {
+		case errors.Is(err, repository.ErrDuplicate):
 			return "video này vừa được nộp", nil
+		case errors.Is(err, repository.ErrFull):
+			s.files.DeleteVideo(sha)
+			return fmt.Sprintf("mỗi hồ sơ tối đa %d video", model.MaxVideos), nil
+		case errors.Is(err, repository.ErrNotEditable):
+			s.files.DeleteVideo(sha)
+			return "hồ sơ đã gửi duyệt, không thêm video được", nil
 		}
 		s.files.DeleteVideo(sha)
 		return "", err
@@ -135,7 +179,7 @@ func (s *houseService) AddVideos(ctx context.Context, u *model.User, id int64, n
 			msgs = append(msgs, fmt.Sprintf("%s: mỗi hồ sơ tối đa %d video", name, model.MaxVideos))
 			continue
 		}
-		why, err := s.saveVideo(ctx, id, *p)
+		why, err := s.saveVideo(ctx, id, *p, true)
 		if err != nil {
 			return nil, err
 		}
@@ -163,9 +207,12 @@ func (s *houseService) DeleteVideo(ctx context.Context, u *model.User, id, vid i
 	if u.Role != model.RoleCTV || !model.Editable(h.Status) {
 		return "", fail(ErrForbidden, "Hồ sơ đang được duyệt, không xoá video được.")
 	}
-	v, err := s.photos.DeleteVideo(ctx, vid, id)
+	v, err := s.photos.DeleteVideoDraft(ctx, vid, id)
 	if errors.Is(err, repository.ErrNotFound) {
 		return "", fail(ErrNotFound, "Không tìm thấy video.")
+	}
+	if errors.Is(err, repository.ErrNotEditable) {
+		return "", fail(ErrForbidden, "Hồ sơ đang được duyệt, không xoá video được.")
 	}
 	if err != nil {
 		return "", err
@@ -209,7 +256,7 @@ func (s *houseService) inboxVideos(ctx context.Context, hid int64, keys []string
 			log.Printf("Messenger: tải video %s: %v", k, err)
 			continue // thiếu 1 video không chặn cả hồ sơ
 		}
-		why, err := s.saveVideo(ctx, hid, VideoPart{Name: path.Base(k), Mime: mime, Body: rc})
+		why, err := s.saveVideo(ctx, hid, VideoPart{Name: path.Base(k), Mime: mime, Body: rc}, false)
 		_ = rc.Close()
 		if err != nil {
 			return n, err

@@ -24,6 +24,17 @@ type visitor struct {
 // Khách = tài khoản đang đăng nhập (theo token), chưa đăng nhập thì theo IP thật của người dùng.
 // (Trước đây theo địa chỉ kết nối: mọi người dùng đi qua Caddy trùng 1 IP nên chung 1 xô 10 yêu cầu/giây.)
 func RateLimit(rps float64, burst int) func(http.Handler) http.Handler {
+	return limit(rps, burst, clientKey, "Gửi yêu cầu quá nhanh, chờ vài giây rồi thử lại.")
+}
+
+// RateLimitIP: giới hạn theo IP thật, bỏ qua token (đăng nhập / đăng ký: token gửi kèm chưa được kiểm,
+// đổi token giả mỗi lần là thành khách mới).
+func RateLimitIP(rps float64, burst int) func(http.Handler) http.Handler {
+	return limit(rps, burst, func(r *http.Request) string { return "ip:" + ClientIP(r) },
+		"Thử đăng nhập quá nhiều lần, chờ 1 phút rồi thử lại.")
+}
+
+func limit(rps float64, burst int, key func(*http.Request) string, msg string) func(http.Handler) http.Handler {
 	var (
 		mu       sync.Mutex
 		visitors = make(map[string]*visitor)
@@ -44,7 +55,7 @@ func RateLimit(rps float64, burst int) func(http.Handler) http.Handler {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ip := clientKey(r)
+			ip := key(r)
 
 			mu.Lock()
 			v, ok := visitors[ip]
@@ -58,7 +69,7 @@ func RateLimit(rps float64, burst int) func(http.Handler) http.Handler {
 
 			if !allowed {
 				w.Header().Set("Retry-After", "1")
-				response.Error(w, http.StatusTooManyRequests, "too many requests")
+				response.Error(w, http.StatusTooManyRequests, msg)
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -67,7 +78,12 @@ func RateLimit(rps float64, burst int) func(http.Handler) http.Handler {
 }
 
 // clientKey: khoá xô giới hạn: token đăng nhập (băm) nếu có, không thì IP thật.
+// Đường không cần đăng nhập (đăng nhập, đăng ký, trang công khai): luôn theo IP, vì token gửi kèm không được kiểm
+// (trước đây gửi "Bearer <chuỗi bất kỳ>" mỗi lần là có xô mới, dò SĐT không bị chặn).
 func clientKey(r *http.Request) string {
+	if p := r.URL.Path; strings.HasPrefix(p, "/api/v1/auth/") || strings.HasPrefix(p, "/api/v1/public/") {
+		return "ip:" + ClientIP(r)
+	}
 	if a := r.Header.Get("Authorization"); strings.HasPrefix(a, "Bearer ") && len(a) > 20 {
 		h := sha256.Sum256([]byte(a))
 		return "t:" + hex.EncodeToString(h[:12])

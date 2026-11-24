@@ -67,9 +67,9 @@ func avg(img *image.RGBA, r image.Rectangle) color.RGBA {
 
 // MaskJPEG: đọc JPEG, che vùng, nén lại JPEG chất lượng 85.
 func MaskJPEG(data []byte, boxes []RelBox) ([]byte, error) {
-	img, _, err := image.Decode(bytes.NewReader(data))
+	img, _, err := Decode(data)
 	if err != nil {
-		return nil, ErrNotImage
+		return nil, err
 	}
 	var buf bytes.Buffer
 	if err := jpeg.Encode(&buf, Mask(img, boxes), &jpeg.Options{Quality: 85}); err != nil {

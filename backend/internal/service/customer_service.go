@@ -9,6 +9,7 @@ import (
 
 	"vuathau/backend/internal/integration/dezontech"
 	"vuathau/backend/internal/model"
+	"vuathau/backend/internal/pkg/safe"
 	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/repository"
 )
@@ -147,14 +148,16 @@ func (s *houseService) StartCustomerSync(every time.Duration) {
 	log.Printf("Khách hàng dezon.tech: bật, mỗi %s", every)
 	go func() {
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-			n, err := s.SyncCustomers(ctx)
-			cancel()
-			if err != nil {
-				log.Printf("khách hàng dezon.tech: %v", err)
-			} else {
-				log.Printf("khách hàng dezon.tech: %d khách", n)
-			}
+			safe.Run("đồng bộ khách dezon.tech", func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+				n, err := s.SyncCustomers(ctx)
+				cancel()
+				if err != nil {
+					log.Printf("khách hàng dezon.tech: %v", err)
+				} else {
+					log.Printf("khách hàng dezon.tech: %d khách", n)
+				}
+			})
 			time.Sleep(every)
 		}
 	}()

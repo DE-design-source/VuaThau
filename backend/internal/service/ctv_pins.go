@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"vuathau/backend/internal/pkg/safe"
 	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/repository"
 )
@@ -126,7 +127,7 @@ func (s *houseService) ctvPins(ctx context.Context, _ int) ([]CTVPin, error) {
 	}
 	s.ctvGeo.mu.Unlock()
 	if start {
-		go s.geocodeCTVs(todo)
+		safe.Go("toạ độ CTV", func() { s.geocodeCTVs(todo) })
 	}
 	return out, nil
 }

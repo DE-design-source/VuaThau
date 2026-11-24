@@ -135,7 +135,8 @@ func New(d Deps) http.Handler {
 	// (không cho sale: có tên CTV, tiền)
 	mux.Handle("GET /api/v1/houses/{id}", role(h.Detail, ctv, admin, ketoan))
 	mux.Handle("GET /api/v1/houses/{id}/state", role(h.State, ctv, admin, ketoan))
-	mux.Handle("GET /api/v1/photos/{pid}", role(h.Photo)) // sale: chỉ ảnh của dự án được xem
+	// sale: chỉ ảnh của dự án được xem. Không cho nhà thầu (dò id là tải được ảnh mọi CTV); nhà thầu dùng /nt/photos
+	mux.Handle("GET /api/v1/photos/{pid}", role(h.Photo, ctv, admin, ketoan, sale))
 	mux.Handle("GET /api/v1/batches/{id}", role(p.Batch, ctv, admin, ketoan))
 	mux.Handle("GET /api/v1/batches/{id}/receipt", role(p.Receipt, ctv, admin, ketoan))
 
@@ -210,6 +211,19 @@ func New(d Deps) http.Handler {
 
 	// Outermost first: CORS -> rate limit -> routes.
 	var hd http.Handler = mux
+	// Đăng nhập / đăng ký (vào bằng SĐT không cần mật khẩu): giới hạn riêng theo IP (mặc định 10 lần liền,
+	// sau đó 10 lần / phút), chặn dò SĐT. 0: tắt (test chạy nhiều tài khoản từ 1 IP)
+	var authLimited http.Handler = mux
+	if c := d.Config; c.AuthRateLimitBurst > 0 && c.AuthRateLimitPerMin > 0 {
+		authLimited = middleware.RateLimitIP(c.AuthRateLimitPerMin/60, c.AuthRateLimitBurst)(mux)
+	}
+	hd = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/v1/auth/") {
+			authLimited.ServeHTTP(w, r)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
 	hd = middleware.RateLimit(d.Config.RateLimitRPS, d.Config.RateLimitBurst)(hd)
 	hd = middleware.Slow(2 * time.Second)(hd) // ghi nhật ký yêu cầu chậm để đo chỗ nghẽn
 	hd = middleware.CORS(d.Config.CORSAllowedOrigins)(hd)

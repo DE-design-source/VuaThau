@@ -102,6 +102,8 @@ type NTRepository interface {
 	SwapLock(ctx context.Context, uid int64, from, to int) (bool, error)
 	// UserPhone: SĐT đăng nhập của nhà thầu (nút Gọi / Zalo trên báo cáo gửi chủ nhà)
 	UserPhone(ctx context.Context, uid int64) (string, error)
+	// PublicPhone: như UserPhone nhưng chỉ khi tài khoản đang mở (trang công khai /nt, /bc); khoá / xoá: ""
+	PublicPhone(ctx context.Context, uid int64) (string, error)
 	// AddView: +1 lượt xem hồ sơ năng lực (link công khai)
 	AddView(ctx context.Context, uid int64) error
 	// SaveBranding: Logo trên ảnh (logoSHA "-": giữ logo cũ)
@@ -411,6 +413,15 @@ func (r *ntRepository) SwapLock(ctx context.Context, uid int64, from, to int) (b
 func (r *ntRepository) UserPhone(ctx context.Context, uid int64) (string, error) {
 	var p string
 	err := r.db.QueryRow(ctx, `SELECT username FROM users WHERE id = $1 AND role = 'nhathau'`, uid).Scan(&p)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return p, err
+}
+
+func (r *ntRepository) PublicPhone(ctx context.Context, uid int64) (string, error) {
+	var p string
+	err := r.db.QueryRow(ctx, `SELECT username FROM users WHERE id = $1 AND role = 'nhathau' AND locked = 0`, uid).Scan(&p)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil
 	}

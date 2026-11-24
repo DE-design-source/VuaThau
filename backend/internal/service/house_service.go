@@ -23,6 +23,7 @@ import (
 	"vuathau/backend/internal/integration/ocr"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/imaging"
+	"vuathau/backend/internal/pkg/safe"
 	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/repository"
 	"vuathau/backend/internal/storage"
@@ -498,7 +499,7 @@ func (s *houseService) CheckPhoto(ctx context.Context, u *model.User, f Upload, 
 	img, info, _, err := imaging.Open(f.Data)
 	if err != nil {
 		release()
-		return &CheckResult{Problems: []string{imaging.ErrNotImage.Error()}}, nil
+		return &CheckResult{Problems: []string{err.Error()}}, nil
 	}
 	dh := imaging.DHash(img)
 	release()
@@ -562,10 +563,12 @@ func (s *houseService) checkAI(ctx context.Context, sha string, img image.Image)
 	s.bg.Add(1)
 	go func() {
 		defer s.bg.Done()
-		bctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-		r, ok := s.cachedOrRead(bctx, sha, img)
-		ch <- res{r, ok}
+		safe.Run("AI kiểm ảnh", func() {
+			bctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			r, ok := s.cachedOrRead(bctx, sha, img)
+			ch <- res{r, ok}
+		})
 	}()
 	t := time.NewTimer(CheckAIWait)
 	defer t.Stop()
@@ -661,7 +664,8 @@ func (s *houseService) cachedOrRead(ctx context.Context, sha string, img image.I
 }
 
 // savePhoto lưu 1 ảnh vào hồ sơ. Trả câu báo lỗi nếu không nhận.
-func (s *houseService) savePhoto(ctx context.Context, houseID int64, data []byte, m Meta) (string, error) {
+// draft: CTV gửi từ app (hồ sơ phải còn nháp / bị trả lại, kiểm lúc ghi); false: nhập từ Messenger.
+func (s *houseService) savePhoto(ctx context.Context, houseID int64, data []byte, m Meta, draft bool) (string, error) {
 	if len(data) > MaxFileBytes {
 		return "ảnh quá 20MB", nil
 	}
@@ -680,7 +684,7 @@ func (s *houseService) savePhoto(ctx context.Context, houseID int64, data []byte
 	if hit {
 		var err error
 		if info, format, err = imaging.Probe(data); err != nil {
-			return "không đọc được file ảnh (chỉ nhận JPG/PNG)", nil
+			return err.Error(), nil
 		}
 	} else {
 		release, err := takeSlot(ctx)
@@ -690,7 +694,7 @@ func (s *houseService) savePhoto(ctx context.Context, houseID int64, data []byte
 		img, inf, f, err := imaging.Open(data)
 		if err != nil {
 			release()
-			return "không đọc được file ảnh (chỉ nhận JPG/PNG)", nil
+			return err.Error(), nil
 		}
 		info, format, dh = inf, f, imaging.DHash(img)
 		release()
@@ -712,9 +716,18 @@ func (s *houseService) savePhoto(ctx context.Context, houseID int64, data []byte
 	if p.Lat == nil {
 		p.Lat, p.Lng = m.Lat, m.Lng
 	}
-	if err := s.photos.Insert(ctx, p); err != nil {
-		if errors.Is(err, repository.ErrDuplicate) {
+	insert := s.photos.Insert
+	if draft {
+		insert = func(ctx context.Context, p *model.Photo) error { return s.photos.InsertDraft(ctx, p, model.MaxPhotos) }
+	}
+	if err := insert(ctx, p); err != nil {
+		switch {
+		case errors.Is(err, repository.ErrDuplicate):
 			return "ảnh này vừa được nộp", nil
+		case errors.Is(err, repository.ErrFull):
+			return fmt.Sprintf("mỗi hồ sơ tối đa %d ảnh", model.MaxPhotos), nil
+		case errors.Is(err, repository.ErrNotEditable):
+			return "hồ sơ đã gửi duyệt, không thêm ảnh được", nil
 		}
 		return "", err
 	}
@@ -722,7 +735,7 @@ func (s *houseService) savePhoto(ctx context.Context, houseID int64, data []byte
 }
 
 // takeFiles lưu các ảnh vào hồ sơ, trả số ảnh nhận và các câu báo.
-func (s *houseService) takeFiles(ctx context.Context, houseID int64, files []Upload, metas []Meta) (int, []string, error) {
+func (s *houseService) takeFiles(ctx context.Context, houseID int64, files []Upload, metas []Meta, draft bool) (int, []string, error) {
 	have, err := s.photos.Count(ctx, houseID)
 	if err != nil {
 		return 0, nil, err
@@ -740,7 +753,7 @@ func (s *houseService) takeFiles(ctx context.Context, houseID int64, files []Upl
 		if k < len(metas) {
 			m = metas[k]
 		}
-		why, err := s.savePhoto(ctx, houseID, f.Data, m)
+		why, err := s.savePhoto(ctx, houseID, f.Data, m, draft)
 		if err != nil {
 			return ok, msgs, err
 		}
@@ -791,7 +804,7 @@ func (s *houseService) Create(ctx context.Context, u *model.User, files []Upload
 	if err != nil {
 		return nil, err
 	}
-	ok, msgs, err := s.takeFiles(ctx, hid, files, ParseMetas(meta))
+	ok, msgs, err := s.takeFiles(ctx, hid, files, ParseMetas(meta), true)
 	if err != nil || ok == 0 {
 		_ = s.houses.Delete(ctx, hid)
 		if err != nil {
@@ -812,7 +825,7 @@ func (s *houseService) AddPhotos(ctx context.Context, u *model.User, id int64, f
 	if u.Role != model.RoleCTV || !model.Editable(h.Status) {
 		return nil, fail(ErrForbidden, "Hồ sơ đang được duyệt, không thêm ảnh được.")
 	}
-	ok, msgs, err := s.takeFiles(ctx, id, files, ParseMetas(meta))
+	ok, msgs, err := s.takeFiles(ctx, id, files, ParseMetas(meta), true)
 	if err != nil {
 		return nil, err
 	}
@@ -830,9 +843,12 @@ func (s *houseService) DeletePhoto(ctx context.Context, u *model.User, id, pid i
 	if u.Role != model.RoleCTV || !model.Editable(h.Status) {
 		return "", fail(ErrForbidden, "Hồ sơ đang được duyệt, không xoá ảnh được.")
 	}
-	p, err := s.photos.Delete(ctx, pid, id)
+	p, err := s.photos.DeleteDraft(ctx, pid, id)
 	if errors.Is(err, repository.ErrNotFound) {
 		return "", fail(ErrNotFound, "Không tìm thấy ảnh.")
+	}
+	if errors.Is(err, repository.ErrNotEditable) {
+		return "", fail(ErrForbidden, "Hồ sơ đang được duyệt, không xoá ảnh được.")
 	}
 	if err != nil {
 		return "", err
@@ -849,7 +865,10 @@ func (s *houseService) Save(ctx context.Context, u *model.User, id int64, f mode
 	if u.Role != model.RoleCTV || !model.Editable(h.Status) {
 		return "", false, fail(ErrForbidden, "Hồ sơ đang được duyệt, không sửa được.")
 	}
-	if err := s.houses.UpdateFields(ctx, id, CleanFields(f)); err != nil {
+	if err := s.houses.UpdateDraftFields(ctx, id, CleanFields(f)); err != nil {
+		if errors.Is(err, repository.ErrNotEditable) {
+			return "", false, fail(ErrForbidden, "Hồ sơ đang được duyệt, không sửa được.")
+		}
 		return "", false, err
 	}
 	if !submit {
@@ -900,13 +919,18 @@ func (s *houseService) Save(ctx context.Context, u *model.User, id int64, f mode
 	if hit != nil {
 		dup = truncate(hit.Warn, MaxReasonLen)
 	}
-	amount, err := s.priceOf(ctx, st, id, valid, h.EffScope())
+	vs, err := s.photos.Videos(ctx, id)
 	if err != nil {
 		return "", false, err
 	}
-	if err := s.houses.Submit(ctx, id, amount, lat, lng, dup, s.drive != nil); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
+	amount := st.WithVideo(st.AmountFor(valid, h.EffScope()), len(vs))
+	// gửi duyệt chỉ khi ảnh / video không đổi từ lúc đọc ở trên (tiền tính theo đúng bộ này)
+	if err := s.houses.SubmitDraft(ctx, id, amount, lat, lng, dup, s.drive != nil, repository.SigOf(ps, vs)); err != nil {
+		switch {
+		case errors.Is(err, repository.ErrNotFound), errors.Is(err, repository.ErrNotEditable):
 			return "", false, fail(ErrConflict, "Hồ sơ vừa đổi trạng thái, tải lại trang nhé.")
+		case errors.Is(err, repository.ErrChanged):
+			return "Ảnh hoặc video vừa thay đổi trong lúc gửi, bấm Gửi duyệt lại nhé.", false, nil
 		}
 		return "", false, err
 	}
@@ -1071,8 +1095,13 @@ func (s *houseService) startAI(hid int64) {
 		defer func() { <-s.aiSem }()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
-		if err := s.runAI(ctx, hid); err != nil {
+		var err error
+		if !safe.Run(fmt.Sprintf("AI hồ sơ #%d", hid), func() { err = s.runAI(ctx, hid) }) {
+			err = errors.New("lỗi bất ngờ (panic)")
+		}
+		if err != nil {
 			log.Printf("AI hồ sơ #%d: %v", hid, err)
+			// không để hồ sơ kẹt ở "AI đang đọc"
 			_ = s.houses.ApplyAI(context.Background(), hid, model.HouseFields{}, false)
 		}
 	}()
@@ -1588,7 +1617,12 @@ func (s *houseService) Overview(ctx context.Context, q OverviewQuery) (*Overview
 
 // ---------- Google Drive ----------
 
+// RunDriveSync: đẩy hồ sơ chờ lên Google Drive (chạy nền, có bắt panic).
 func (s *houseService) RunDriveSync() {
+	safe.Run("đồng bộ Google Drive", s.runDriveSync)
+}
+
+func (s *houseService) runDriveSync() {
 	if s.drive == nil {
 		return
 	}

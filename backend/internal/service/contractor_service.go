@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"vuathau/backend/internal/integration/lark"
+	"vuathau/backend/internal/pkg/safe"
 	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/repository"
 )
@@ -193,11 +194,13 @@ func (s *ContractorService) StartLarkSync(every time.Duration) {
 	log.Printf("Nhà thầu từ form Lark: bật, mỗi %s", every)
 	go func() {
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			if _, err := s.SyncLark(ctx); err != nil {
-				log.Printf("Nhà thầu từ form Lark: %v", err)
-			}
-			cancel()
+			safe.Run("đồng bộ nhà thầu Lark", func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				defer cancel()
+				if _, err := s.SyncLark(ctx); err != nil {
+					log.Printf("Nhà thầu từ form Lark: %v", err)
+				}
+			})
 			time.Sleep(every)
 		}
 	}()

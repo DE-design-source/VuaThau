@@ -8,6 +8,7 @@ import (
 
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/imaging"
+	"vuathau/backend/internal/pkg/safe"
 )
 
 // Che SĐT trên ảnh công trình (bảng hiệu nhà thầu, băng rôn...): sale, CTV, Google Drive thấy ảnh đã che;
@@ -77,6 +78,10 @@ func (s *houseService) maskedPhoto(ctx context.Context, p *model.Photo, size str
 // RunPhoneMaskScan: quét nền các ảnh chưa quét SĐT, mỗi lượt tối đa 50 ảnh, nghỉ giữa các lượt.
 // Dừng khi ctx huỷ. Không có Tesseract: không chạy.
 func (s *houseService) RunPhoneMaskScan(ctx context.Context) {
+	safe.Run("che SĐT trên ảnh", func() { s.runPhoneMaskScan(ctx) })
+}
+
+func (s *houseService) runPhoneMaskScan(ctx context.Context) {
 	if s.ocr == nil || !s.ocr.Enabled() {
 		log.Printf("Che SĐT trên ảnh: tắt (không có Tesseract)")
 		return

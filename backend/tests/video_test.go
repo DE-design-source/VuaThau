@@ -16,13 +16,34 @@ import (
 	"vuathau/backend/internal/service"
 )
 
+// fakeVideo: n byte ngẫu nhiên, đầu file là hộp "ftyp" của MP4 (máy chủ chỉ nhận file đúng là video).
 func fakeVideo(seed uint64, n int) []byte {
 	rnd := rand.New(rand.NewPCG(seed, seed*3+1))
 	b := make([]byte, n)
 	for i := range b {
 		b[i] = byte(rnd.IntN(256))
 	}
+	copy(b, []byte{0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm'})
 	return b
+}
+
+// Thưởng video: file rác đổi đuôi .mp4, hoặc video quá nhỏ, không được nhận.
+func TestVideoMustBeVideo(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	ctv := e.register(t, "CTV gửi file rác")
+	r := e.upload(t, "/api/v1/houses", ctv.AccessToken, "files", [][]byte{photo(t, 9150), photo(t, 9151)}, map[string]string{"meta": cameraMeta(2, 10.8)})
+	expectStatus(t, r, http.StatusCreated)
+	var up uploadRes
+	decodeData(t, r, &up)
+	path := fmt.Sprintf("/api/v1/houses/%d/videos", *up.HouseID)
+	junk := make([]byte, 300_000) // toàn số 0: không phải video
+	r = e.uploadVideos(t, path, ctv.AccessToken, []string{"rac.mp4", "nho.mp4", "rong.mp4"}, [][]byte{junk, fakeVideo(5, 1000), {}})
+	expectStatus(t, r, http.StatusOK)
+	decodeData(t, r, &up)
+	if up.Added != 0 || len(up.Messages) != 3 {
+		t.Fatalf("file không phải video vẫn được nhận: %s", r.Raw)
+	}
 }
 
 // uploadVideos: gửi multipart "files" với tên file + kiểu tuỳ ý.
