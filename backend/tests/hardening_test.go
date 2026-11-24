@@ -400,3 +400,19 @@ func TestAppFeedback(t *testing.T) {
 		t.Fatalf("trang đánh giá: %+v", list)
 	}
 }
+
+// Đăng nhập mật khẩu bằng SĐT dạng +84 / 84 (web): cùng tài khoản với 09xx.
+func TestLoginPlus84(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	phone := e.newPhone()
+	body := ctvBody("CTV +84", phone)
+	body["password"] = "mat-khau-1"
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/auth/register", "", body), http.StatusCreated)
+	for _, login := range []string{phone, "+84" + phone[1:], "84" + phone[1:], "+84 " + phone[1:4] + " " + phone[4:]} {
+		r := e.do(t, http.MethodPost, "/api/v1/auth/login", "", map[string]string{"login": login, "password": "mat-khau-1"})
+		if r.Status != http.StatusOK {
+			t.Fatalf("đăng nhập %q: %d %s", login, r.Status, r.Raw)
+		}
+	}
+}

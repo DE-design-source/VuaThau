@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -172,6 +173,9 @@ func (s *authService) reserveAttempt(login string) bool {
 
 func (s *authService) Login(ctx context.Context, in LoginInput) (*AuthResult, error) {
 	login := LoginID(in.Login)
+	if p := normPhone(in.Login); ValidPhone(p) { // +84 9xx / 84 9xx: cùng tài khoản với 09xx
+		login = p
+	}
 	// Giữ chỗ 1 lần thử trước khi kiểm mật khẩu (tính là sai cho tới khi đúng): gửi song song nhiều lần đoán
 	// không vượt được maxFails như khi kiểm rồi mới cộng.
 	if !s.reserveAttempt(login) {
@@ -278,12 +282,18 @@ func (s *authService) Register(ctx context.Context, in RegisterInput) (*AuthResu
 	}
 	if err := s.repo.CreateUser(ctx, u); err != nil {
 		if errors.Is(err, repository.ErrDuplicate) {
+			// trùng SĐT, hoặc email / tài khoản Google đã gắn với số khác (trước đây báo nhầm là trùng SĐT)
+			if _, e := s.repo.FindByLogin(ctx, phone); e != nil && g != nil {
+				return nil, fail(ErrConflict, "Tài khoản Google này đã dùng cho số điện thoại khác. Đăng nhập bằng số đó, hoặc đăng ký bằng SĐT không dùng Google.")
+			}
 			return nil, fail(ErrConflict, "Số điện thoại này đã có tài khoản.")
 		}
 		return nil, fmt.Errorf("create user: %w", err)
 	}
+	// tài khoản đã tạo: khu vực / loại / ghi chú lưu không được thì vẫn cho vào app (trước đây báo lỗi 500, đăng ký
+	// lại thì bị "đã có tài khoản"); admin bổ sung sau
 	if err := s.saveInfo(ctx, u.ID, in); err != nil {
-		return nil, err
+		log.Printf("đăng ký #%d: lưu khu vực / ghi chú: %v", u.ID, err)
 	}
 	return s.signIn(u, "Chào mừng bạn! Chụp công trình bằng camera Vua Thầu rồi nộp hồ sơ đầu tiên.")
 }

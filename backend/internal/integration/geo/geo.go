@@ -26,12 +26,14 @@ type Geocoder struct {
 	search map[string][]Place // tìm địa điểm: câu tìm -> kết quả
 	order  []string
 
-	nomiMu   sync.Mutex
+	// nomi: lượt gọi Nominatim (1 lượt / giây toàn máy chủ). Kênh thay cho Mutex: người gọi đã bỏ đi (hết hạn ctx)
+	// thì thôi xếp hàng, không làm lượt tìm sau phải chờ thêm.
+	nomi     chan struct{}
 	nomiLast time.Time
 }
 
 func New(googleKey string) *Geocoder {
-	return &Geocoder{googleKey: googleKey, http: &http.Client{Timeout: 6 * time.Second}, cache: map[string]string{}}
+	return &Geocoder{googleKey: googleKey, http: &http.Client{Timeout: 6 * time.Second}, cache: map[string]string{}, nomi: make(chan struct{}, 1)}
 }
 
 const cacheMax = 4096
@@ -153,18 +155,34 @@ func (g *Geocoder) googleSearch(ctx context.Context, q string) ([]Place, error) 
 	return mergePlaces(out, nil), nil
 }
 
-func (g *Geocoder) osm(ctx context.Context, ll string) (string, error) {
-	// Nominatim cho tối đa 1 lượt/giây: xếp hàng toàn máy chủ
-	g.nomiMu.Lock()
-	defer g.nomiMu.Unlock()
+// nomiTurn: chờ tới lượt gọi Nominatim (tối đa 1 lượt / giây, xếp hàng toàn máy chủ); ctx hết hạn thì bỏ hàng.
+// Gọi done() sau khi gọi xong.
+func (g *Geocoder) nomiTurn(ctx context.Context) (done func(), err error) {
+	select {
+	case g.nomi <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 	if wait := time.Until(g.nomiLast.Add(time.Second)); wait > 0 {
 		select {
 		case <-time.After(wait):
 		case <-ctx.Done():
-			return "", ctx.Err()
+			<-g.nomi
+			return nil, ctx.Err()
 		}
 	}
-	defer func() { g.nomiLast = time.Now() }()
+	return func() {
+		g.nomiLast = time.Now()
+		<-g.nomi
+	}, nil
+}
+
+func (g *Geocoder) osm(ctx context.Context, ll string) (string, error) {
+	done, err := g.nomiTurn(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer done()
 
 	parts := strings.SplitN(ll, ",", 2)
 	var r struct {
@@ -297,16 +315,11 @@ func Variants(q string) []string {
 }
 
 func (g *Geocoder) nominatim(ctx context.Context, q string) ([]Place, error) {
-	g.nomiMu.Lock()
-	defer g.nomiMu.Unlock()
-	if wait := time.Until(g.nomiLast.Add(time.Second)); wait > 0 {
-		select {
-		case <-time.After(wait):
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
+	done, err := g.nomiTurn(ctx)
+	if err != nil {
+		return nil, err
 	}
-	defer func() { g.nomiLast = time.Now() }()
+	defer done()
 	var r []struct {
 		DisplayName string `json:"display_name"`
 		Lat         string `json:"lat"`

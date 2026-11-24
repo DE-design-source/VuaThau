@@ -70,6 +70,7 @@ func (h *DownloadHandler) Version(w http.ResponseWriter, _ *http.Request) {
 
 // APK handles GET /tai-app/vuathau.apk
 func (h *DownloadHandler) APK(w http.ResponseWriter, r *http.Request) {
+	longWrite(w)
 	a := h.latest()
 	if a == nil {
 		http.Error(w, "Chưa có bản app để tải.", http.StatusNotFound)

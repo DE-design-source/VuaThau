@@ -498,6 +498,11 @@ func (s *houseService) dupHouse(ctx context.Context, dhash string) (*int64, erro
 }
 
 func (s *houseService) CheckPhoto(ctx context.Context, u *model.User, f Upload, meta string) (*CheckResult, error) {
+	done, err := takePhoto(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer done() // gọi lại được: nhả sớm ngay sau khi giải nén xong (dưới), trước lúc chờ AI
 	data, err := f.Bytes()
 	if err != nil {
 		return nil, fail(ErrInvalidInput, "Không đọc được ảnh gửi lên.")
@@ -529,6 +534,7 @@ func (s *houseService) CheckPhoto(ctx context.Context, u *model.User, f Upload, 
 	}
 	img = nil
 	release()
+	done()               // ảnh gốc không còn dùng: nhường chỗ cho ảnh khác
 	dhashes.put(sha, dh) // lúc nộp dùng lại, khỏi giải nén lần 2
 	dup, err := s.dupHouse(ctx, dh)
 	if err != nil {
@@ -645,6 +651,22 @@ func (c *dhashCache) put(sha, dh string) {
 }
 
 // takeSlot: giữ 1 chỗ xử lý ảnh (trả hàm nhả); người dùng huỷ (ctx) khi đang chờ thì thôi.
+// photoSlots: số ảnh tải lên được đọc vào RAM cùng lúc (cả máy chủ). Ảnh chờ tới lượt nằm ở file tạm trên đĩa,
+// không chiếm RAM: thử 100 CTV cùng lúc (600 ảnh kiểm + 100 lượt nộp) trước đây RAM lên 3,6GB vì mọi ảnh đều
+// được đọc vào RAM rồi mới xếp hàng chờ giải nén.
+var photoSlots = make(chan struct{}, max(4, 2*runtime.NumCPU()))
+
+// takePhoto: giữ 1 chỗ đọc ảnh; hàm trả về nhả chỗ (gọi nhiều lần không sao).
+func takePhoto(ctx context.Context) (func(), error) {
+	select {
+	case photoSlots <- struct{}{}:
+		var once sync.Once
+		return func() { once.Do(func() { <-photoSlots }) }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 func takeSlot(ctx context.Context) (func(), error) {
 	select {
 	case decodeSlots <- struct{}{}:
@@ -771,11 +793,17 @@ func (s *houseService) takeFiles(ctx context.Context, houseID int64, files []Upl
 		if k < len(metas) {
 			m = metas[k]
 		}
+		done, err := takePhoto(ctx)
+		if err != nil {
+			return ok, msgs, err
+		}
 		data, err := f.Bytes()
 		if err != nil {
+			done()
 			return ok, msgs, fail(ErrInvalidInput, "Không đọc được ảnh gửi lên.")
 		}
 		why, err := s.savePhoto(ctx, houseID, data, m, draft)
+		done()
 		if err != nil {
 			return ok, msgs, err
 		}

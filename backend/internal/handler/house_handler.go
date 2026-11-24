@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"vuathau/backend/internal/middleware"
 	"vuathau/backend/internal/model"
@@ -28,7 +29,8 @@ func NewHouseHandler(svc service.HouseService) *HouseHandler {
 // không còn giữ 400MB trong RAM. Kiểm ảnh / biên lai: max = 1.
 func readFiles(w http.ResponseWriter, r *http.Request, key string, max int) ([]service.Upload, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, int64(max+1)*(service.MaxFileBytes+1<<20))
-	if err := r.ParseMultipartForm(8 << 20); err != nil {
+	// chỉ ô chữ (meta) và file rất nhỏ nằm trong RAM; ảnh ra file tạm, service đọc từng ảnh khi tới lượt
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
 		response.Error(w, http.StatusBadRequest, fmt.Sprintf("Không đọc được ảnh gửi lên (tối đa %d ảnh, mỗi ảnh dưới 20MB).", max))
 		return nil, false
 	}
@@ -228,7 +230,14 @@ func (h *HouseHandler) DeleteVideo(w http.ResponseWriter, r *http.Request) {
 }
 
 // Video handles GET /api/v1/videos/{vid}?e=&s= : link có chữ ký (thẻ <video> không gửi được token), hỗ trợ tua (Range).
+// longWrite: tải file lớn (video, APK) qua mạng yếu: nới hạn ghi của máy chủ (WriteTimeout 10 phút cắt ngang
+// video 200MB / APK 90MB trên 3G).
+func longWrite(w http.ResponseWriter) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(2 * time.Hour))
+}
+
 func (h *HouseHandler) Video(w http.ResponseWriter, r *http.Request) {
+	longWrite(w)
 	vid, valid := idOr400(w, r, "vid")
 	if !valid {
 		return

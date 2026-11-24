@@ -396,6 +396,7 @@ func (h *NTHandler) Photo(w http.ResponseWriter, r *http.Request) {
 
 // Video handles GET /api/v1/nt/videos/{id}?e=&s= (link có chữ ký, không cần token)
 func (h *NTHandler) Video(w http.ResponseWriter, r *http.Request) {
+	longWrite(w)
 	id, valid := idOr400(w, r, "id")
 	if !valid {
 		return
