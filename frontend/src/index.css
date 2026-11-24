@@ -5001,3 +5001,61 @@ details.card > summary strong {
   gap: 8px 12px;
   margin-top: 8px;
 }
+
+/* Nút gạt "Ẩn thông tin CTV, nhà thầu" trên thanh trên (utils/privacy.js, góp ý 25/11/2026) */
+.pii-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 10px 4px 6px;
+  border-radius: 999px;
+}
+.pii-switch.on {
+  background: var(--blue-bg);
+  color: var(--blue-dark);
+}
+.pii-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.pii-track {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: #b9c0cc;
+  transition: background 0.15s;
+  flex: none;
+}
+.pii-track i {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s;
+}
+.pii-switch.on .pii-track {
+  background: var(--blue);
+}
+.pii-switch.on .pii-track i {
+  transform: translateX(14px);
+}
+.pii-switch input:focus-visible + .pii-track {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+@media (max-width: 760px) {
+  .pii-text {
+    display: none;
+  }
+}

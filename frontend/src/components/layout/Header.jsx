@@ -6,6 +6,7 @@ import useAuth from '@/hooks/useAuth'
 import useTheme from '@/hooks/useTheme'
 import Icon from '@/components/ui/Icon'
 import { ROLE_LABEL, initials } from '@/utils/format'
+import { privacyOn, setPrivacy } from '@/utils/privacy'
 
 /** Logo Vua Thầu Map (dùng chung với app CTV). */
 export function Mark({ size = 28 }) {
@@ -107,6 +108,15 @@ export default function Header() {
           <span className="live">
             <i /> Đang hoạt động
           </span>
+        )}
+        {['admin', 'ketoan', 'sale'].includes(role) && (
+          <label className={`pii-switch ${privacyOn() ? 'on' : ''}`} title="Ẩn tên, SĐT, ngân hàng của cộng tác viên và nhà thầu (khi chiếu màn hình, cho khách xem)">
+            <input type="checkbox" role="switch" checked={privacyOn()} onChange={(e) => setPrivacy(e.target.checked)} />
+            <span className="pii-track" aria-hidden="true">
+              <i />
+            </span>
+            <span className="pii-text">Ẩn thông tin CTV, nhà thầu</span>
+          </label>
         )}
         <button type="button" className="side-icon" onClick={toggleTheme} aria-label="Đổi giao diện sáng/tối" title="Đổi giao diện sáng/tối">
           <Icon name={theme === 'dark' ? 'sun' : 'moon'} />

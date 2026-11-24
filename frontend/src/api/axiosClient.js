@@ -1,5 +1,6 @@
 import axios from 'axios'
 import storageService from '@/services/storageService'
+import { maskResponse, photoParams, privacyOn } from '@/utils/privacy'
 
 // Every backend response has the shape: { success: boolean, data?: any, error?: string }
 // Binary endpoints (ảnh, biên lai, Excel) dùng responseType 'blob' và resolve thẳng ra Blob.
@@ -48,6 +49,10 @@ axiosClient.interceptors.response.use(
       const body = await errorBody(data)
       if (body && body.success === false) return Promise.reject(new Error(body.error || 'Có lỗi xảy ra.'))
     }
+    // chế độ ẩn thông tin CTV / nhà thầu (utils/privacy): che ngay khi nhận, mọi trang hiện bản đã che
+    if (privacyOn() && data && typeof data === 'object' && !(data instanceof Blob) && data.success && data.data) {
+      maskResponse(data.data, response.config?.url || '')
+    }
     return data
   },
   async (error) => {
@@ -72,8 +77,10 @@ axiosClient.interceptors.response.use(
 )
 
 /** GET file cần đăng nhập (ảnh, biên lai, Excel) -> Blob. */
-export const getBlob = (url, params) =>
-  axiosClient.get(url, { params: params && cleanParams(params), responseType: 'blob', timeout: 60_000 })
+export const getBlob = (url, params) => {
+  params = photoParams(url, params) // đang ẩn thông tin: ảnh công trình bản đã che SĐT
+  return axiosClient.get(url, { params: params && cleanParams(params), responseType: 'blob', timeout: 60_000 })
+}
 
 /** POST multipart (FormData). Ghi đè Content-Type JSON mặc định để axios gửi đúng boundary. */
 export const postForm = (url, formData) =>
