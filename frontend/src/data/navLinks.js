@@ -14,6 +14,7 @@ const navLinks = [
   { to: '/quy-hoach', label: 'Xem quy hoạch', icon: 'layers', roles: ['sale'], group: 'Sale' },
   { to: '/sale/projects', label: 'Dự án', icon: 'houses', roles: ['sale'], group: 'Sale' },
   { to: '/sale/contractors', label: 'Nhà thầu', icon: 'users', roles: ['sale'], group: 'Sale' },
+  { to: '/nha-thau-app', label: 'Nhà thầu dùng app', icon: 'houses', roles: ['admin'], group: 'Hệ thống' },
   { to: '/staff', label: 'Nhân viên', icon: 'staff', roles: ['admin'], group: 'Hệ thống' },
   { to: '/settings', label: 'Cấu hình', icon: 'settings', roles: ['admin'], group: 'Hệ thống' },
 ]
