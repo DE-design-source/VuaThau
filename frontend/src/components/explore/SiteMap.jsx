@@ -170,19 +170,32 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
       vec = null
       osm()
     }
-    pickBasemap().then((b) => {
-      if (gone) return
+    // Nền vector giữ chữ nét, cỡ chữ đọc được ở mọi mức phóng; nền ảnh OSM thì chữ nhỏ cố định, phóng gần là khó đọc
+    // (góp ý 24/11/2026). Vietmap lỗi (ô bản đồ bị chặn / hết hạn mức) -> sang nền vector OpenFreeMap trước, cùng lỗi mới về OSM.
+    const OFM = { style: '/map-style.json', attribution: '&copy; OpenFreeMap &copy; OpenMapTiles &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }
+    const addVec = (b) => {
       try {
-        vec = maplibreGL({ style: b.style, attribution: `${b.attribution} · Ranh giới: OCHA/HDX` }).addTo(m)
-        const gl = vec.getMaplibreMap()
-        let loaded = false
-        gl.once('load', () => (loaded = true))
-        gl.on('error', (e) => !loaded && /style|Failed to fetch|404/i.test(String(e?.error?.message || e?.error)) && fallback())
+        const layer = maplibreGL({ style: b.style, attribution: `${b.attribution} · Ranh giới: OCHA/HDX` }).addTo(m)
+        vec = layer
+        const gl = layer.getMaplibreMap()
+        let ok = false
+        // có ô bản đồ vẽ được là nền chạy tốt
+        gl.on('data', (e) => e.dataType === 'source' && e.tile && (ok = true))
+        gl.on('error', (e) => {
+          if (ok || gone || vec !== layer) return
+          if (!/style|Failed to fetch|404|403|423|429|NetworkError|AJAXError/i.test(String(e?.error?.message || e?.error))) return
+          if (b.style !== OFM.style) {
+            m.removeLayer(vec)
+            vec = null
+            addVec(OFM)
+          } else fallback()
+        })
       } catch {
         fallback()
         if (!vec) osm()
       }
-    })
+    }
+    pickBasemap().then((b) => !gone && addVec(b))
     const pane = m.createPane('areas')
     pane.style.zIndex = 350
     const zoom = () => {

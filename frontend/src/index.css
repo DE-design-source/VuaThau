@@ -4683,7 +4683,7 @@ details.card > summary strong {
 /* Nền bản đồ xám nhạt (góp ý 23-24/11/2026): ghim màu nổi bật. Chỉ lọc lớp nền (tile pane: cả nền vector MapLibre
    lẫn nền ảnh OSM), không đụng ghim, thẻ, lớp tô tỉnh. Đặt 1 chỗ để không bị lọc chồng nhiều lần. */
 .site-map .leaflet-tile-pane {
-  filter: grayscale(1) brightness(1.1) contrast(0.82);
+  filter: grayscale(1) brightness(1.06) contrast(0.92); /* contrast thấp quá làm chữ tên đường nhạt khó đọc */
 }
 :root[data-theme='dark'] .site-map .leaflet-tile-pane {
   filter: grayscale(1) invert(1) brightness(0.85) contrast(0.85);

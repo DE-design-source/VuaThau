@@ -9,7 +9,7 @@ const SRC = 'https://tiles.openfreemap.org/styles/liberty'
 const C = {
   land: '#f4f2ec', urban: '#efece4', park: '#d8ecc9', wood: '#cfe5bd', water: '#a9d3f0', waterLine: '#8fc3e8',
   building: '#e6e2d9', buildingLine: '#d9d4c8', road: '#ffffff', roadCase: '#dcd8cf', major: '#fdf3c8', majorCase: '#e8d79a',
-  rail: '#d2cec4', text: '#5e5e5e', textMinor: '#8a8a8a', textPlace: '#9a958c', halo: '#ffffff', boundary: '#b9b3a6',
+  rail: '#d2cec4', text: '#4a4a4a', textMinor: '#5a5a5a', textPlace: '#9a958c', halo: '#ffffff', boundary: '#b9b3a6',
 }
 const keepPoi = /^(poi_r1|airport)/ // giữ rất ít biểu tượng: địa điểm lớn, sân bay
 
@@ -48,6 +48,11 @@ for (const l of st.layers) {
     p['text-halo-color'] = C.halo
     p['text-halo-width'] = 1.4
     if (lay['text-field']) lay['text-field'] = ['coalesce', ['get', 'name'], ['get', 'name:latin'], ['get', 'name_en']]
+    // tên đường to dần khi phóng gần, hiện sớm hơn 1 mức (góp ý 24/11/2026: phóng gần không đọc được tên đường)
+    if (sl === 'transportation_name') {
+      lay['text-size'] = ['interpolate', ['linear'], ['zoom'], 12, 12, 15, 14, 17, 16, 19, 18]
+      if (l.minzoom > 13) l.minzoom = l.minzoom - 1
+    }
     if (sl === 'place') {
       // bỏ "Khu phố 1, 2, 3..." (rối): lọc theo hạng địa danh, không dùng biểu thức chuỗi (app đọc được)
       if (id === 'label_other') l.filter = ['match', ['get', 'class'], ['suburb', 'quarter'], true, false] // giữ tên phường, bỏ khu phố / thôn
