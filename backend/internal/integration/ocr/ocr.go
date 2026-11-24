@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"vuathau/backend/internal/pkg/imaging"
 )
@@ -25,6 +26,12 @@ type Finder interface {
 	Enabled() bool
 	// known: SĐT nhà thầu đã biết của hồ sơ (bắt thêm số OCR chỉ đọc được 1 phần).
 	Phones(ctx context.Context, jpeg []byte, known []string) ([]Box, error)
+}
+
+// Scanner: 1 lượt đọc ra cả vùng SĐT lẫn mọi dòng chữ (chế độ "Ẩn thông tin" trên web che hết chữ trên ảnh:
+// tên công ty trên bảng hiệu, băng rôn, dải chữ in trên ảnh). Tesseract có; bản giả trong test có thể không có.
+type Scanner interface {
+	Scan(ctx context.Context, jpeg []byte, known []string) (phones, texts []Box, err error)
 }
 
 type disabled struct{}
@@ -53,19 +60,66 @@ func (tesseract) Enabled() bool { return true }
 
 // Phones: 2 lượt đọc (psm 11: chữ rời rạc như bảng hiệu; psm 3: đoạn chữ), gộp vùng tìm được.
 func (t tesseract) Phones(ctx context.Context, img []byte, known []string) ([]Box, error) {
+	phones, _, err := t.Scan(ctx, img, known)
+	return phones, err
+}
+
+func (t tesseract) Scan(ctx context.Context, img []byte, known []string) (phones, texts []Box, err error) {
 	cfg, err := imageSize(img)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	var out []Box
 	for _, psm := range []string{"11", "3"} {
 		words, err := t.run(ctx, img, psm)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		out = append(out, PhoneBoxes(words, cfg[0], cfg[1], known)...)
+		phones = append(phones, PhoneBoxes(words, cfg[0], cfg[1], known)...)
+		texts = append(texts, TextBoxes(words, cfg[0], cfg[1])...)
 	}
-	return Merge(out), nil
+	return Merge(phones), Merge(texts), nil
+}
+
+// TextBoxes: mọi dòng chữ đọc được khá chắc (bảng hiệu, băng rôn, dải chữ in trên ảnh), mỗi dòng 1 vùng.
+// Bỏ chữ "đọc nhầm" từ gạch, lá cây...: tin cậy dưới 50 hoặc ít hơn 2 chữ / số.
+func TextBoxes(words []Word, w, h int) []Box {
+	if w <= 0 || h <= 0 {
+		return nil
+	}
+	type span struct{ x0, y0, x1, y1 int }
+	lines := map[string]*span{}
+	order := []string{}
+	for _, x := range words {
+		if x.Conf < 50 || alnum(x.Text) < 2 || x.W <= 0 || x.H <= 0 {
+			continue
+		}
+		s, ok := lines[x.Line]
+		if !ok {
+			lines[x.Line] = &span{x.X, x.Y, x.X + x.W, x.Y + x.H}
+			order = append(order, x.Line)
+			continue
+		}
+		s.x0, s.y0 = min(s.x0, x.X), min(s.y0, x.Y)
+		s.x1, s.y1 = max(s.x1, x.X+x.W), max(s.y1, x.Y+x.H)
+	}
+	out := []Box{}
+	for _, k := range order {
+		s := lines[k]
+		pad := float64(s.y1-s.y0) * 0.35
+		out = append(out, clamp(Box{X: (float64(s.x0) - pad) / float64(w), Y: (float64(s.y0) - pad) / float64(h),
+			W: (float64(s.x1-s.x0) + 2*pad) / float64(w), H: (float64(s.y1-s.y0) + 2*pad) / float64(h)}))
+	}
+	return out
+}
+
+func alnum(s string) int {
+	n := 0
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			n++
+		}
+	}
+	return n
 }
 
 func (t tesseract) run(ctx context.Context, img []byte, psm string) ([]Word, error) {

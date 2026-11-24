@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"vuathau/backend/internal/integration/ocr"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/imaging"
 	"vuathau/backend/internal/pkg/safe"
@@ -36,27 +37,57 @@ func (s *houseService) phoneMask(ctx context.Context, p *model.Photo, known stri
 }
 
 func (s *houseService) scanPhone(ctx context.Context, id int64, sha, known string) ([]imaging.RelBox, error) {
+	phones, _, err := s.scanMasks(ctx, id, sha, known)
+	return phones, err
+}
+
+// scanMasks: 1 lượt OCR: vùng SĐT (sale / CTV / Drive) + mọi dòng chữ (chế độ "Ẩn thông tin"), lưu cả hai.
+func (s *houseService) scanMasks(ctx context.Context, id int64, sha, known string) (phones, texts []imaging.RelBox, err error) {
 	small, err := s.files.ReadPhoto(sha, true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var ks []string
 	if known != "" {
 		ks = []string{known}
 	}
-	boxes, err := s.ocr.Phones(ctx, small, ks)
+	if sc, ok := s.ocr.(ocr.Scanner); ok {
+		phones, texts, err = sc.Scan(ctx, small, ks)
+	} else {
+		phones, err = s.ocr.Phones(ctx, small, ks)
+		texts = phones // OCR chỉ tìm SĐT: vùng chữ = vùng SĐT
+	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if boxes == nil {
-		boxes = []imaging.RelBox{}
+	if phones == nil {
+		phones = []imaging.RelBox{}
 	}
-	raw, _ := json.Marshal(boxes)
-	if err := s.photos.SetPhoneMask(ctx, id, raw); err != nil {
-		return nil, err
+	// vùng chữ luôn gồm cả vùng SĐT
+	texts = append(append([]imaging.RelBox{}, texts...), phones...)
+	pr, _ := json.Marshal(phones)
+	tr, _ := json.Marshal(texts)
+	if err := s.photos.SetMasks(ctx, id, pr, tr); err != nil {
+		return nil, nil, err
 	}
 	s.files.DeleteMasked(sha)
-	return boxes, nil
+	return phones, texts, nil
+}
+
+// hiddenPhoto: ảnh cho người đang bật "Ẩn thông tin" trên web: che SĐT + mọi dòng chữ. Ảnh chưa quét chữ: làm mờ
+// cả ảnh (quét nền sẽ tới, lần xem sau là bản che chữ); máy không có OCR: cũng làm mờ cả ảnh.
+func (s *houseService) hiddenPhoto(p *model.Photo, card bool) ([]byte, error) {
+	var boxes []imaging.RelBox
+	if p.TextMask == nil || json.Unmarshal(p.TextMask, &boxes) != nil || s.ocr == nil || !s.ocr.Enabled() {
+		return s.files.ReadBlurred(p.SHA256, card)
+	}
+	if len(boxes) == 0 {
+		if card {
+			return s.files.ReadCard(p.SHA256)
+		}
+		return s.files.ReadPhoto(p.SHA256, true)
+	}
+	return s.files.ReadHidden(p.SHA256, card, boxes)
 }
 
 // maskedPhoto: ảnh cho người không xem được gốc: có SĐT thì trả ảnh đã che (cỡ thu nhỏ / thẻ), không thì nil.
@@ -97,9 +128,10 @@ func (s *houseService) runPhoneMaskScan(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			if _, err := s.scanPhone(ctx, t.ID, t.SHA256, t.ContractorPhone); err != nil {
+			if _, _, err := s.scanMasks(ctx, t.ID, t.SHA256, t.ContractorPhone); err != nil {
 				log.Printf("che SĐT ảnh #%d: %v", t.ID, err)
-				_ = s.photos.SetPhoneMask(ctx, t.ID, []byte("[]")) // ảnh hỏng: bỏ qua, không quét lại mãi
+				// ảnh hỏng: bỏ qua, không quét lại mãi (chữ: "blur" -> chế độ Ẩn thông tin làm mờ cả ảnh)
+				_ = s.photos.SetMasks(ctx, t.ID, []byte("[]"), []byte(`"blur"`))
 				continue
 			}
 			done++

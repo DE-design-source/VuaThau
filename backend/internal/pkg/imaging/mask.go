@@ -65,6 +65,29 @@ func avg(img *image.RGBA, r image.Rectangle) color.RGBA {
 	return color.RGBA{R: uint8(sr / n), G: uint8(sg / n), B: uint8(sb / n), A: 255}
 }
 
+// BlurJPEG: làm mờ cả ảnh (không đọc được chữ nào): thu nhỏ còn cạnh dài 24 điểm ảnh rồi phóng lại.
+// Dùng khi ảnh chưa quét chữ mà người xem đang bật "Ẩn thông tin".
+func BlurJPEG(data []byte) ([]byte, error) {
+	src, _, err := Decode(data)
+	if err != nil {
+		return nil, err
+	}
+	b := src.Bounds()
+	sw, sh := 24, max(1, 24*b.Dy()/max(1, b.Dx()))
+	if b.Dy() > b.Dx() {
+		sw, sh = max(1, 24*b.Dx()/max(1, b.Dy())), 24
+	}
+	small := image.NewRGBA(image.Rect(0, 0, sw, sh))
+	draw.ApproxBiLinear.Scale(small, small.Bounds(), src, b, draw.Src, nil)
+	dst := image.NewRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+	draw.BiLinear.Scale(dst, dst.Bounds(), small, small.Bounds(), draw.Src, nil)
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 80}); err != nil {
+		return nil, fmt.Errorf("encode jpeg: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
 // MaskJPEG: đọc JPEG, che vùng, nén lại JPEG chất lượng 85.
 func MaskJPEG(data []byte, boxes []RelBox) ([]byte, error) {
 	img, _, err := Decode(data)

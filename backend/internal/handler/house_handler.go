@@ -328,6 +328,10 @@ func (h *HouseHandler) Photo(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("masked") == "1" { // admin xem thử bản che SĐT (sale / CTV thấy bản này)
 		size = "masked"
 	}
+	// web bật "Ẩn thông tin CTV, nhà thầu": che cả chữ trên ảnh
+	if r.URL.Query().Get("hide") == "1" {
+		size = map[bool]string{true: "hide-card", false: "hide"}[r.URL.Query().Get("size") == "card"]
+	}
 	data, mime, err := h.svc.PhotoFile(r.Context(), me(r), pid, size)
 	if err != nil {
 		writeServiceError(w, err)

@@ -108,12 +108,27 @@ func (f *Files) DeletePhoto(sha string) {
 // ReadMasked: ảnh đã che SĐT (vùng boxes) cỡ thu nhỏ (card=false) hoặc cỡ thẻ. Lưu <sha>_m.jpg / <sha>_mc.jpg cho lần
 // sau; vùng che đổi (quét lại) thì gọi DeleteMasked.
 func (f *Files) ReadMasked(sha string, card bool, boxes []imaging.RelBox) ([]byte, error) {
+	return f.readMasked(sha, card, "m", func(src []byte) ([]byte, error) { return imaging.MaskJPEG(src, boxes) })
+}
+
+// ReadHidden: ảnh che SĐT + mọi dòng chữ (chế độ "Ẩn thông tin" trên web), lưu <sha>_h.jpg / _hc.jpg.
+func (f *Files) ReadHidden(sha string, card bool, boxes []imaging.RelBox) ([]byte, error) {
+	return f.readMasked(sha, card, "h", func(src []byte) ([]byte, error) { return imaging.MaskJPEG(src, boxes) })
+}
+
+// ReadBlurred: ảnh làm mờ cả ảnh (chưa quét chữ mà đang "Ẩn thông tin"), lưu <sha>_b.jpg / _bc.jpg.
+func (f *Files) ReadBlurred(sha string, card bool) ([]byte, error) {
+	return f.readMasked(sha, card, "b", imaging.BlurJPEG)
+}
+
+// readMasked: ảnh thu nhỏ / cỡ thẻ đã xử lý (make), lưu <sha>_<tag>.jpg / <sha>_<tag>c.jpg cho lần sau.
+func (f *Files) readMasked(sha string, card bool, tag string, mk func([]byte) ([]byte, error)) ([]byte, error) {
 	if !shaRE.MatchString(sha) {
 		return nil, fmt.Errorf("sha256 không hợp lệ")
 	}
-	name := sha + "_m.jpg"
+	name := sha + "_" + tag + ".jpg"
 	if card {
-		name = sha + "_mc.jpg"
+		name = sha + "_" + tag + "c.jpg"
 	}
 	p := filepath.Join(f.photos, name)
 	if b, err := os.ReadFile(p); err == nil {
@@ -129,7 +144,7 @@ func (f *Files) ReadMasked(sha string, card bool, boxes []imaging.RelBox) ([]byt
 	if err != nil {
 		return nil, err
 	}
-	b, err := imaging.MaskJPEG(src, boxes)
+	b, err := mk(src)
 	if err != nil {
 		return nil, err // không che được: không trả ảnh chưa che
 	}
@@ -143,8 +158,10 @@ func (f *Files) ReadMasked(sha string, card bool, boxes []imaging.RelBox) ([]byt
 // DeleteMasked: xoá ảnh đã che (để tạo lại theo vùng che mới).
 func (f *Files) DeleteMasked(sha string) {
 	if shaRE.MatchString(sha) {
-		_ = os.Remove(filepath.Join(f.photos, sha+"_m.jpg"))
-		_ = os.Remove(filepath.Join(f.photos, sha+"_mc.jpg"))
+		for _, tag := range []string{"m", "h", "b"} {
+			_ = os.Remove(filepath.Join(f.photos, sha+"_"+tag+".jpg"))
+			_ = os.Remove(filepath.Join(f.photos, sha+"_"+tag+"c.jpg"))
+		}
 	}
 }
 

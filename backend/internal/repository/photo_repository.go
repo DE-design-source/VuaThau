@@ -36,6 +36,8 @@ type PhotoRepository interface {
 	Count(ctx context.Context, houseID int64) (int, error)
 	// SetPhoneMask: lưu vùng SĐT cần che (JSON, [] = không có).
 	SetPhoneMask(ctx context.Context, id int64, mask []byte) error
+	// SetMasks: lưu cả vùng SĐT và vùng chữ (1 lượt OCR)
+	SetMasks(ctx context.Context, id int64, phone, text []byte) error
 	// NoPhoneMask: ảnh chưa quét SĐT (mới nhất trước), kèm SĐT nhà thầu của hồ sơ.
 	NoPhoneMask(ctx context.Context, limit int) ([]MaskTodo, error)
 	// ApplyAI ghi kết quả AI đọc 1 ảnh (giờ in trên ảnh, địa chỉ, có phải công trình, toạ độ nếu còn trống).
@@ -61,12 +63,12 @@ func NewPhotoRepository(db *pgxpool.Pool) PhotoRepository {
 	return &photoRepository{db: db}
 }
 
-const photoCols = `id, house_id, sha256, dhash, exif_time, ai_time, lat, lng, address, is_site, dup_of, mime, phone_mask`
+const photoCols = `id, house_id, sha256, dhash, exif_time, ai_time, lat, lng, address, is_site, dup_of, mime, phone_mask, text_mask`
 
 func scanPhoto(row pgx.Row) (*model.Photo, error) {
 	var p model.Photo
 	err := row.Scan(&p.ID, &p.HouseID, &p.SHA256, &p.DHash, &p.ExifTime, &p.AITime, &p.Lat, &p.Lng, &p.Address,
-		&p.IsSite, &p.DupOf, &p.Mime, &p.PhoneMask)
+		&p.IsSite, &p.DupOf, &p.Mime, &p.PhoneMask, &p.TextMask)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -168,9 +170,15 @@ func (r *photoRepository) SetPhoneMask(ctx context.Context, id int64, mask []byt
 	return err
 }
 
+func (r *photoRepository) SetMasks(ctx context.Context, id int64, phone, text []byte) error {
+	_, err := r.db.Exec(ctx, `UPDATE photos SET phone_mask = $2, text_mask = $3 WHERE id = $1`, id, phone, text)
+	return err
+}
+
+// NoPhoneMask: ảnh chưa quét SĐT hoặc chưa quét chữ (ảnh cũ trước migration 030), mới nhất trước.
 func (r *photoRepository) NoPhoneMask(ctx context.Context, limit int) ([]MaskTodo, error) {
 	rows, err := r.db.Query(ctx, `SELECT p.id, p.sha256, h.contractor_phone FROM photos p JOIN houses h ON h.id = p.house_id
-		WHERE p.phone_mask IS NULL AND h.ai_state <> 'dang_doc' ORDER BY p.id DESC LIMIT $1`, limit)
+		WHERE (p.phone_mask IS NULL OR p.text_mask IS NULL) AND h.ai_state <> 'dang_doc' ORDER BY p.id DESC LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
 	}

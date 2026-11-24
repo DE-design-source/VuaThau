@@ -3,7 +3,7 @@
 // danh sách, ô lọc đều ẩn theo, không phải sửa từng chỗ hiển thị:
 //   - tên CTV -> "CTV #<id>"; tên / công ty nhà thầu -> "Nhà thầu NT-XXXX" (mã cố định theo tên: lọc, sắp xếp vẫn đúng);
 //   - SĐT, tài khoản ngân hàng, email, người liên hệ: che;
-//   - ảnh công trình: bản đã che SĐT trên bảng hiệu (?masked=1).
+//   - ảnh công trình: che SĐT và mọi dòng chữ trên ảnh (?hide=1; ảnh chưa quét chữ: làm mờ cả ảnh).
 // Thông tin khách hàng (tab Khách hàng) giữ nguyên. Trình duyệt nhớ lựa chọn.
 
 const KEY = 'vuathau.hidePII'
@@ -127,8 +127,9 @@ export function maskResponse(data, url) {
   return data
 }
 
-/** Ảnh công trình khi đang ẩn: bản đã che SĐT trên bảng hiệu */
+/** Ảnh công trình khi đang ẩn: máy chủ che SĐT + mọi dòng chữ trên ảnh (bảng hiệu, băng rôn, dải chữ in trên ảnh);
+ *  ảnh chưa quét chữ thì làm mờ cả ảnh. */
 export function photoParams(url, params) {
   if (!privacyOn() || !/^\/photos\/\d+/.test(url)) return params
-  return { ...(params || {}), masked: 1 }
+  return { ...(params || {}), hide: 1 }
 }

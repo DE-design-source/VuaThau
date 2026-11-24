@@ -1096,6 +1096,14 @@ func (s *houseService) PhotoFile(ctx context.Context, u *model.User, pid int64, 
 	} else if _, err := s.load(ctx, u, p.HouseID); err != nil {
 		return nil, "", err
 	}
+	// web đang bật "Ẩn thông tin CTV, nhà thầu" (mọi vai trò): che SĐT + mọi dòng chữ, ảnh chưa quét thì làm mờ
+	if size == "hide" || size == "hide-card" {
+		b, err := s.hiddenPhoto(p, size == "hide-card")
+		if err != nil {
+			return nil, "", fail(ErrNotFound, "Không tìm thấy file ảnh.")
+		}
+		return b, "image/jpeg", nil
+	}
 	// sale, CTV: ảnh có SĐT thì trả bản đã che; admin xem thử bản che: size "masked"
 	if !seesOriginal(u) || size == "masked" {
 		if size != "card" {

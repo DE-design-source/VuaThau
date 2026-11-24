@@ -175,6 +175,8 @@ type Photo struct {
 	Problems []string `json:"problems"`
 	// PhoneMask: vùng có SĐT cần che khi sale / CTV / Drive xem (JSON [{x,y,w,h}] tỉ lệ 0..1); nil = chưa quét.
 	PhoneMask []byte `json:"-"`
+	// TextMask: mọi dòng chữ trên ảnh (chế độ "Ẩn thông tin" trên web); nil = chưa quét (migration 030).
+	TextMask []byte `json:"-"`
 	// Masked: số SĐT đã che trên ảnh (admin thấy để biết)
 	Masked int `json:"masked"`
 }
