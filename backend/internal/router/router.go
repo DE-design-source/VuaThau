@@ -31,6 +31,7 @@ type Deps struct {
 	Dezon          *handler.DezonHandler      // dữ liệu dezon.vn; nil: chỉ nhà thầu tiềm năng, không có công trình
 	Contractors    *handler.ContractorHandler // trang Nhà thầu (admin); nil: tắt
 	NT             *handler.NTHandler         // tài khoản nhà thầu trên app; nil: tắt
+	Feedback       *handler.FeedbackHandler   // đánh giá app (CTV / nhà thầu); nil: tắt
 }
 
 func New(d Deps) http.Handler {
@@ -107,6 +108,13 @@ func New(d Deps) http.Handler {
 		mux.Handle("GET /api/v1/admin/nt", role(nt.Contractors, model.RoleAdmin))
 		mux.Handle("POST /api/v1/admin/nt", role(nt.AddContractor, model.RoleAdmin))
 		mux.Handle("PUT /api/v1/admin/nt/{id}/alt-phones", role(nt.SetAltPhones, model.RoleAdmin))
+	}
+
+	// Đánh giá app: đủ 30 ảnh thì app hỏi (góp ý 25/11/2026)
+	if fb := d.Feedback; fb != nil {
+		mux.Handle("GET /api/v1/feedback/ask", role(fb.Ask, ctv, model.RoleNhaThau))
+		mux.Handle("POST /api/v1/feedback", role(fb.Submit, ctv, model.RoleNhaThau))
+		mux.Handle("GET /api/v1/admin/feedback", role(fb.List, admin))
 	}
 
 	// Tài khoản (mọi vai trò)

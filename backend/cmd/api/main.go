@@ -163,6 +163,7 @@ func run() error {
 			HouseHandler:   handler.NewHouseHandler(houseSvc),
 			PaymentHandler: handler.NewPaymentHandler(paySvc, gVerifier.ClientID()).WithNTForm(cfg.LarkNTForm),
 			NT:             handler.NewNTHandler(ntApp),
+			Feedback:       handler.NewFeedbackHandler(service.NewFeedbackService(repository.NewFeedbackRepository(db))),
 			Dezon:          handler.NewDezonHandler(dezon.ListURL, dezonRepo),
 			Contractors:    handler.NewContractorHandler(ntSvc, cfg.LarkNTForm),
 			UserLookup:     userRepo.GetByID,

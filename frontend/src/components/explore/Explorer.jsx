@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { ctvTip, cusTip, dezonCard } from '@/utils/siteTip'
 import { distM, distText, hsId, isStale as stale } from '@/utils/format'
 import { CtvList, CustomerList, FilterBar, LayerPanel, Pill } from './layers'
-import { NO_CUS_FILTER, NO_P_FILTER, NO_V_FILTER, P_AGES, ctvKey, ctvProvinces, cusMatch, ctvVisible, facet, fold, pMatch, useLayers, vMatch } from '@/utils/mapLayers'
+import { NO_CUS_FILTER, NO_P_FILTER, NO_V_FILTER, P_AGES, P_SORTS, V_SORTS, ctvKey, ctvProvinces, cusMatch, ctvVisible, facet, fold, ntName, pMatch, sortCtvs, sortCustomers, sortProjects, useLayers, vMatch } from '@/utils/mapLayers'
 
 const PAGE = 24
 const NONE = []
@@ -92,14 +92,15 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
       // lọc theo CTV / giai đoạn / lần chụp thì bỏ công trình Dezon (chưa CTV nào chụp, không có giai đoạn)
       (layered && !layers.dezon) || pf.ctv || pf.stage || pf.shot
         ? NONE
-        : dzAll.filter((d) => pMatch({ at: d.posted_at }, pf) && (!q || fold([d.title, d.contractor, d.address].join(' ')).includes(q))),
+        : dzAll.filter((d) => pMatch({ at: d.posted_at, contractor: d.contractor }, pf) && (!q || fold([d.title, d.contractor, d.address].join(' ')).includes(q))),
     [dzAll, layered, layers, pf, q],
   )
   // cộng tác viên theo lớp đang bật + ô lọc tab CTV + ô tìm
   const [vf, setVf] = useState(NO_V_FILTER)
   const ctvProv = useMemo(() => (layered ? ctvProvinces(ctvPins, provinces, allPoints) : new Map()), [layered, ctvPins, provinces, allPoints])
   const ctvs = useMemo(
-    () => (layered ? ctvPins.filter((c) => ctvVisible(c, layers) && vMatch(c, vf, ctvProv.get(c.id)) && qHit(q, [c.name, c.address, c.kind], c.phone)) : NONE),
+    () =>
+      layered ? sortCtvs(ctvPins.filter((c) => ctvVisible(c, layers) && vMatch(c, vf, ctvProv.get(c.id)) && qHit(q, [c.name, c.address, c.kind], c.phone)), vf.sort) : NONE,
     [layered, ctvPins, layers, vf, q, ctvProv],
   )
   const counts = layered
@@ -117,7 +118,10 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
   const [cf, setCf] = useState(NO_CUS_FILTER) // bộ lọc tab Khách hàng
   const allCus = layered ? customers || NONE : NONE
   const cus = useMemo(
-    () => (layered && layers.customer ? allCus.filter((k) => cusMatch(k, cf) && qHit(q, [k.name, k.address, k.area, k.owner, k.kind], k.phone)) : NONE),
+    () =>
+      layered && layers.customer
+        ? sortCustomers(allCus.filter((k) => cusMatch(k, cf) && qHit(q, [k.name, k.address, k.area, k.owner, k.kind], k.phone)), cf.sort)
+        : NONE,
     [layered, layers, allCus, cf, q],
   )
   if (counts) counts.customer = allCus.length
@@ -143,7 +147,7 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
   const dist = near ? new Map(items.map((it) => [it.key, distM(near.lat, near.lng, it.p.lat, it.p.lng)])) : null
   const rows = near
     ? items.filter((it) => dist.get(it.key) <= near.radius).sort((a, b) => dist.get(a.key) - dist.get(b.key))
-    : items.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
+    : sortProjects(items, pf.sort)
   const provName = Object.fromEntries((provinces || []).map((p) => [p.code, p.name]))
   const stageOpts = useMemo(() => facet(allPoints, (p) => (p.stage || '').trim(), 'Chưa rõ giai đoạn'), [allPoints])
   const ctvOpts = useMemo(
@@ -153,6 +157,8 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
         .sort((a, b) => a.label.localeCompare(b.label, 'vi')),
     [allPoints],
   )
+  // ô Nhà thầu (góp ý 25/11/2026): tên nhà thầu trên bảng hiệu CTV chụp + nhà thầu đăng dezon.vn, nhiều công trình trước
+  const ntOpts = useMemo(() => facet([...allPoints, ...dzAll], ntName, 'Chưa rõ nhà thầu'), [allPoints, dzAll])
   // ô Tỉnh thành tab Công trình: dùng chung ô của thanh tìm (lọc ở máy chủ), 2 chỗ luôn khớp nhau
   const provSel = selects.find((s) => s.key === 'province')
   // Lần chụp: như chú thích ghim (vàng / xanh lá)
@@ -282,6 +288,7 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
                   ]}
                   onChange={(v) => setVf({ ...vf, last: v })}
                 />
+                <Pill label="Sắp xếp" value={vf.sort} options={V_SORTS} onChange={(v) => setVf({ ...vf, sort: v })} all="Mặc định" />
               </FilterBar>
               {/* số CTV đã có trên tab: ở đây chỉ chia theo loại */}
               <p className="muted ex-sum">
@@ -305,6 +312,8 @@ export default function Explorer({ points: allPoints, provinces, staleDays = 30,
             <Pill label="Lần chụp" value={pf.shot} options={shotOpts} onChange={(v) => setPf({ ...pf, shot: v })} />
             <Pill label="Ngày chụp" value={pf.age} options={P_AGES} onChange={(v) => setPf({ ...pf, age: v })} />
             {layered && <Pill label="CTV" value={pf.ctv} options={ctvOpts} onChange={(v) => setPf({ ...pf, ctv: v })} />}
+            <Pill label="Nhà thầu" value={pf.nt} options={ntOpts} onChange={(v) => setPf({ ...pf, nt: v })} />
+            <Pill label="Sắp xếp" value={pf.sort} options={P_SORTS} onChange={(v) => setPf({ ...pf, sort: v })} all="Mới chụp nhất" />
           </FilterBar>
           <div className="ex-head">
             <h2 className="ex-head-sub">

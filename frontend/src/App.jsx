@@ -12,6 +12,7 @@ import OverviewPage from '@/pages/OverviewPage'
 import CtvListPage from '@/pages/CtvListPage'
 import CtvPage from '@/pages/CtvPage'
 import StaffPage from '@/pages/StaffPage'
+import FeedbackPage from '@/pages/FeedbackPage'
 import SettingsPage from '@/pages/SettingsPage'
 import AccountingPage from '@/pages/AccountingPage'
 import PayPage from '@/pages/PayPage'
@@ -109,6 +110,7 @@ export default function App() {
         <Route path="sale/projects/:id" element={g(<SaleProjectPage />, SALE)} />
         <Route path="sale/contractors" element={g(<ContractorsPage />, SALE)} />
         <Route path="staff" element={g(<StaffPage />, ['admin'])} />
+        <Route path="danh-gia" element={g(<FeedbackPage />, ['admin'])} />
         <Route path="nha-thau-app" element={g(<Suspense fallback={<PageState err="" />}><NtPage /></Suspense>, ['admin'])} />
         <Route path="settings" element={g(<SettingsPage />, ['admin'])} />
         <Route path="accounting" element={g(<AccountingPage />, ['ketoan'])} />

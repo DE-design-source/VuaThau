@@ -16,7 +16,7 @@ export const ALL_LAYERS = { pending: true, shoot: true, dezon: true, ctvUpdate: 
 export const RATING_LABEL = ['Chưa đánh giá', 'Rất thấp', 'Thấp', 'Trung bình', 'Cao', 'Rất cao']
 
 /** Bộ lọc tab Khách hàng (góp ý 22/11/2026): người phụ trách, tỉnh thành, nguồn, trạng thái giao tiếp, ngày tạo. */
-export const NO_CUS_FILTER = { owner: '', province: '', source: '', rating: '', date: '', from: '', to: '' }
+export const NO_CUS_FILTER = { owner: '', province: '', source: '', rating: '', date: '', from: '', to: '', sort: '' }
 
 /** Ngày yyyy-mm-dd theo giờ Việt Nam */
 const vnDay = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })
@@ -89,17 +89,65 @@ export const fold = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').re
 
 /** Tab Công trình: giai đoạn, lần chụp (chưa tới lúc / cần chụp, như chú thích), ngày chụp gần nhất, CTV.
  *  Tỉnh thành dùng chung ô Tỉnh thành của thanh tìm (lọc ở máy chủ). */
-export const NO_P_FILTER = { stage: '', shot: '', age: '', ctv: '' }
+export const NO_P_FILTER = { stage: '', shot: '', age: '', ctv: '', nt: '', sort: '' }
 export const P_AGES = [
   { value: '1d', label: 'Hôm nay, hôm qua' },
   { value: '7d', label: '7 ngày qua' },
   { value: '30d', label: '30 ngày qua' },
   { value: 'old', label: 'Quá 30 ngày' },
 ]
+/** Tên nhà thầu của công trình (ô Nhà thầu, góp ý 25/11/2026): bỏ khoảng trắng thừa */
+export const ntName = (p) => (p.contractor || '').replace(/\s+/g, ' ').trim()
+
+// ---- Ô Sắp xếp (góp ý 25/11/2026: "sắp xếp từ cao xuống thấp" ở cả 3 tab). '' = mặc định ----
+const time = (s) => (s ? new Date(s).getTime() : 0)
+/** Tab Công trình: mặc định mới chụp nhất trước */
+export const P_SORTS = [
+  { value: 'old', label: 'Lâu chưa chụp nhất' },
+  { value: 'nt', label: 'Nhà thầu nhiều công trình nhất' },
+  { value: 'ctv', label: 'CTV nhiều công trình nhất' },
+]
+/** items: [{ p, at }] (hồ sơ CTV + Dezon). Trả mảng mới đã sắp xếp. */
+export function sortProjects(items, sort) {
+  const byNew = (a, b) => time(b.at) - time(a.at)
+  if (sort === 'old') return [...items].sort((a, b) => time(a.at) - time(b.at))
+  if (sort === 'nt' || sort === 'ctv') {
+    const key = (it) => (sort === 'nt' ? ntName(it.p) : it.d ? '' : String(it.p.ctv_id || ''))
+    const n = new Map()
+    for (const it of items) n.set(key(it), (n.get(key(it)) || 0) + 1)
+    // nhóm nhiều công trình lên trước (chưa rõ tên xuống cuối), trong nhóm: mới nhất trước
+    return [...items].sort((a, b) => (key(a) === '') - (key(b) === '') || n.get(key(b)) - n.get(key(a)) || key(a).localeCompare(key(b), 'vi') || byNew(a, b))
+  }
+  return [...items].sort(byNew)
+}
+/** Tab Cộng tác viên: mặc định theo máy chủ */
+export const V_SORTS = [
+  { value: 'count', label: 'Nhiều công trình nhất' },
+  { value: 'last', label: 'Gửi gần đây nhất' },
+]
+export function sortCtvs(ctvs, sort) {
+  if (sort === 'count') return [...ctvs].sort((a, b) => (b.count || 0) - (a.count || 0) || time(b.last) - time(a.last))
+  if (sort === 'last') return [...ctvs].sort((a, b) => time(b.last) - time(a.last) || (b.count || 0) - (a.count || 0))
+  return ctvs
+}
+/** Tab Khách hàng: mặc định theo máy chủ */
+export const CUS_SORTS = [
+  { value: 'value', label: 'Giá trị cao nhất' },
+  { value: 'rating', label: 'Giao tiếp tốt nhất' },
+  { value: 'new', label: 'Mới tạo nhất' },
+]
+export function sortCustomers(rows, sort) {
+  if (sort === 'value') return [...rows].sort((a, b) => (b.value_vnd || 0) - (a.value_vnd || 0))
+  if (sort === 'rating') return [...rows].sort((a, b) => (b.rating || 0) - (a.rating || 0) || (b.value_vnd || 0) - (a.value_vnd || 0))
+  if (sort === 'new') return [...rows].sort((a, b) => time(b.lead_at) - time(a.lead_at))
+  return rows
+}
+
 /** staleDays: số ngày tới lúc chụp lại (ô Lần chụp) */
 export function pMatch(p, f, staleDays = 30) {
   if (f.stage && (p.stage || '').trim() !== (f.stage === '-' ? '' : f.stage)) return false
   if (f.ctv && String(p.ctv_id || '') !== f.ctv) return false
+  if (f.nt && ntName(p) !== (f.nt === '-' ? '' : f.nt)) return false
   if (f.shot && (isStale(p.last_at || p.at, staleDays) ? 'shoot' : 'pending') !== f.shot) return false
   if (f.age) {
     const d = dAgo(p.last_at || p.at)
@@ -113,7 +161,7 @@ export function pMatch(p, f, staleDays = 30) {
 
 /** Tab Cộng tác viên: tỉnh thành, loại, trạng thái, có công trình chưa, lần gửi gần nhất.
  *  prov: mã tỉnh của CTV (xem ctvProvinces), '' chưa rõ. */
-export const NO_V_FILTER = { prov: '', type: '', status: '', has: '', last: '' }
+export const NO_V_FILTER = { prov: '', type: '', status: '', has: '', last: '', sort: '' }
 export function vMatch(c, f, prov = '') {
   if (f.prov && prov !== (f.prov === '-' ? '' : f.prov)) return false
   if (f.type && (c.type === 'sales' ? 'sales' : 'update') !== f.type) return false

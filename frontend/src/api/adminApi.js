@@ -7,6 +7,9 @@ const adminApi = {
   /** Duyệt nhiều -> { message, approved } */
   approve: (ids) => axiosClient.post('/admin/approve', { ids }),
 
+  /** Đánh giá app: { items: [{ id, name, phone, role, stars, comment, photos, version, platform, created_at }], count, avg, stars[0..5] } */
+  feedback: () => axiosClient.get('/admin/feedback'),
+
   /** { rows: [User] } admin + kế toán */
   staff: () => axiosClient.get('/staff'),
 

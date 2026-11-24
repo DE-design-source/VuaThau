@@ -157,6 +157,7 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 		HouseHandler:   handler.NewHouseHandler(houseSvc),
 		PaymentHandler: handler.NewPaymentHandler(paySvc, ""),
 		NT:             handler.NewNTHandler(ntApp),
+		Feedback:       handler.NewFeedbackHandler(service.NewFeedbackService(repository.NewFeedbackRepository(db))),
 		UserLookup:     userRepo.GetByID,
 		HealthChecks:   settings.healthChecks,
 		Contractors:    handler.NewContractorHandler(ntSvc, "https://form.test"),

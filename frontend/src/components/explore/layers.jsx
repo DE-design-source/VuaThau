@@ -5,7 +5,7 @@
 import { useState } from 'react'
 import { initials } from '@/utils/format'
 import { cusGmap } from '@/utils/siteTip'
-import { LAYER_META, NO_CUS_FILTER, facet, RATING_LABEL, ctvKey, ctvStatusLabel, ctvTypeLabel } from '@/utils/mapLayers'
+import { CUS_SORTS, LAYER_META, NO_CUS_FILTER, facet, RATING_LABEL, ctvKey, ctvStatusLabel, ctvTypeLabel } from '@/utils/mapLayers'
 import { MK, badgePin } from './pins'
 
 function Switch({ on, onClick, label }) {
@@ -133,14 +133,15 @@ export function FilterBar({ any, onClear, children }) {
 }
 
 /** Ô lọc dạng viên thuốc: nhãn + giá trị đang chọn, bấm mở danh sách (select trong suốt phủ lên). */
-export function Pill({ label, value, options, onChange }) {
+/** all: chữ của lựa chọn trống (mặc định "Tất cả"; ô Sắp xếp: thứ tự mặc định) */
+export function Pill({ label, value, options, onChange, all = 'Tất cả' }) {
   const cur = options.find((o) => o.value === value)
   return (
     <label className={`cus-owner ${value ? 'on' : ''}`}>
       <span>{label}</span>
-      <b>{value ? cur?.label?.replace(/ \(\d+\)$/, '') || value : 'Tất cả'}</b>
+      <b>{value ? cur?.label?.replace(/ \(\d+\)$/, '') || value : all}</b>
       <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}>
-        <option value="">Tất cả</option>
+        <option value="">{all}</option>
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
@@ -183,6 +184,7 @@ export function CustomerList({ rows, all, filter: f, setFilter, onPick, active, 
         <Pill label="Giao tiếp" value={f.rating} options={ratings} onChange={(v) => set({ rating: v })} />
         <Pill label="Ngày tạo" value={f.date} options={dates} onChange={(v) => set({ date: v, ...(v === 'custom' ? {} : { from: '', to: '' }) })} />
         <Pill label="Phụ trách" value={f.owner} options={owners} onChange={(v) => set({ owner: v })} />
+        <Pill label="Sắp xếp" value={f.sort} options={CUS_SORTS} onChange={(v) => set({ sort: v })} all="Mặc định" />
       </FilterBar>
       {/* số khách đã có trên tab: ở đây chỉ chia theo loại công trình */}
       {kinds.length > 0 && <p className="muted ex-sum">{kinds.map(([kd, n]) => `${n} ${kd.toLowerCase()}`).join(' · ')}</p>}

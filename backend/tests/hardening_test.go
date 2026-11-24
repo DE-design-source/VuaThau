@@ -334,3 +334,69 @@ func TestProjectAddressChangeClearsPin(t *testing.T) {
 		t.Fatalf("ghim cũ còn: %v %v", lat, err)
 	}
 }
+
+// Đánh giá app (góp ý 25/11/2026): chưa đủ 30 ảnh không hỏi; đủ 30 hỏi; "Để sau" thì hỏi lại khi đủ 60;
+// đánh giá xong không hỏi nữa; admin xem được, CTV không xem được trang admin.
+func TestAppFeedback(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	admin := e.staff(t, model.RoleAdmin)
+	ctv := e.register(t, "CTV đánh giá")
+	type ask struct {
+		Ask    bool `json:"ask"`
+		Photos int  `json:"photos"`
+	}
+	asked := func() ask {
+		t.Helper()
+		var a ask
+		decodeData(t, e.do(t, http.MethodGet, "/api/v1/feedback/ask", ctv.AccessToken, nil), &a)
+		return a
+	}
+	addPhotos := func(n int, seed uint64) {
+		t.Helper()
+		for done := 0; done < n; done += 20 {
+			k := min(20, n-done)
+			files := make([][]byte, k)
+			for i := range files {
+				files[i] = photo(t, seed+uint64(done+i))
+			}
+			expectStatus(t, e.upload(t, "/api/v1/houses", ctv.AccessToken, "files", files, map[string]string{"meta": cameraMeta(k, 10.9+float64(done)/1000)}), http.StatusCreated)
+		}
+	}
+	if a := asked(); a.Ask {
+		t.Fatalf("chưa có ảnh đã hỏi: %+v", a)
+	}
+	addPhotos(30, 12000)
+	if a := asked(); !a.Ask || a.Photos != 30 {
+		t.Fatalf("đủ 30 ảnh chưa hỏi: %+v", a)
+	}
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/feedback", ctv.AccessToken, map[string]any{"later": true}), http.StatusOK)
+	if a := asked(); a.Ask {
+		t.Fatalf("bấm Để sau vẫn hỏi ngay: %+v", a)
+	}
+	addPhotos(30, 12100)
+	if a := asked(); !a.Ask {
+		t.Fatalf("đủ 60 ảnh chưa hỏi lại: %+v", a)
+	}
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/feedback", ctv.AccessToken, map[string]any{"stars": 9}), http.StatusBadRequest)
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/feedback", ctv.AccessToken,
+		map[string]any{"stars": 4, "comment": "App dễ dùng, mong có thêm chế độ tối", "version": "2.0.33", "platform": "android"}), http.StatusOK)
+	if a := asked(); a.Ask {
+		t.Fatalf("đã đánh giá vẫn hỏi: %+v", a)
+	}
+	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/admin/feedback", ctv.AccessToken, nil), http.StatusForbidden)
+	var list struct {
+		Items []struct {
+			Name    string `json:"name"`
+			Stars   int    `json:"stars"`
+			Comment string `json:"comment"`
+			Photos  int    `json:"photos"`
+		} `json:"items"`
+		Count int     `json:"count"`
+		Avg   float64 `json:"avg"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/admin/feedback", admin.AccessToken, nil), &list)
+	if list.Count != 1 || list.Avg != 4 || list.Items[0].Name != "CTV đánh giá" || list.Items[0].Photos != 60 || list.Items[0].Comment == "" {
+		t.Fatalf("trang đánh giá: %+v", list)
+	}
+}
