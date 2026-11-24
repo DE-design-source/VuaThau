@@ -111,7 +111,7 @@ func (h *HouseHandler) CheckPhoto(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "Chưa có ảnh.")
 		return
 	}
-	res, err := h.svc.CheckPhoto(r.Context(), me(r), files[0], r.FormValue("meta"))
+	res, err := h.svc.CheckPhoto(r.Context(), me(r), files[0], r.FormValue("meta"), r.FormValue("sha"))
 	if err != nil {
 		writeServiceError(w, err)
 		return

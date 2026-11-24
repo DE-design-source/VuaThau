@@ -200,7 +200,8 @@ type HouseService interface {
 	Geocode(ctx context.Context, lat, lng float64) string
 	// Tìm địa điểm theo địa chỉ (ô tìm trên bản đồ).
 	SearchPlace(ctx context.Context, u *model.User, q string) (*PlaceSearch, error)
-	CheckPhoto(ctx context.Context, u *model.User, f Upload, meta string) (*CheckResult, error)
+	// CheckPhoto: kiểm 1 ảnh vừa chụp. fullSHA: sha256 của ảnh gốc khi app gửi bản thu nhỏ (mạng yếu); "" = f là ảnh gốc.
+	CheckPhoto(ctx context.Context, u *model.User, f Upload, meta, fullSHA string) (*CheckResult, error)
 	Create(ctx context.Context, u *model.User, files []Upload, meta string) (*UploadResult, error)
 	AddPhotos(ctx context.Context, u *model.User, id int64, files []Upload, meta string) (*UploadResult, error)
 	DeletePhoto(ctx context.Context, u *model.User, id, pid int64) (string, error)
@@ -477,6 +478,8 @@ func (s *houseService) Geocode(ctx context.Context, lat, lng float64) string {
 	return a
 }
 
+var shaHex = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
 func shaOf(b []byte) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
@@ -497,7 +500,7 @@ func (s *houseService) dupHouse(ctx context.Context, dhash string) (*int64, erro
 	return nil, nil
 }
 
-func (s *houseService) CheckPhoto(ctx context.Context, u *model.User, f Upload, meta string) (*CheckResult, error) {
+func (s *houseService) CheckPhoto(ctx context.Context, u *model.User, f Upload, meta, fullSHA string) (*CheckResult, error) {
 	done, err := takePhoto(ctx)
 	if err != nil {
 		return nil, err
@@ -510,7 +513,12 @@ func (s *houseService) CheckPhoto(ctx context.Context, u *model.User, f Upload, 
 	if len(data) > MaxFileBytes {
 		return &CheckResult{Problems: []string{"Ảnh quá 20MB"}}, nil
 	}
+	// app gửi bản thu nhỏ (~150KB thay vì ~800KB, mạng yếu ở tỉnh) kèm sha256 ảnh gốc: dHash, kết quả AI lưu theo ảnh
+	// gốc, lúc nộp đúng ảnh đó thì dùng lại (dHash của ảnh thu nhỏ gần như y hệt ảnh gốc)
 	sha := shaOf(data)
+	if shaHex.MatchString(fullSHA) {
+		sha = fullSHA
+	}
 	if hid, err := s.photos.HouseOfSHA(ctx, sha); err != nil {
 		return nil, err
 	} else if hid > 0 {
