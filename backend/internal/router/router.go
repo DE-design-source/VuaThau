@@ -26,11 +26,11 @@ type Deps struct {
 	HouseHandler   *handler.HouseHandler
 	PaymentHandler *handler.PaymentHandler
 	UserLookup     middleware.UserLookup
-	HealthChecks   map[string]HealthCheck // e.g. "postgres", "redis"
-	Tiles          *handler.TileHandler   // nền bản đồ qua máy chủ; nil: tạo mới theo DATA_DIR
-	Dezon          *handler.DezonHandler  // dữ liệu dezon.vn; nil: chỉ nhà thầu tiềm năng, không có công trình
+	HealthChecks   map[string]HealthCheck     // e.g. "postgres", "redis"
+	Tiles          *handler.TileHandler       // nền bản đồ qua máy chủ; nil: tạo mới theo DATA_DIR
+	Dezon          *handler.DezonHandler      // dữ liệu dezon.vn; nil: chỉ nhà thầu tiềm năng, không có công trình
 	Contractors    *handler.ContractorHandler // trang Nhà thầu (admin); nil: tắt
-	NT             *handler.NTHandler     // tài khoản nhà thầu trên app; nil: tắt
+	NT             *handler.NTHandler         // tài khoản nhà thầu trên app; nil: tắt
 }
 
 func New(d Deps) http.Handler {

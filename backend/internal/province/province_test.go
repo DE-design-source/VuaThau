@@ -23,21 +23,21 @@ func TestAt(t *testing.T) {
 		lat, lng float64
 		want     string
 	}{
-		{21.0285, 105.8542, "Hà Nội"},              // Hồ Gươm
-		{10.7769, 106.7009, "TP. Hồ Chí Minh"},     // Quận 1 cũ
-		{11.0705, 106.6829, "TP. Hồ Chí Minh"},     // Bình Dương cũ (hồ sơ Messenger)
-		{10.3460, 107.0843, "TP. Hồ Chí Minh"},     // Vũng Tàu cũ
-		{18.6601, 105.6851, "Nghệ An"},             // Vinh
-		{16.0544, 108.2022, "Đà Nẵng"},             // Đà Nẵng
-		{15.8801, 108.3380, "Đà Nẵng"},             // Hội An (Quảng Nam cũ)
-		{12.2388, 109.1967, "Khánh Hòa"},           // Nha Trang
-		{11.9404, 108.4583, "Lâm Đồng"},            // Đà Lạt
-		{10.9333, 108.1000, "Lâm Đồng"},            // Phan Thiết (Bình Thuận cũ)
-		{10.0452, 105.7469, "Cần Thơ"},             // Ninh Kiều
-		{20.4388, 106.1621, "Ninh Bình"},           // Nam Định cũ
-		{13.7830, 109.2196, "Gia Lai"},             // Quy Nhơn (Bình Định cũ)
-		{10.0124, 105.0809, "An Giang"},            // Rạch Giá (Kiên Giang cũ)
-		{16.4637, 107.5909, "Huế"},                 // Huế
+		{21.0285, 105.8542, "Hà Nội"},          // Hồ Gươm
+		{10.7769, 106.7009, "TP. Hồ Chí Minh"}, // Quận 1 cũ
+		{11.0705, 106.6829, "TP. Hồ Chí Minh"}, // Bình Dương cũ (hồ sơ Messenger)
+		{10.3460, 107.0843, "TP. Hồ Chí Minh"}, // Vũng Tàu cũ
+		{18.6601, 105.6851, "Nghệ An"},         // Vinh
+		{16.0544, 108.2022, "Đà Nẵng"},         // Đà Nẵng
+		{15.8801, 108.3380, "Đà Nẵng"},         // Hội An (Quảng Nam cũ)
+		{12.2388, 109.1967, "Khánh Hòa"},       // Nha Trang
+		{11.9404, 108.4583, "Lâm Đồng"},        // Đà Lạt
+		{10.9333, 108.1000, "Lâm Đồng"},        // Phan Thiết (Bình Thuận cũ)
+		{10.0452, 105.7469, "Cần Thơ"},         // Ninh Kiều
+		{20.4388, 106.1621, "Ninh Bình"},       // Nam Định cũ
+		{13.7830, 109.2196, "Gia Lai"},         // Quy Nhơn (Bình Định cũ)
+		{10.0124, 105.0809, "An Giang"},        // Rạch Giá (Kiên Giang cũ)
+		{16.4637, 107.5909, "Huế"},             // Huế
 	} {
 		p := At(c.lat, c.lng)
 		if p == nil || p.Name != c.want {

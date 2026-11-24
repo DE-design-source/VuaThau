@@ -20,8 +20,8 @@ import (
 type fakeAI struct {
 	mu    sync.Mutex
 	calls int
-	sizes []int // cạnh dài từng ảnh nhận
-	bad   int   // ảnh không đọc được
+	sizes []int  // cạnh dài từng ảnh nhận
+	bad   int    // ảnh không đọc được
 	rules string // quy tắc admin gửi kèm lượt gần nhất
 }
 

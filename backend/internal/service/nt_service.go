@@ -151,18 +151,18 @@ func (s *NTService) Projects(ctx context.Context, u *model.User, status string) 
 }
 
 type NTProjectInput struct {
-	Name     string   `json:"name"`
-	Address  string   `json:"address"`  // địa chỉ 1 dòng (app cũ); có province thì bỏ qua, ghép từ 3 ô dưới
-	Province string   `json:"province"` // form Đăng dự án: tỉnh / thành
-	Ward     string   `json:"ward"`     // phường / xã / đặc khu (đúng danh sách 2025)
-	Street   string   `json:"street"`   // số nhà, tên đường
-	Kind     string   `json:"kind"`
-	Status   string   `json:"status"`
+	Name     string `json:"name"`
+	Address  string `json:"address"`  // địa chỉ 1 dòng (app cũ); có province thì bỏ qua, ghép từ 3 ô dưới
+	Province string `json:"province"` // form Đăng dự án: tỉnh / thành
+	Ward     string `json:"ward"`     // phường / xã / đặc khu (đúng danh sách 2025)
+	Street   string `json:"street"`   // số nhà, tên đường
+	Kind     string `json:"kind"`
+	Status   string `json:"status"`
 	// FinishedYear: form Đăng dự án, Tình trạng "Đã hoàn thành" -> Năm hoàn thành
-	FinishedYear *int `json:"finished_year"`
-	Progress *int     `json:"progress"`
-	Lat      *float64 `json:"lat"`
-	Lng      *float64 `json:"lng"`
+	FinishedYear *int     `json:"finished_year"`
+	Progress     *int     `json:"progress"`
+	Lat          *float64 `json:"lat"`
+	Lng          *float64 `json:"lng"`
 }
 
 // NTGeocoder: tra toạ độ từ địa chỉ dự án khi nhà thầu không ghim trên bản đồ.
@@ -560,26 +560,26 @@ func (s *NTService) Report(ctx context.Context, u *model.User, projectID, logID 
 
 // NTPublicReport: trang báo cáo công khai (chủ nhà xem). Không có SĐT / tài khoản nhà thầu.
 type NTPublicReport struct {
-	Company  string    `json:"company"`
-	Regions  string    `json:"regions"` // khu vực hoạt động (đầu trang báo cáo)
-	Verified bool      `json:"verified"`
-	Phone    string    `json:"phone"` // SĐT nhà thầu: nút Gọi nhà thầu / Nhắn Zalo (nhà thầu tự gửi link nên chủ nhà được thấy)
-	Project  string    `json:"project"`
-	Address  string    `json:"address"`
-	Kind     string    `json:"kind"`
-	Status   string    `json:"status"`
-	Progress int       `json:"progress"`
-	Days     int       `json:"days"`   // ngày thi công thứ mấy
-	Logs     int       `json:"logs"`   // số nhật ký của dự án
-	Total    int       `json:"total"`  // số ảnh của dự án
-	Note     string    `json:"note"`
-	TakenAt  time.Time `json:"taken_at"`
-	GPS      bool      `json:"gps"` // ảnh có toạ độ GPS + giờ chụp in trên ảnh
-	Lat      *float64  `json:"lat"`
-	Lng      *float64  `json:"lng"`
-	LogAddr  string    `json:"log_address"` // địa chỉ in trên ảnh (màn xem ảnh)
-	Photos   []string  `json:"photos"`
-	Videos   int       `json:"videos"`
+	Company  string        `json:"company"`
+	Regions  string        `json:"regions"` // khu vực hoạt động (đầu trang báo cáo)
+	Verified bool          `json:"verified"`
+	Phone    string        `json:"phone"` // SĐT nhà thầu: nút Gọi nhà thầu / Nhắn Zalo (nhà thầu tự gửi link nên chủ nhà được thấy)
+	Project  string        `json:"project"`
+	Address  string        `json:"address"`
+	Kind     string        `json:"kind"`
+	Status   string        `json:"status"`
+	Progress int           `json:"progress"`
+	Days     int           `json:"days"`  // ngày thi công thứ mấy
+	Logs     int           `json:"logs"`  // số nhật ký của dự án
+	Total    int           `json:"total"` // số ảnh của dự án
+	Note     string        `json:"note"`
+	TakenAt  time.Time     `json:"taken_at"`
+	GPS      bool          `json:"gps"` // ảnh có toạ độ GPS + giờ chụp in trên ảnh
+	Lat      *float64      `json:"lat"`
+	Lng      *float64      `json:"lng"`
+	LogAddr  string        `json:"log_address"` // địa chỉ in trên ảnh (màn xem ảnh)
+	Photos   []string      `json:"photos"`
+	Videos   int           `json:"videos"`
 	Earlier  []NTPublicLog `json:"earlier"` // nhật ký trước đây của dự án (mới trước)
 }
 

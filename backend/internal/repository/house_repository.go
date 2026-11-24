@@ -355,7 +355,7 @@ func (r *houseRepository) SiteCandidates(ctx context.Context, exclude int64, sin
 	return out, rows.Err()
 }
 
-// SetProvince: gán mã tỉnh mới ('' = chưa xác định được).
+// SetProvince: gán mã tỉnh mới (chuỗi rỗng = chưa xác định được).
 func (r *houseRepository) SetProvince(ctx context.Context, id int64, code string) error {
 	_, err := r.db.Exec(ctx, `UPDATE houses SET province = NULLIF($2, '') WHERE id = $1`, id, code)
 	return err

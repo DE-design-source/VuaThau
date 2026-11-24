@@ -24,7 +24,9 @@ func (f *fakeLeads) Leads(context.Context) ([]dezontech.Lead, error) {
 	defer f.mu.Unlock()
 	return append([]dezontech.Lead(nil), f.leads...), nil
 }
-func (f *fakeLeads) StaffNames(context.Context) map[string]string { return map[string]string{"u7": "Bùi Minh Phong"} }
+func (f *fakeLeads) StaffNames(context.Context) map[string]string {
+	return map[string]string{"u7": "Bùi Minh Phong"}
+}
 
 func lead(t *testing.T, raw string) dezontech.Lead {
 	t.Helper()

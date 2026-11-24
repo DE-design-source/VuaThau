@@ -63,7 +63,7 @@ type envSettings struct {
 	ai           ai.Reader  // nil: tắt AI
 	ocr          ocr.Finder // nil: không che SĐT
 	inbox        inbox.Source
-	leads        service.LeadSource // khách hàng Dezon Pro (nil: tắt)
+	leads        service.LeadSource    // khách hàng Dezon Pro (nil: tắt)
 	lark         service.LarkCTVSource // form tuyển CTV trên Lark (nil: tắt)
 	ntLark       service.LarkCTVSource // form đăng ký nhà thầu trên Lark (nil: tắt)
 	cfg          *config.Config

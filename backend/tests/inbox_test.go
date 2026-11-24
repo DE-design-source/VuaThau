@@ -22,7 +22,7 @@ type fakeInbox struct {
 	mu     sync.Mutex
 	logs   []inbox.Log
 	images map[string][]byte
-	videos map[string][]string // mã hồ sơ -> khoá video (kéo video cho hồ sơ đã nhập)
+	videos map[string][]string          // mã hồ sơ -> khoá video (kéo video cho hồ sơ đã nhập)
 	people map[string]inbox.ContactInfo // contacts.id -> thông tin khách
 }
 
