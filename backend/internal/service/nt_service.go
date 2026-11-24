@@ -709,6 +709,67 @@ type NTAddInput struct {
 	Company string `json:"company"`
 }
 
+// EnsureFromLark: nhà thầu đăng ký qua form Lark và đã tích "Xác minh tham gia" -> tự có tài khoản app (đăng nhập bằng SĐT).
+// SĐT đã có tài khoản nhà thầu: chỉ bổ sung hồ sơ còn trống (không ghi đè những gì nhà thầu đã tự sửa trong app).
+// SĐT là tài khoản CTV / nhân viên: bỏ qua (1 SĐT 1 tài khoản). Trả true khi vừa tạo tài khoản mới.
+func (s *NTService) EnsureFromLark(ctx context.Context, c *repository.RegContractor) (bool, error) {
+	phone := normPhone(c.Phone)
+	if !ValidPhone(phone) {
+		return false, nil
+	}
+	company := truncate(c.Name, 200)
+	person := truncate(c.Contact, 100)
+	if person == "" {
+		person = truncate(c.Name, 100)
+	}
+	if person == "" {
+		return false, nil
+	}
+	u, err := s.auth.FindByLogin(ctx, phone)
+	if err == nil {
+		if u.Role != model.RoleNhaThau {
+			return false, nil
+		}
+		prof, err := s.repo.Profile(ctx, u.ID)
+		if err != nil {
+			return false, err
+		}
+		changed := false
+		if prof.Company == "" && company != "" {
+			prof.Company, changed = company, true
+		}
+		if prof.Regions == "" && c.Areas != "" {
+			prof.Regions, changed = truncate(c.Areas, 200), true
+		}
+		if !prof.Verified {
+			prof.Verified, changed = true, true
+		}
+		if changed {
+			return false, s.repo.UpsertProfile(ctx, prof)
+		}
+		return false, nil
+	}
+	if !errors.Is(err, repository.ErrNotFound) {
+		return false, err
+	}
+	hash, err := hashPassword(randomSecret())
+	if err != nil {
+		return false, err
+	}
+	nu := &model.User{Username: phone, Name: person, Role: model.RoleNhaThau, PasswordHash: hash}
+	if err := s.auth.CreateUser(ctx, nu); err != nil {
+		if errors.Is(err, repository.ErrDuplicate) {
+			return false, nil // lượt đồng bộ khác vừa tạo
+		}
+		return false, err
+	}
+	if err := s.repo.UpsertProfile(ctx, &repository.NTProfile{UserID: nu.ID, Company: company, Regions: truncate(c.Areas, 200), Verified: true}); err != nil {
+		return false, err
+	}
+	_ = s.logs.Add(ctx, 0, ActAddNT, nil, nil, fmt.Sprintf("%s (%s) %s · tự tạo từ form Lark đã xác minh", person, phone, company))
+	return true, nil
+}
+
 // AddContractor: admin tạo tài khoản nhà thầu (đăng nhập app bằng SĐT).
 func (s *NTService) AddContractor(ctx context.Context, by *model.User, in NTAddInput) (string, error) {
 	phone, name := normPhone(in.Phone), truncate(in.Name, 100)

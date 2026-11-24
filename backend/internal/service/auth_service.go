@@ -38,6 +38,8 @@ type PhoneResult struct {
 	*AuthResult
 	Registered bool   `json:"registered"`
 	Phone      string `json:"phone"`
+	// NTPending: chọn "Nhà thầu", SĐT đã đăng ký form nhà thầu nhưng Vua Thầu chưa xác minh
+	NTPending bool `json:"nt_pending,omitempty"`
 }
 
 type LoginInput struct {

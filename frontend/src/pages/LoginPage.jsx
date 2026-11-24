@@ -86,7 +86,7 @@ export default function LoginPage() {
         goApp(as, r?.data?.phone || p)
         return
       }
-      setPhoneState({ busy: false, err: '', switchTo: '', ntNew: true })
+      setPhoneState({ busy: false, err: '', switchTo: '', ntNew: true, ntPending: !!r?.data?.nt_pending })
     } catch (err) {
       const m = err.message || 'Có lỗi xảy ra.'
       setPhoneState({ busy: false, err: m, switchTo: m.includes('"Nhà thầu"') ? 'nhathau' : m.includes('"Cộng tác viên"') ? 'ctv' : '', ntNew: false })
@@ -198,9 +198,13 @@ export default function LoginPage() {
               )}
               {phoneState.ntNew && (
                 <div className="role-note">
-                  <b>Số này chưa có tài khoản nhà thầu.</b>
-                  <span>Đăng ký nhà thầu, Vua Thầu xác minh rồi cấp tài khoản theo số điện thoại này.</span>
-                  {ntForm && (
+                  <b>{phoneState.ntPending ? 'Vua Thầu đang xác minh hồ sơ nhà thầu của bạn.' : 'Số này chưa có tài khoản nhà thầu.'}</b>
+                  <span>
+                    {phoneState.ntPending
+                      ? 'Đã nhận đăng ký của số này. Xác minh xong, tài khoản tự có, bạn nhập lại số này để vào.'
+                      : 'Đăng ký nhà thầu, Vua Thầu xác minh xong là tài khoản tự có theo số điện thoại này.'}
+                  </span>
+                  {ntForm && !phoneState.ntPending && (
                     <a className="btn btn-secondary" href={ntForm} target="_blank" rel="noreferrer">
                       Đăng ký nhà thầu
                     </a>

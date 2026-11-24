@@ -119,7 +119,9 @@ func run() error {
 	if lc := lark.New(cfg.LarkAPI, cfg.LarkAppID, cfg.LarkAppSecret, "", cfg.LarkNTBase, cfg.LarkNTTable); lc != nil {
 		ntSrc = lc
 	}
-	ntSvc := service.NewContractorService(repository.NewContractorRepository(db), houseRepo, ntSrc)
+	// tài khoản nhà thầu trên app; nhà thầu đã xác minh trên form Lark tự có tài khoản (mỗi lượt đồng bộ)
+	ntApp := service.NewNTService(repository.NewNTRepository(db), authRepo, files, logRepo, cfg.JWTSecret).WithGeo(geocoder)
+	ntSvc := service.NewContractorService(repository.NewContractorRepository(db), houseRepo, ntSrc).WithAccounts(ntApp.EnsureFromLark)
 	houseSvc := service.NewHouseService(service.HouseDeps{
 		Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo, Payments: payRepo, Settings: settingsRepo,
 		Files: files, AI: ai.New(cfg.AIEnabled, cfg.AIModel, cfg.AIWorkspace), Geo: geocoder, OCR: ocr.New(),
@@ -154,11 +156,11 @@ func run() error {
 		Addr: ":" + cfg.Port,
 		Handler: router.New(router.Deps{
 			Config:         cfg,
-			AuthHandler:    handler.NewAuthHandler(authSvc),
+			AuthHandler:    handler.NewAuthHandler(authSvc).WithNTPending(ntSvc.Pending),
 			UserHandler:    handler.NewUserHandler(userSvc, authSvc),
 			HouseHandler:   handler.NewHouseHandler(houseSvc),
 			PaymentHandler: handler.NewPaymentHandler(paySvc, gVerifier.ClientID()).WithNTForm(cfg.LarkNTForm),
-			NT:             handler.NewNTHandler(service.NewNTService(repository.NewNTRepository(db), authRepo, files, logRepo, cfg.JWTSecret).WithGeo(geocoder)),
+			NT:             handler.NewNTHandler(ntApp),
 			Dezon:          handler.NewDezonHandler(dezon.ListURL, dezonRepo),
 			Contractors:    handler.NewContractorHandler(ntSvc, cfg.LarkNTForm),
 			UserLookup:     userRepo.GetByID,

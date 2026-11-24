@@ -1,18 +1,28 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
+	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/response"
 	"vuathau/backend/internal/service"
 )
 
 type AuthHandler struct {
 	svc service.AuthService
+	// ntPending: SĐT đã đăng ký form nhà thầu nhưng chưa xác minh (nil: không kiểm)
+	ntPending func(ctx context.Context, phone string) bool
 }
 
 func NewAuthHandler(svc service.AuthService) *AuthHandler {
 	return &AuthHandler{svc: svc}
+}
+
+// WithNTPending: màn đăng nhập chọn "Nhà thầu", SĐT chưa có tài khoản mà đã đăng ký form -> báo "đang xác minh".
+func (h *AuthHandler) WithNTPending(fn func(ctx context.Context, phone string) bool) *AuthHandler {
+	h.ntPending = fn
+	return h
 }
 
 // Register handles POST /api/v1/auth/register (CTV đăng ký trên app)
@@ -57,6 +67,9 @@ func (h *AuthHandler) Phone(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeServiceError(w, err)
 		return
+	}
+	if !res.Registered && in.As == model.RoleNhaThau && h.ntPending != nil {
+		res.NTPending = h.ntPending(r.Context(), res.Phone)
 	}
 	ok(w, res)
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"vuathau/backend/internal/integration/lark"
+	"vuathau/backend/internal/model"
 )
 
 // Trang Nhà thầu (góp ý 23/11/2026): đăng ký qua form Lark + trích từ ảnh CTV, gộp theo SĐT (84xxx = 0xxx);
@@ -147,5 +148,90 @@ func TestContractors(t *testing.T) {
 	}
 	if r := e.do(t, http.MethodGet, fmt.Sprintf("/api/v1/houses/%d", hid), admin.AccessToken, nil); r.Status != http.StatusOK {
 		t.Fatalf("xem hồ sơ sau khi đổi quy tắc: %d", r.Status)
+	}
+}
+
+// Đồng bộ form Lark: nhà thầu đã tích "Xác minh tham gia" tự có tài khoản app (đăng nhập bằng SĐT, hồ sơ công ty điền sẵn);
+// chưa xác minh thì không có tài khoản, đăng nhập "Nhà thầu" được báo đang xác minh; SĐT của CTV không bị đổi vai trò;
+// đồng bộ lại không tạo trùng, không ghi đè tên công ty nhà thầu đã tự sửa.
+func TestContractorLarkAccounts(t *testing.T) {
+	t.Parallel()
+	fl := &fakeLark{}
+	e := newTestEnv(t, func(s *envSettings) { s.ntLark = fl })
+	verified, pending, ctvPhone := e.newPhone(), e.newPhone(), e.newPhone()
+	ctv := e.register(t, "CTV có SĐT trùng form")
+	_ = ctv
+	if _, err := e.db.Exec(context.Background(), `UPDATE users SET username = $1 WHERE id = $2`, ctvPhone, ctv.User.ID); err != nil {
+		t.Fatal(err)
+	}
+	fl.recs = []lark.Record{
+		larkRec(t, `{"record_id":"a1","fields":{"Tên công ty / Cá nhân":"Công ty Smartcons","Số điện thoại (có Zalo)":"`+verified+`",
+			"Họ tên người liên hệ":"Anh Hưng","Tỉnh/thành phố nhận thi công":"TP. Hồ Chí Minh","Xác minh tham gia":true}}`),
+		larkRec(t, `{"record_id":"a2","fields":{"Tên công ty / Cá nhân":"Tổ đội Minh","Số điện thoại (có Zalo)":"`+pending+`"}}`),
+		larkRec(t, `{"record_id":"a3","fields":{"Tên công ty / Cá nhân":"Trùng CTV","Số điện thoại (có Zalo)":"`+ctvPhone+`","Xác minh tham gia":true}}`),
+	}
+	ctx := context.Background()
+	if _, err := e.nt.SyncLark(ctx); err != nil {
+		t.Fatal(err)
+	}
+	phoneLogin := func(p string) apiResp {
+		t.Helper()
+		return e.do(t, http.MethodPost, "/api/v1/auth/phone", "", map[string]string{"phone": p, "as": "nhathau"})
+	}
+	// đã xác minh: vào được, hồ sơ công ty điền sẵn, có nhãn đã xác minh
+	r := phoneLogin(verified)
+	expectStatus(t, r, http.StatusOK)
+	var lg struct {
+		Registered  bool       `json:"registered"`
+		AccessToken string     `json:"access_token"`
+		User        model.User `json:"user"`
+	}
+	decodeData(t, r, &lg)
+	if !lg.Registered || lg.User.Role != model.RoleNhaThau || lg.User.Name != "Anh Hưng" {
+		t.Fatalf("nhà thầu đã xác minh: %s", r.Raw)
+	}
+	var home struct {
+		Profile struct {
+			Company  string `json:"company"`
+			Regions  string `json:"regions"`
+			Verified bool   `json:"verified"`
+		} `json:"profile"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/nt/home", lg.AccessToken, nil), &home)
+	if home.Profile.Company != "Công ty Smartcons" || home.Profile.Regions != "TP. Hồ Chí Minh" || !home.Profile.Verified {
+		t.Fatalf("hồ sơ công ty: %+v", home.Profile)
+	}
+	// chưa xác minh: chưa có tài khoản, báo đang xác minh
+	r = phoneLogin(pending)
+	var pd struct {
+		Registered bool `json:"registered"`
+		NTPending  bool `json:"nt_pending"`
+	}
+	decodeData(t, r, &pd)
+	if pd.Registered || !pd.NTPending {
+		t.Fatalf("chưa xác minh: %s", r.Raw)
+	}
+	// SĐT của CTV: vẫn là CTV
+	expectStatus(t, phoneLogin(ctvPhone), http.StatusConflict)
+
+	// nhà thầu tự sửa tên công ty; đồng bộ lại không ghi đè, không tạo trùng
+	expectStatus(t, e.do(t, http.MethodPut, "/api/v1/nt/profile", lg.AccessToken, map[string]any{"company": "Smartcons Việt Nam"}), http.StatusOK)
+	// tích xác minh cho dòng thứ 2 trên Lark -> lượt sau có tài khoản
+	fl.recs[1] = larkRec(t, `{"record_id":"a2","fields":{"Tên công ty / Cá nhân":"Tổ đội Minh","Số điện thoại (có Zalo)":"`+pending+`","Xác minh tham gia":true}}`)
+	if _, err := e.nt.SyncLark(ctx); err != nil {
+		t.Fatal(err)
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/nt/home", lg.AccessToken, nil), &home)
+	if home.Profile.Company != "Smartcons Việt Nam" {
+		t.Fatalf("đồng bộ lại ghi đè tên công ty: %q", home.Profile.Company)
+	}
+	var n int
+	_ = e.db.QueryRow(ctx, `SELECT count(*) FROM users WHERE role = 'nhathau' AND username IN ($1, $2)`, verified, pending).Scan(&n)
+	if n != 2 {
+		t.Fatalf("tài khoản nhà thầu: %d", n)
+	}
+	decodeData(t, phoneLogin(pending), &lg)
+	if !lg.Registered || lg.User.Name != "Tổ đội Minh" {
+		t.Fatalf("vừa xác minh: %+v", lg)
 	}
 }

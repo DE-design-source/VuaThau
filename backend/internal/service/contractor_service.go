@@ -54,6 +54,32 @@ type ContractorService struct {
 	repo   repository.ContractorRepository
 	houses repository.HouseRepository
 	lark   LarkCTVSource // nil: không đồng bộ form
+	// accounts: tạo tài khoản app cho nhà thầu đã xác minh (NTService.EnsureFromLark); nil: không tạo
+	accounts func(ctx context.Context, c *repository.RegContractor) (bool, error)
+}
+
+// WithAccounts: mỗi lượt đồng bộ form, nhà thầu đã tích "Xác minh tham gia" tự có tài khoản app.
+func (s *ContractorService) WithAccounts(fn func(ctx context.Context, c *repository.RegContractor) (bool, error)) *ContractorService {
+	s.accounts = fn
+	return s
+}
+
+// Pending: SĐT đã đăng ký form nhà thầu nhưng chưa được xác minh (màn đăng nhập báo "đang xác minh").
+func (s *ContractorService) Pending(ctx context.Context, phone string) bool {
+	k := ntKey(phone)
+	if len(k) < 9 {
+		return false
+	}
+	regs, err := s.repo.List(ctx)
+	if err != nil {
+		return false
+	}
+	for _, c := range regs {
+		if ntKey(c.Phone) == k {
+			return !c.Verified
+		}
+	}
+	return false
 }
 
 func NewContractorService(repo repository.ContractorRepository, houses repository.HouseRepository, src LarkCTVSource) *ContractorService {
@@ -125,6 +151,14 @@ func (s *ContractorService) SyncLark(ctx context.Context) (int, error) {
 			return n, err
 		}
 		n++
+		if c.Verified && s.accounts != nil {
+			// lỗi 1 dòng (SĐT trùng kiểu lạ...) không chặn cả lượt đồng bộ
+			if created, err := s.accounts(ctx, c); err != nil {
+				log.Printf("Nhà thầu từ form Lark: không tạo được tài khoản %s: %v", c.Phone, err)
+			} else if created {
+				log.Printf("Nhà thầu từ form Lark: tạo tài khoản app %s (%s)", c.Phone, c.Name)
+			}
+		}
 	}
 	return n, nil
 }

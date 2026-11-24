@@ -140,15 +140,16 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 		Inbox: settings.inbox, Auth: authRepo, Sync: repository.NewSyncRepository(db), AI: settings.ai, OCR: settings.ocr,
 		Customers: repository.NewCustomerRepository(db), Leads: settings.leads})
 	paySvc := service.NewPaymentService(payRepo, houseRepo, photoRepo, userRepo, logRepo, settingsRepo, files)
-	ntSvc := service.NewContractorService(repository.NewContractorRepository(db), houseRepo, settings.ntLark)
+	ntApp := service.NewNTService(repository.NewNTRepository(db), authRepo, files, logRepo, cfg.JWTSecret)
+	ntSvc := service.NewContractorService(repository.NewContractorRepository(db), houseRepo, settings.ntLark).WithAccounts(ntApp.EnsureFromLark)
 
 	deps := router.Deps{
 		Config:         cfg,
-		AuthHandler:    handler.NewAuthHandler(authSvc),
+		AuthHandler:    handler.NewAuthHandler(authSvc).WithNTPending(ntSvc.Pending),
 		UserHandler:    handler.NewUserHandler(userSvc, authSvc),
 		HouseHandler:   handler.NewHouseHandler(houseSvc),
 		PaymentHandler: handler.NewPaymentHandler(paySvc, ""),
-		NT:             handler.NewNTHandler(service.NewNTService(repository.NewNTRepository(db), authRepo, files, logRepo, cfg.JWTSecret)),
+		NT:             handler.NewNTHandler(ntApp),
 		UserLookup:     userRepo.GetByID,
 		HealthChecks:   settings.healthChecks,
 		Contractors:    handler.NewContractorHandler(ntSvc, "https://form.test"),
