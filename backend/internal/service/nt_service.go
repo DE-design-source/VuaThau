@@ -92,6 +92,7 @@ func (s *NTService) Home(ctx context.Context, u *model.User) (*NTHome, error) {
 	if err != nil {
 		return nil, err
 	}
+	s.covers(ps)
 	h := &NTHome{User: u, Profile: prof, Projects: ps, Sites: sites}
 	h.Stats.Sites = len(sites)
 	for _, p := range ps {
@@ -142,7 +143,11 @@ func (s *NTService) Projects(ctx context.Context, u *model.User, status string) 
 	if status != NTStatusRunning && status != NTStatusDone {
 		status = ""
 	}
-	return s.repo.Projects(ctx, u.ID, status)
+	ps, err := s.repo.Projects(ctx, u.ID, status)
+	if err == nil {
+		s.covers(ps)
+	}
+	return ps, err
 }
 
 type NTProjectInput struct {
@@ -163,9 +168,68 @@ type NTGeocoder interface {
 	Search(ctx context.Context, q string) ([]geo.Place, error)
 }
 
-// NTSites: công trình CTV đã chụp theo SĐT nhà thầu (houseService.ContractorSites).
+// NTSites: công trình CTV đã chụp theo SĐT nhà thầu (houseService.ContractorSites) + link công khai ảnh hồ sơ CTV.
 type NTSites interface {
 	ContractorSites(ctx context.Context, phone string) ([]NTSite, error)
+	PublicPhotoURL(pid int64) string
+}
+
+// covers: dự án tạo từ công trình CTV mà chưa có ảnh của nhà thầu: ảnh bìa là ảnh đầu của hồ sơ CTV (link công khai).
+func (s *NTService) covers(ps []repository.NTProject) {
+	if s.sites == nil {
+		return
+	}
+	for i := range ps {
+		if ps[i].Cover == nil && ps[i].HousePhoto != nil {
+			ps[i].CoverURL = s.sites.PublicPhotoURL(*ps[i].HousePhoto)
+		}
+	}
+}
+
+// ClaimSite: nhà thầu chụp nhật ký vào công trình CTV đã chụp có SĐT của mình: tạo (1 lần) dự án gắn với hồ sơ đó,
+// địa chỉ / tỉnh / toạ độ lấy từ hồ sơ. Đã có thì trả dự án cũ. Công trình không có SĐT nhà thầu này: 404.
+func (s *NTService) ClaimSite(ctx context.Context, u *model.User, hid int64) (*repository.NTProject, error) {
+	if p, err := s.repo.ProjectByHouse(ctx, u.ID, hid); err == nil {
+		return p, nil
+	} else if !errors.Is(err, repository.ErrNotFound) {
+		return nil, err
+	}
+	all, err := s.allSites(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	var site *NTSite
+	for i := range all {
+		if all[i].ID == hid {
+			site = &all[i]
+		}
+	}
+	if site == nil {
+		return nil, fail(ErrNotFound, "Không tìm thấy công trình có số điện thoại của bạn.")
+	}
+	name := strings.TrimSpace(strings.Split(site.Address, ",")[0])
+	if name == "" {
+		name = fmt.Sprintf("Công trình HS-%05d", site.ID)
+	}
+	hidCopy := hid
+	p := &repository.NTProject{UserID: u.ID, Name: truncate(name, 200), Address: truncate(site.Address, MaxAddressLen),
+		Province: site.ProvinceName, HouseID: &hidCopy}
+	if validLatLng(site.Lat, site.Lng) {
+		p.Lat, p.Lng = site.Lat, site.Lng
+	}
+	if err := s.repo.CreateProject(ctx, p); err != nil {
+		if errors.Is(err, repository.ErrDuplicate) {
+			return s.repo.ProjectByHouse(ctx, u.ID, hid)
+		}
+		return nil, err
+	}
+	out, err := s.repo.Project(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	one := []repository.NTProject{*out}
+	s.covers(one)
+	return &one[0], nil
 }
 
 // WithSites: Trang chủ / Dự án của nhà thầu có thêm công trình Vua Thầu ghi nhận theo SĐT (nil: không có).
@@ -174,12 +238,37 @@ func (s *NTService) WithSites(src NTSites) *NTService {
 	return s
 }
 
-// Sites: công trình CTV đã chụp có bảng hiệu ghi SĐT của nhà thầu này.
-func (s *NTService) Sites(ctx context.Context, u *model.User) ([]NTSite, error) {
+func (s *NTService) allSites(ctx context.Context, u *model.User) ([]NTSite, error) {
 	if s.sites == nil {
 		return []NTSite{}, nil
 	}
 	return s.sites.ContractorSites(ctx, u.Username)
+}
+
+// Sites: công trình CTV đã chụp có bảng hiệu ghi SĐT của nhà thầu này, trừ công trình đã thành dự án của nhà thầu
+// (đã chụp nhật ký vào: hiện ở danh sách dự án, không lặp).
+func (s *NTService) Sites(ctx context.Context, u *model.User) ([]NTSite, error) {
+	all, err := s.allSites(ctx, u)
+	if err != nil || len(all) == 0 {
+		return all, err
+	}
+	ps, err := s.repo.Projects(ctx, u.ID, "")
+	if err != nil {
+		return nil, err
+	}
+	claimed := map[int64]bool{}
+	for _, p := range ps {
+		if p.HouseID != nil {
+			claimed[*p.HouseID] = true
+		}
+	}
+	out := []NTSite{}
+	for _, x := range all {
+		if !claimed[x.ID] {
+			out = append(out, x)
+		}
+	}
+	return out, nil
 }
 
 // WithGeo: bật tra toạ độ theo địa chỉ (nil: tắt).
@@ -340,7 +429,9 @@ func (s *NTService) Project(ctx context.Context, u *model.User, id int64) (*NTPr
 	if err != nil {
 		return nil, err
 	}
-	return &NTProjectDetail{Project: p, Photos: photos, Logs: logs, Days: int(end.Sub(p.StartedOn).Hours()/24) + 1}, nil
+	one := []repository.NTProject{*p}
+	s.covers(one)
+	return &NTProjectDetail{Project: &one[0], Photos: photos, Logs: logs, Days: int(end.Sub(p.StartedOn).Hours()/24) + 1}, nil
 }
 
 // MaxNTProjectPhotos: ảnh dự án tối đa (thiết kế: "Ảnh bìa đặt ở ô đầu tiên · tối đa 20 ảnh").

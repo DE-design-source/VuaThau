@@ -380,4 +380,39 @@ func TestNhaThauSites(t *testing.T) {
 	}
 	// CTV không gọi được API nhà thầu
 	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/nt/sites", ctv.AccessToken, nil), http.StatusForbidden)
+
+	// chụp nhật ký vào công trình đó: tạo 1 dự án gắn hồ sơ (địa chỉ, ảnh bìa từ hồ sơ CTV), bấm lại không tạo trùng
+	claim := func(hid int64) apiResp {
+		t.Helper()
+		return e.do(t, http.MethodPost, fmt.Sprintf("/api/v1/nt/sites/%d/claim", hid), lg.AccessToken, map[string]string{})
+	}
+	var cp struct {
+		Project struct {
+			ID       int64  `json:"id"`
+			HouseID  *int64 `json:"house_id"`
+			Address  string `json:"address"`
+			CoverURL string `json:"cover_url"`
+		} `json:"project"`
+	}
+	r = claim(h1)
+	expectStatus(t, r, http.StatusOK)
+	decodeData(t, r, &cp)
+	pid := cp.Project.ID
+	if pid == 0 || cp.Project.HouseID == nil || *cp.Project.HouseID != h1 || cp.Project.Address == "" || cp.Project.CoverURL == "" {
+		t.Fatalf("nhận công trình: %s", r.Raw)
+	}
+	decodeData(t, claim(h1), &cp)
+	if cp.Project.ID != pid {
+		t.Fatalf("bấm lại tạo dự án mới: %d != %d", cp.Project.ID, pid)
+	}
+	// công trình không có SĐT nhà thầu này: không nhận được
+	expectStatus(t, claim(h2+1000), http.StatusNotFound)
+	// nhật ký vào dự án đó như dự án thường
+	r = e.upload(t, fmt.Sprintf("/api/v1/nt/projects/%d/logs", pid), lg.AccessToken, "files", [][]byte{photo(t, 9610)}, map[string]string{"note": "Xây tô tầng 1"})
+	expectStatus(t, r, http.StatusCreated)
+	// đã thành dự án: không còn ở danh sách công trình ghi nhận, còn lại h2
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/nt/sites", lg.AccessToken, nil), &sites)
+	if len(sites.Rows) != 1 || sites.Rows[0].ID != h2 {
+		t.Fatalf("sau khi nhận: %+v", sites.Rows)
+	}
 }

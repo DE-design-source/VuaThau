@@ -152,6 +152,20 @@ func (h *NTHandler) Sites(w http.ResponseWriter, r *http.Request) {
 	ok(w, map[string]any{"rows": rows})
 }
 
+// ClaimSite handles POST /api/v1/nt/sites/{id}/claim: chụp nhật ký vào công trình CTV đã chụp -> dự án của nhà thầu ({project})
+func (h *NTHandler) ClaimSite(w http.ResponseWriter, r *http.Request) {
+	id, valid := idOr400(w, r, "id")
+	if !valid {
+		return
+	}
+	p, err := h.svc.ClaimSite(r.Context(), me(r), id)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	ok(w, map[string]any{"project": p})
+}
+
 // AddProjectPhotos handles POST /api/v1/nt/projects/{id}/photos (multipart files): ảnh dự án, ảnh đầu = ảnh bìa.
 func (h *NTHandler) AddProjectPhotos(w http.ResponseWriter, r *http.Request) {
 	id, valid := idOr400(w, r, "id")

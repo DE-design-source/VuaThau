@@ -226,6 +226,7 @@ type HouseService interface {
 	PublicProject(ctx context.Context, id int64) (*PublicProject, error)
 	// ContractorSites: công trình CTV chụp có SĐT nhà thầu trùng phone (app nhà thầu)
 	ContractorSites(ctx context.Context, phone string) ([]NTSite, error)
+	PublicPhotoURL(pid int64) string
 	PublicPhoto(ctx context.Context, pid int64, sig string) ([]byte, error)
 	PublicSearchPlace(ctx context.Context, q string) (*PlaceSearch, error)
 	SaleProjects(ctx context.Context, f repository.SaleFilter, page int) (*SaleProjectList, error)

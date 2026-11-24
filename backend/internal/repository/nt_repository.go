@@ -46,6 +46,10 @@ type NTProject struct {
 	Videos  int        `json:"videos"`
 	LastLog *time.Time `json:"last_log"`
 	Cover   *int64     `json:"cover"` // ảnh bìa: ảnh dự án đầu tiên, không có thì ảnh nhật ký mới nhất
+	// HouseID: dự án tạo từ công trình CTV đã chụp (bảng hiệu có SĐT nhà thầu); nil: nhà thầu tự đăng
+	HouseID    *int64 `json:"house_id"`
+	HousePhoto *int64 `json:"-"`                   // ảnh đầu của hồ sơ CTV (ảnh bìa khi dự án chưa có ảnh)
+	CoverURL   string `json:"cover_url,omitempty"` // link công khai ảnh HousePhoto (service điền)
 }
 
 type NTLog struct {
@@ -84,6 +88,7 @@ type NTRepository interface {
 	DeleteLog(ctx context.Context, id int64) error
 	AddMedia(ctx context.Context, m *NTMedia) error
 	Media(ctx context.Context, id int64) (*NTMedia, error)
+	ProjectByHouse(ctx context.Context, uid, hid int64) (*NTProject, error)
 	// ProjectPhotos: ảnh dự án (không thuộc nhật ký), ảnh bìa trước
 	ProjectPhotos(ctx context.Context, projectID int64) ([]NTMedia, error)
 	// Log: 1 nhật ký kèm ảnh / video (báo cáo gửi chủ nhà)
@@ -138,14 +143,25 @@ const ntProjectSelect = `SELECT p.id, p.user_id, p.name, p.address, p.province, 
 	(SELECT COUNT(*) FROM nt_media m WHERE m.project_id = p.id AND m.kind = 'video'),
 	(SELECT MAX(l.taken_at) FROM nt_logs l WHERE l.project_id = p.id),
 	(SELECT m.id FROM nt_media m LEFT JOIN nt_logs l ON l.id = m.log_id WHERE m.project_id = p.id AND m.kind = 'photo'
-		ORDER BY (m.log_id IS NULL) DESC, CASE WHEN m.log_id IS NULL THEN m.id END ASC, l.taken_at DESC, m.id DESC LIMIT 1)
+		ORDER BY (m.log_id IS NULL) DESC, CASE WHEN m.log_id IS NULL THEN m.id END ASC, l.taken_at DESC, m.id DESC LIMIT 1),
+	p.house_id,
+	(SELECT ph.id FROM photos ph WHERE ph.house_id = p.house_id ORDER BY ph.id LIMIT 1)
 	FROM nt_projects p`
 
 func scanNTProject(row pgx.Row) (*NTProject, error) {
 	var p NTProject
 	err := row.Scan(&p.ID, &p.UserID, &p.Name, &p.Address, &p.Province, &p.Ward, &p.Street, &p.Kind, &p.Status, &p.Progress, &p.StartedOn, &p.FinishedOn, &p.Lat, &p.Lng,
-		&p.CreatedAt, &p.UpdatedAt, &p.Logs, &p.Photos, &p.Videos, &p.LastLog, &p.Cover)
+		&p.CreatedAt, &p.UpdatedAt, &p.Logs, &p.Photos, &p.Videos, &p.LastLog, &p.Cover, &p.HouseID, &p.HousePhoto)
 	return &p, err
+}
+
+// ProjectByHouse: dự án của nhà thầu gắn với công trình CTV đã chụp (chưa có: ErrNotFound).
+func (r *ntRepository) ProjectByHouse(ctx context.Context, uid, hid int64) (*NTProject, error) {
+	p, err := scanNTProject(r.db.QueryRow(ctx, ntProjectSelect+` WHERE p.user_id = $1 AND p.house_id = $2 AND p.deleted_at IS NULL`, uid, hid))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return p, err
 }
 
 func (r *ntRepository) Projects(ctx context.Context, uid int64, status string) ([]NTProject, error) {
@@ -175,9 +191,13 @@ func (r *ntRepository) Project(ctx context.Context, id int64) (*NTProject, error
 }
 
 func (r *ntRepository) CreateProject(ctx context.Context, p *NTProject) error {
-	return r.db.QueryRow(ctx, `INSERT INTO nt_projects (user_id, name, address, province, ward, street, kind, lat, lng) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		RETURNING id, status, progress, started_on, created_at, updated_at`, p.UserID, p.Name, p.Address, p.Province, p.Ward, p.Street, p.Kind, p.Lat, p.Lng).
+	err := r.db.QueryRow(ctx, `INSERT INTO nt_projects (user_id, name, address, province, ward, street, kind, lat, lng, house_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING id, status, progress, started_on, created_at, updated_at`, p.UserID, p.Name, p.Address, p.Province, p.Ward, p.Street, p.Kind, p.Lat, p.Lng, p.HouseID).
 		Scan(&p.ID, &p.Status, &p.Progress, &p.StartedOn, &p.CreatedAt, &p.UpdatedAt)
+	if pgErrCode(err) == pgUniqueViolation {
+		return ErrDuplicate // cùng công trình CTV đã có dự án (bấm 2 lần cùng lúc)
+	}
+	return err
 }
 
 func (r *ntRepository) UpdateProject(ctx context.Context, p *NTProject) error {

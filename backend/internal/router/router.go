@@ -79,6 +79,7 @@ func New(d Deps) http.Handler {
 		mux.Handle("PUT /api/v1/nt/profile", role(nt.SaveProfile, nth))
 		mux.Handle("GET /api/v1/nt/projects", role(nt.Projects, nth))
 		mux.Handle("GET /api/v1/nt/sites", role(nt.Sites, nth))
+		mux.Handle("POST /api/v1/nt/sites/{id}/claim", role(nt.ClaimSite, nth))
 		mux.Handle("POST /api/v1/nt/projects", role(nt.CreateProject, nth))
 		mux.Handle("GET /api/v1/nt/projects/{id}", role(nt.Project, nth, model.RoleAdmin))
 		mux.Handle("PUT /api/v1/nt/projects/{id}", role(nt.UpdateProject, nth))

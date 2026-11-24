@@ -197,3 +197,8 @@ func (s *houseService) ContractorSites(ctx context.Context, phone string) ([]NTS
 	sort.SliceStable(out, func(i, j int) bool { return out[i].At.After(out[j].At) })
 	return out, nil
 }
+
+// PublicPhotoURL: link công khai (có chữ ký, đã che SĐT) của 1 ảnh hồ sơ CTV.
+func (s *houseService) PublicPhotoURL(pid int64) string {
+	return fmt.Sprintf("/api/v1/public/photos/%d?s=%s", pid, s.publicSig(pid))
+}
