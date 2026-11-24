@@ -254,6 +254,8 @@ type HouseService interface {
 	SyncInbox(ctx context.Context) (*SyncStatus, error)
 	InboxStatus(ctx context.Context) (*SyncStatus, error)
 	StartInboxSync(every time.Duration)
+	// NotifyInbox: UniInbox báo có hồ sơ mới ⇒ đồng bộ ngay
+	NotifyInbox()
 
 	// Gán tỉnh mới (34 tỉnh) cho hồ sơ cũ chưa có, trả số hồ sơ đã gán.
 	BackfillProvinces(ctx context.Context) (int, error)
@@ -333,7 +335,7 @@ func NewHouseService(d HouseDeps) HouseService {
 		settings: d.Settings, files: d.Files, ai: d.AI, ocr: d.OCR, geo: d.Geo, drive: d.Drive, public: d.Public,
 		aiSem: make(chan struct{}, 4), now: time.Now, mediaKey: newMediaKey(d.MediaKey), sync: d.Sync, customers: d.Customers, leads: d.Leads}
 	if d.Inbox != nil {
-		s.inbox = &inboxSync{src: d.Inbox, users: d.Users, auth: d.Auth, state: d.Sync}
+		s.inbox = &inboxSync{src: d.Inbox, users: d.Users, auth: d.Auth, state: d.Sync, kick: make(chan struct{}, 1)}
 	}
 	return s
 }

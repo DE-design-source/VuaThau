@@ -56,6 +56,8 @@ type inboxSync struct {
 	run   bool
 	runMu sync.Mutex
 	prune bool // lượt đọc lại 1 lần (resyncKey): gỡ ảnh không thuộc bản ghi chatbot khỏi hồ sơ đang chờ duyệt
+	// kick: UniInbox báo có hồ sơ mới (NotifyInbox) ⇒ vòng đồng bộ chạy ngay, không chờ hết INBOX_SYNC_EVERY
+	kick chan struct{}
 }
 
 var (
@@ -442,7 +444,7 @@ func (s *houseService) repriceInbox(ctx context.Context, h *model.House, added i
 func (s *houseService) SyncInbox(ctx context.Context) (*SyncStatus, error) {
 	x := s.inbox
 	if x == nil {
-		return &SyncStatus{}, fail(ErrInvalidInput, "Chưa cấu hình kết nối dezon-inbox (INBOX_DATABASE_URL).")
+		return &SyncStatus{}, fail(ErrInvalidInput, "Chưa cấu hình kết nối UniInbox (INBOX_API_URL / INBOX_API_KEY).")
 	}
 	if !x.mu.TryLock() {
 		return s.InboxStatus(ctx)
@@ -559,9 +561,24 @@ func (s *houseService) StartInboxSync(every time.Duration) {
 				defer cancel()
 				_, _ = s.SyncInbox(ctx)
 			})
-			time.Sleep(every)
+			select { // UniInbox báo có hồ sơ mới thì chạy ngay, không thì chờ every (lấy bù)
+			case <-s.inbox.kick:
+			case <-time.After(every):
+			}
 		}
 	}()
+}
+
+// NotifyInbox: UniInbox báo bot vừa ghi hồ sơ công trình ⇒ đồng bộ ngay (không chờ). Nhiều lời báo dồn lại khi
+// đang đồng bộ chỉ chạy thêm 1 lượt. Chưa cấu hình nguồn Messenger: bỏ qua.
+func (s *houseService) NotifyInbox() {
+	if s.inbox == nil {
+		return
+	}
+	select {
+	case s.inbox.kick <- struct{}{}:
+	default:
+	}
 }
 
 // refreshContacts: lấy toàn bộ thông tin bên Messenger của các CTV đã ghép (tên, SĐT, email, nhãn, ghi chú, các ô

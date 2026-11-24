@@ -26,12 +26,13 @@ type Deps struct {
 	HouseHandler   *handler.HouseHandler
 	PaymentHandler *handler.PaymentHandler
 	UserLookup     middleware.UserLookup
-	HealthChecks   map[string]HealthCheck     // e.g. "postgres", "redis"
-	Tiles          *handler.TileHandler       // nền bản đồ qua máy chủ; nil: tạo mới theo DATA_DIR
-	Dezon          *handler.DezonHandler      // dữ liệu dezon.vn; nil: chỉ nhà thầu tiềm năng, không có công trình
-	Contractors    *handler.ContractorHandler // trang Nhà thầu (admin); nil: tắt
-	NT             *handler.NTHandler         // tài khoản nhà thầu trên app; nil: tắt
-	Feedback       *handler.FeedbackHandler   // đánh giá app (CTV / nhà thầu); nil: tắt
+	HealthChecks   map[string]HealthCheck      // e.g. "postgres", "redis"
+	Tiles          *handler.TileHandler        // nền bản đồ qua máy chủ; nil: tạo mới theo DATA_DIR
+	Dezon          *handler.DezonHandler       // dữ liệu dezon.vn; nil: chỉ nhà thầu tiềm năng, không có công trình
+	Contractors    *handler.ContractorHandler  // trang Nhà thầu (admin); nil: tắt
+	NT             *handler.NTHandler          // tài khoản nhà thầu trên app; nil: tắt
+	Feedback       *handler.FeedbackHandler    // đánh giá app (CTV / nhà thầu); nil: tắt
+	InboxNotify    *handler.InboxNotifyHandler // UniInbox báo có hồ sơ Messenger mới; nil: tắt
 }
 
 func New(d Deps) http.Handler {
@@ -108,6 +109,11 @@ func New(d Deps) http.Handler {
 		mux.Handle("GET /api/v1/admin/nt", role(nt.Contractors, model.RoleAdmin))
 		mux.Handle("POST /api/v1/admin/nt", role(nt.AddContractor, model.RoleAdmin))
 		mux.Handle("PUT /api/v1/admin/nt/{id}/alt-phones", role(nt.SetAltPhones, model.RoleAdmin))
+	}
+
+	// UniInbox báo bot vừa ghi hồ sơ công trình (chữ ký HMAC, không cần đăng nhập) ⇒ đồng bộ ngay
+	if ib := d.InboxNotify; ib != nil {
+		mux.HandleFunc("POST /api/v1/integrations/uniinbox/notify", ib.Notify)
 	}
 
 	// Đánh giá app: đủ 30 ảnh thì app hỏi (góp ý 25/11/2026)

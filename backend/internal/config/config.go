@@ -70,14 +70,19 @@ type Config struct {
 	GDriveRefreshToken string
 	GDriveFolder       string
 
-	// Hồ sơ CTV gửi qua Messenger (hệ thống dezon-inbox). Trống INBOX_DATABASE_URL: tắt.
-	InboxDatabaseURL string
-	InboxS3Endpoint  string
-	InboxS3Bucket    string
-	InboxS3Access    string
-	InboxS3Secret    string
-	InboxS3Region    string
-	InboxSyncEvery   time.Duration
+	// Hồ sơ CTV gửi qua Messenger (UniInbox / dezon-inbox). INBOX_API_URL + INBOX_API_KEY: đọc qua API riêng của
+	// UniInbox (cách chính, 25/11/2026); INBOX_NOTIFY_SECRET: khoá kiểm lời báo UniInbox gửi sang.
+	// Chưa có INBOX_API_URL: cách cũ đọc thẳng DB + kho S3 (INBOX_DATABASE_URL...). Cả hai trống: tắt.
+	InboxAPIURL       string
+	InboxAPIKey       string
+	InboxNotifySecret string
+	InboxDatabaseURL  string
+	InboxS3Endpoint   string
+	InboxS3Bucket     string
+	InboxS3Access     string
+	InboxS3Secret     string
+	InboxS3Region     string
+	InboxSyncEvery    time.Duration
 }
 
 // Load reads configuration from the environment. A .env file in the working
@@ -120,6 +125,9 @@ func Load() (*Config, error) {
 		GDriveClientSecret: getEnv("GDRIVE_CLIENT_SECRET", ""),
 		GDriveRefreshToken: getEnv("GDRIVE_REFRESH_TOKEN", ""),
 		GDriveFolder:       getEnv("GDRIVE_FOLDER", ""),
+		InboxAPIURL:        strings.TrimSpace(getEnv("INBOX_API_URL", "")),
+		InboxAPIKey:        strings.TrimSpace(getEnv("INBOX_API_KEY", "")),
+		InboxNotifySecret:  strings.TrimSpace(getEnv("INBOX_NOTIFY_SECRET", "")),
 		InboxDatabaseURL:   strings.TrimPrefix(strings.TrimSpace(getEnv("INBOX_DATABASE_URL", "")), "\ufeff"),
 		InboxS3Endpoint:    getEnv("INBOX_S3_ENDPOINT", ""),
 		InboxS3Bucket:      getEnv("INBOX_S3_BUCKET", ""),

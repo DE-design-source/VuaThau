@@ -91,9 +91,16 @@ func run() error {
 	if lc := lark.New(cfg.LarkAPI, cfg.LarkAppID, cfg.LarkAppSecret, cfg.LarkCTVWiki, cfg.LarkCTVBase, cfg.LarkCTVTable); lc != nil {
 		userSvc.SetLarkSource(lc)
 	}
-	// Hồ sơ Messenger từ dezon-inbox (chỉ đọc DB + kho ảnh S3)
+	// Hồ sơ Messenger từ UniInbox: qua API riêng (INBOX_API_URL), chưa cấu hình thì cách cũ đọc DB + kho ảnh S3
 	var inboxSrc inbox.Source
-	if cfg.InboxDatabaseURL != "" {
+	if cfg.InboxAPIURL != "" {
+		if inboxSrc, err = inbox.NewAPI(inbox.APIConfig{BaseURL: cfg.InboxAPIURL, Key: cfg.InboxAPIKey}); err != nil {
+			log.Printf("UniInbox API: %v (tắt đồng bộ Messenger)", err)
+			inboxSrc = nil
+		} else {
+			log.Printf("Hồ sơ Messenger: đọc qua API UniInbox %s, nhận báo: %v", cfg.InboxAPIURL, cfg.InboxNotifySecret != "")
+		}
+	} else if cfg.InboxDatabaseURL != "" {
 		if inboxSrc, err = inbox.New(ctx, inbox.Config{DatabaseURL: cfg.InboxDatabaseURL, S3Endpoint: cfg.InboxS3Endpoint,
 			S3Bucket: cfg.InboxS3Bucket, S3Access: cfg.InboxS3Access, S3Secret: cfg.InboxS3Secret, S3Region: cfg.InboxS3Region}); err != nil {
 			log.Printf("dezon-inbox: %v (tắt đồng bộ Messenger)", err)
@@ -164,6 +171,7 @@ func run() error {
 			PaymentHandler: handler.NewPaymentHandler(paySvc, gVerifier.ClientID()).WithNTForm(cfg.LarkNTForm),
 			NT:             handler.NewNTHandler(ntApp),
 			Feedback:       handler.NewFeedbackHandler(service.NewFeedbackService(repository.NewFeedbackRepository(db))),
+			InboxNotify:    handler.NewInboxNotifyHandler(cfg.InboxNotifySecret, houseSvc.NotifyInbox),
 			Dezon:          handler.NewDezonHandler(dezon.ListURL, dezonRepo),
 			Contractors:    handler.NewContractorHandler(ntSvc, cfg.LarkNTForm),
 			UserLookup:     userRepo.GetByID,
