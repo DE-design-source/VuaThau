@@ -72,6 +72,12 @@ func (s *userService) SyncLarkCTVs(ctx context.Context) (created, approved int, 
 			return created, approved, err
 		}
 		if u == nil {
+			// CTV đã tự xoá tài khoản: không tạo lại từ form (họ tự đăng ký lại trong app nếu muốn)
+			if gone, err := s.auth.PhoneDeleted(ctx, phone); err != nil {
+				return created, approved, err
+			} else if gone {
+				continue
+			}
 			u = &model.User{Username: phone, Name: name, Role: model.RoleCTV}
 			if u.PasswordHash, err = hashPassword(randomSecret()); err != nil {
 				return created, approved, err

@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"vuathau/backend/internal/model"
@@ -69,7 +70,38 @@ type NTPublicPortfolio struct {
 	Logs        int               `json:"logs"`
 }
 
-func (s *NTService) PublicPortfolio(ctx context.Context, code string) (*NTPublicPortfolio, error) {
+// viewSeen: ai (IP) đã xem hồ sơ nào trong viewTTL (tải lại trang / bấm liên tục không cộng lượt xem).
+type viewSeen struct {
+	mu   sync.Mutex
+	seen map[string]time.Time
+}
+
+const viewTTL = 6 * time.Hour
+
+// first: lần đầu viewer xem hồ sơ uid trong viewTTL.
+func (v *viewSeen) first(uid int64, viewer string, now time.Time) bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.seen == nil {
+		v.seen = map[string]time.Time{}
+	}
+	if len(v.seen) > 20000 {
+		for k, t := range v.seen {
+			if now.Sub(t) >= viewTTL {
+				delete(v.seen, k)
+			}
+		}
+	}
+	k := fmt.Sprintf("%d|%s", uid, viewer)
+	if t, ok := v.seen[k]; ok && now.Sub(t) < viewTTL {
+		return false
+	}
+	v.seen[k] = now
+	return true
+}
+
+// PublicPortfolio: hồ sơ năng lực công khai. viewer: IP người xem (đếm lượt xem mỗi người 1 lần / 6 giờ).
+func (s *NTService) PublicPortfolio(ctx context.Context, code, viewer string) (*NTPublicPortfolio, error) {
 	uid, ok := s.portfolioUser(code)
 	if !ok {
 		return nil, fail(ErrNotFound, "Link hồ sơ không đúng.")
@@ -82,7 +114,9 @@ func (s *NTService) PublicPortfolio(ctx context.Context, code string) (*NTPublic
 	if phone == "" {
 		return nil, fail(ErrNotFound, "Hồ sơ này không còn.")
 	}
-	_ = s.repo.AddView(ctx, uid)
+	if s.views.first(uid, viewer, s.now()) {
+		_ = s.repo.AddView(ctx, uid)
+	}
 	prof, err := s.repo.Profile(ctx, uid)
 	if err != nil {
 		return nil, err
@@ -97,6 +131,10 @@ func (s *NTService) PublicPortfolio(ctx context.Context, code string) (*NTPublic
 		out.Specialties = []string{}
 	}
 	s.covers(ps)
+	latest, err := s.repo.LatestLogs(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
 	for _, p := range ps {
 		end := s.now()
 		if p.FinishedOn != nil {
@@ -110,8 +148,8 @@ func (s *NTService) PublicPortfolio(ctx context.Context, code string) (*NTPublic
 		if p.Cover != nil {
 			x.CoverURL = fmt.Sprintf("/api/v1/public/nt/%s/photos/%d", code, *p.Cover)
 		}
-		if logs, err := s.repo.Logs(ctx, p.ID); err == nil && len(logs) > 0 {
-			x.Report = "/bc/" + s.ReportCode(logs[0].ID)
+		if lid := latest[p.ID]; lid > 0 {
+			x.Report = "/bc/" + s.ReportCode(lid)
 		}
 		out.Logs += p.Logs
 		out.Projects = append(out.Projects, x)

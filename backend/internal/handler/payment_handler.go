@@ -207,7 +207,7 @@ func (h *PaymentHandler) UploadReceipt(w http.ResponseWriter, r *http.Request) {
 	if !valid {
 		return
 	}
-	files, valid := readFiles(w, r, "file")
+	files, valid := readFiles(w, r, "file", 1)
 	if !valid {
 		return
 	}
@@ -215,7 +215,12 @@ func (h *PaymentHandler) UploadReceipt(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "Chưa chọn ảnh biên lai.")
 		return
 	}
-	m, err := h.svc.UploadReceipt(r.Context(), me(r), id, files[0].Data)
+	data, err := files[0].Bytes()
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Không đọc được ảnh gửi lên.")
+		return
+	}
+	m, err := h.svc.UploadReceipt(r.Context(), me(r), id, data)
 	if err != nil {
 		writeServiceError(w, err)
 		return

@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 
+	"vuathau/backend/internal/middleware"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/response"
 	"vuathau/backend/internal/province"
@@ -236,7 +237,7 @@ func (h *NTHandler) Portfolio(w http.ResponseWriter, r *http.Request) {
 
 // PublicPortfolio handles GET /api/v1/public/nt/{code}
 func (h *NTHandler) PublicPortfolio(w http.ResponseWriter, r *http.Request) {
-	res, err := h.svc.PublicPortfolio(r.Context(), r.PathValue("code"))
+	res, err := h.svc.PublicPortfolio(r.Context(), r.PathValue("code"), middleware.ClientIP(r))
 	if err != nil {
 		writeServiceError(w, err)
 		return

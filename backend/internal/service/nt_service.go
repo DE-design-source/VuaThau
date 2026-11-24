@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -43,6 +44,7 @@ type NTService struct {
 	sites    NTSites
 	mediaKey []byte
 	now      func() time.Time
+	views    viewSeen // lượt xem hồ sơ năng lực: mỗi người xem tính 1 lần / 6 giờ
 }
 
 func NewNTService(repo repository.NTRepository, auth repository.AuthRepository, files *storage.Files, logs repository.LogRepository, mediaKey string) *NTService {
@@ -792,21 +794,40 @@ type NTLogResult struct {
 
 // AddLog: 1 lần cập nhật nhật ký: ô "note", "meta" (JSON NTLogMeta) rồi các file "files" (ảnh JPG / PNG, video).
 // next trả io.EOF khi hết phần.
-func (s *NTService) AddLog(ctx context.Context, u *model.User, id int64, next func() (*NTPart, error)) (*NTLogResult, error) {
+//
+// Gửi lại sau khi mất mạng: lần trước dở dang thì nhật ký dở bị xoá (lỗi giữa chừng không để lại nhật ký thiếu ảnh /
+// nhật ký rỗng); lần trước đã lưu xong mà app không nhận được trả lời thì mọi file đều trùng 1 nhật ký đã có: trả lại
+// nhật ký đó như vừa lưu (trước đây báo lỗi "đã có trong dự án", nhà thầu kẹt không tới được màn báo cáo).
+func (s *NTService) AddLog(ctx context.Context, u *model.User, id int64, next func() (*NTPart, error)) (res *NTLogResult, err error) {
 	p, err := s.mine(ctx, u, id)
 	if err != nil {
 		return nil, err
 	}
-	res := &NTLogResult{Skipped: []string{}}
+	res = &NTLogResult{Skipped: []string{}}
 	var log *repository.NTLog
+	defer func() {
+		if err != nil && log != nil {
+			_ = s.repo.DeleteLog(context.WithoutCancel(ctx), log.ID)
+		}
+	}()
 	note := ""
 	meta := NTLogMeta{}
+	files := 0
+	dupLog, dupOnly := int64(0), true // các file trùng thuộc nhật ký nào (cùng 1 nhật ký: lần gửi trước đã lưu xong)
+	dupOf := func(sha string) {
+		if lid, e := s.repo.LogOfMedia(ctx, p.ID, sha); e != nil || lid == 0 || (dupLog != 0 && lid != dupLog) {
+			dupOnly = false
+		} else {
+			dupLog = lid
+		}
+	}
 	start := func() error {
 		if log != nil {
 			return nil
 		}
 		t := s.now()
-		if tt, err := time.ParseInLocation("2006-01-02 15:04", meta.T, VN); err == nil && tt.Before(s.now().Add(10*time.Minute)) {
+		// giờ chụp app gửi: không ở tương lai, không lùi quá MaxLogAge (ảnh chụp lúc mất mạng rồi gửi sau vẫn nhận)
+		if tt, err := time.ParseInLocation("2006-01-02 15:04", meta.T, VN); err == nil && tt.Before(s.now().Add(10*time.Minute)) && tt.After(s.now().Add(-MaxLogAge)) {
 			t = tt
 		}
 		log = &repository.NTLog{ProjectID: p.ID, Note: note, TakenAt: t, Address: truncate(meta.Addr, MaxAddressLen)}
@@ -841,18 +862,33 @@ func (s *NTService) AddLog(ctx context.Context, u *model.User, id int64, next fu
 			return nil, err
 		}
 		name := part.Name
+		if files++; files > MaxLogFiles {
+			_, _ = io.Copy(io.Discard, part.Body)
+			res.Skipped = append(res.Skipped, fmt.Sprintf("%s: mỗi nhật ký tối đa %d ảnh / video", name, MaxLogFiles))
+			dupOnly = false
+			continue
+		}
 		if mime := videoMime(name, part.Mime); mime != "" {
-			sha, size, err := s.files.SaveVideo(part.Body, MaxVideoBytes)
+			br := bufio.NewReaderSize(part.Body, 64)
+			if head, _ := br.Peek(12); !looksLikeVideo(head) {
+				_, _ = io.Copy(io.Discard, br)
+				res.Skipped = append(res.Skipped, name+": không phải file video")
+				dupOnly = false
+				continue
+			}
+			sha, size, err := s.files.SaveVideo(br, MaxVideoBytes)
 			if errors.Is(err, storage.ErrTooBig) {
 				res.Skipped = append(res.Skipped, fmt.Sprintf("%s: video quá %dMB", name, MaxVideoBytes>>20))
+				dupOnly = false
 				continue
 			}
 			if err != nil {
-				return nil, err
+				return nil, fail(ErrInvalidInput, "Không đọc được video gửi lên, thử lại.")
 			}
 			if err := s.repo.AddMedia(ctx, &repository.NTMedia{LogID: log.ID, ProjectID: p.ID, Kind: "video", SHA256: sha, Mime: mime, Size: size}); err != nil {
 				if errors.Is(err, repository.ErrDuplicate) {
 					res.Skipped = append(res.Skipped, name+": video đã có trong dự án")
+					dupOf(sha)
 					continue
 				}
 				return nil, err
@@ -866,10 +902,12 @@ func (s *NTService) AddLog(ctx context.Context, u *model.User, id int64, next fu
 		}
 		if len(data) > MaxFileBytes {
 			res.Skipped = append(res.Skipped, name+": ảnh quá 20MB")
+			dupOnly = false
 			continue
 		}
 		if _, _, err := imaging.Probe(data); err != nil {
 			res.Skipped = append(res.Skipped, name+": "+probeWhy(err))
+			dupOnly = false
 			continue
 		}
 		sum := sha256.Sum256(data)
@@ -880,6 +918,7 @@ func (s *NTService) AddLog(ctx context.Context, u *model.User, id int64, next fu
 		if err := s.repo.AddMedia(ctx, &repository.NTMedia{LogID: log.ID, ProjectID: p.ID, Kind: "photo", SHA256: sha, Mime: "image/jpeg", Size: int64(len(data))}); err != nil {
 			if errors.Is(err, repository.ErrDuplicate) {
 				res.Skipped = append(res.Skipped, name+": ảnh đã có trong dự án")
+				dupOf(sha)
 				continue
 			}
 			return nil, err
@@ -891,6 +930,22 @@ func (s *NTService) AddLog(ctx context.Context, u *model.User, id int64, next fu
 	}
 	if res.Photos+res.Videos == 0 {
 		_ = s.repo.DeleteLog(ctx, log.ID)
+		log = nil
+		// gửi lại đúng nhật ký đã lưu xong (app không nhận được trả lời lần trước): trả nhật ký đó
+		if dupOnly && dupLog != 0 {
+			if old, e := s.repo.Log(ctx, dupLog); e == nil && old.ProjectID == p.ID {
+				for _, m := range old.Media {
+					if m.Kind == "photo" {
+						res.Photos++
+					} else {
+						res.Videos++
+					}
+				}
+				res.Log, res.Skipped = old, []string{}
+				res.Message = fmt.Sprintf("Nhật ký %s đã được lưu từ lần gửi trước.", p.Name)
+				return res, nil
+			}
+		}
 		return nil, fail(ErrInvalidInput, "Không ảnh / video nào được nhận: %s", strings.Join(res.Skipped, "; "))
 	}
 	if log.Note != note { // ô note đến sau file (app khác thứ tự)
@@ -1041,6 +1096,10 @@ func (s *NTService) EnsureFromLark(ctx context.Context, c *repository.RegContrac
 	if !errors.Is(err, repository.ErrNotFound) {
 		return false, err
 	}
+	// nhà thầu đã tự xoá tài khoản: không tạo lại từ form Lark
+	if gone, err := s.auth.PhoneDeleted(ctx, phone); err != nil || gone {
+		return false, err
+	}
 	hash, err := hashPassword(randomSecret())
 	if err != nil {
 		return false, err
@@ -1125,6 +1184,13 @@ func (s *NTService) AddContractor(ctx context.Context, by *model.User, in NTAddI
 	_ = s.logs.Add(ctx, by.ID, ActAddNT, nil, nil, fmt.Sprintf("%s (%s) %s", name, phone, in.Company))
 	return fmt.Sprintf("Đã thêm nhà thầu %s. Mở app Vua Thầu Map, nhập SĐT %s là vào.", name, phone), nil
 }
+
+const (
+	// MaxLogFiles: số ảnh + video tối đa của 1 lần cập nhật nhật ký
+	MaxLogFiles = 60
+	// MaxLogAge: giờ chụp app gửi lùi quá chừng này thì dùng giờ máy chủ (không ghi lùi nhật ký tuỳ ý)
+	MaxLogAge = 30 * 24 * time.Hour
+)
 
 // publicOpen: tài khoản nhà thầu còn mở (trang công khai /nt, /bc và ảnh của chúng chỉ hiện khi còn mở).
 func (s *NTService) publicOpen(ctx context.Context, uid int64) bool {

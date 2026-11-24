@@ -178,11 +178,19 @@ func (r *userRepository) SetLocked(ctx context.Context, id int64, locked int) er
 }
 
 func (r *userRepository) Anonymize(ctx context.Context, id int64, hash string) error {
+	// ghi dấu SĐT đã xoá (deleted_phones, migration 028) trước khi đổi tên đăng nhập: đồng bộ Lark không tạo lại
+	// nhà thầu: bỏ SĐT phụ (công trình CTV ghi số đó không còn hiện cho tài khoản đã xoá)
 	return r.exec(ctx, `
-		UPDATE users SET name = $2, username = $3, email = NULL, google_sub = NULL, bank = '', password_hash = $4,
-			locked = $5, token_version = token_version + 1
+		WITH mark AS (
+			INSERT INTO deleted_phones (phone_hash) SELECT encode(sha256(convert_to(username, 'UTF8')), 'hex') FROM users WHERE id = $1
+			ON CONFLICT (phone_hash) DO UPDATE SET deleted_at = NOW()
+		), alt AS (
+			UPDATE nt_profiles SET alt_phones = '{}' WHERE user_id = $1
+		)
+		UPDATE users SET name = CASE WHEN role = 'nhathau' THEN $6 ELSE $2 END, username = $3, email = NULL, google_sub = NULL,
+			bank = '', password_hash = $4, locked = $5, token_version = token_version + 1
 		WHERE id = $1`,
-		id, fmt.Sprintf("CTV đã xoá #%d", id), fmt.Sprintf("xoa-%d", id), hash, model.LockedDeleted)
+		id, fmt.Sprintf("CTV đã xoá #%d", id), fmt.Sprintf("xoa-%d", id), hash, model.LockedDeleted, fmt.Sprintf("Nhà thầu đã xoá #%d", id))
 }
 
 func (r *userRepository) ListStaff(ctx context.Context) ([]model.User, error) {

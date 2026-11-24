@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -22,29 +23,25 @@ func NewHouseHandler(svc service.HouseService) *HouseHandler {
 	return &HouseHandler{svc: svc}
 }
 
-const maxUploadBytes = (model.MaxPhotos + 1) * (service.MaxFileBytes + 1<<20)
-
-// readFiles đọc các file của trường key trong form multipart (tối đa 20 ảnh x 20MB).
-func readFiles(w http.ResponseWriter, r *http.Request, key string) ([]service.Upload, bool) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		response.Error(w, http.StatusBadRequest, "Không đọc được ảnh gửi lên (tối đa 20 ảnh, mỗi ảnh dưới 20MB).")
+// readFiles: các file của trường key trong form multipart, tối đa max file (mỗi file dưới 20MB).
+// File nằm ở file tạm (multipart), chỉ đọc vào RAM khi service xử lý tới (service.LazyUpload): 1 lượt tải 20 ảnh
+// không còn giữ 400MB trong RAM. Kiểm ảnh / biên lai: max = 1.
+func readFiles(w http.ResponseWriter, r *http.Request, key string, max int) ([]service.Upload, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, int64(max+1)*(service.MaxFileBytes+1<<20))
+	if err := r.ParseMultipartForm(8 << 20); err != nil {
+		response.Error(w, http.StatusBadRequest, fmt.Sprintf("Không đọc được ảnh gửi lên (tối đa %d ảnh, mỗi ảnh dưới 20MB).", max))
 		return nil, false
 	}
 	out := []service.Upload{}
 	for _, fh := range r.MultipartForm.File[key] {
-		f, err := fh.Open()
-		if err != nil {
-			response.Error(w, http.StatusBadRequest, "Không đọc được ảnh gửi lên.")
-			return nil, false
-		}
-		data, err := io.ReadAll(io.LimitReader(f, service.MaxFileBytes+1))
-		_ = f.Close()
-		if err != nil {
-			response.Error(w, http.StatusBadRequest, "Không đọc được ảnh gửi lên.")
-			return nil, false
-		}
-		out = append(out, service.Upload{Name: fh.Filename, Data: data})
+		out = append(out, service.LazyUpload(fh.Filename, func() ([]byte, error) {
+			f, err := fh.Open()
+			if err != nil {
+				return nil, err
+			}
+			defer f.Close()
+			return io.ReadAll(io.LimitReader(f, service.MaxFileBytes+1))
+		}))
 	}
 	return out, true
 }
@@ -104,7 +101,7 @@ func (h *HouseHandler) Geocode(w http.ResponseWriter, r *http.Request) {
 
 // CheckPhoto handles POST /api/v1/photos/check (multipart file, meta)
 func (h *HouseHandler) CheckPhoto(w http.ResponseWriter, r *http.Request) {
-	files, valid := readFiles(w, r, "file")
+	files, valid := readFiles(w, r, "file", 1)
 	if !valid {
 		return
 	}
@@ -122,7 +119,7 @@ func (h *HouseHandler) CheckPhoto(w http.ResponseWriter, r *http.Request) {
 
 // Create handles POST /api/v1/houses (multipart files, meta)
 func (h *HouseHandler) Create(w http.ResponseWriter, r *http.Request) {
-	files, valid := readFiles(w, r, "files")
+	files, valid := readFiles(w, r, "files", model.MaxPhotos)
 	if !valid {
 		return
 	}
@@ -144,7 +141,7 @@ func (h *HouseHandler) AddPhotos(w http.ResponseWriter, r *http.Request) {
 	if !valid {
 		return
 	}
-	files, valid := readFiles(w, r, "files")
+	files, valid := readFiles(w, r, "files", model.MaxPhotos)
 	if !valid {
 		return
 	}

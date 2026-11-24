@@ -87,7 +87,7 @@ func TestNhaThau(t *testing.T) {
 		_, _ = fw.Write(b)
 	}
 	fw, _ := w.CreateFormFile("files", "video-1.mp4")
-	_, _ = fw.Write(bytes.Repeat([]byte("v"), 2048))
+	_, _ = fw.Write(fakeVideo(77, 2048))
 	_ = w.Close()
 	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/api/v1/nt/projects/%d/logs", e.srv.URL, pid), &buf)
 	req.Header.Set("Content-Type", w.FormDataContentType())

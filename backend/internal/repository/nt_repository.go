@@ -89,11 +89,15 @@ type NTRepository interface {
 	UpdateProject(ctx context.Context, p *NTProject) error
 	DeleteProject(ctx context.Context, id int64) error
 	Logs(ctx context.Context, projectID int64) ([]NTLog, error)
+	// LatestLogs: nhật ký mới nhất của từng dự án (còn) của nhà thầu uid: id dự án -> id nhật ký (1 câu truy vấn)
+	LatestLogs(ctx context.Context, uid int64) (map[int64]int64, error)
 	CreateLog(ctx context.Context, l *NTLog) error
 	SetLogNote(ctx context.Context, id int64, note string) error
 	DeleteLog(ctx context.Context, id int64) error
 	AddMedia(ctx context.Context, m *NTMedia) error
 	Media(ctx context.Context, id int64) (*NTMedia, error)
+	// LogOfMedia: nhật ký đang chứa file sha trong dự án (0: không có / file không thuộc nhật ký nào)
+	LogOfMedia(ctx context.Context, projectID int64, sha string) (int64, error)
 	ProjectByHouse(ctx context.Context, uid, hid int64) (*NTProject, error)
 	// SetLarkRecord: tài khoản gắn với dòng form đăng ký nhà thầu trên Lark (đồng bộ xác minh / bỏ xác minh)
 	SetLarkRecord(ctx context.Context, uid int64, record string) error
@@ -229,10 +233,12 @@ func (r *ntRepository) CreateProject(ctx context.Context, p *NTProject) error {
 	return err
 }
 
+// UpdateProject: ghi đúng toạ độ trong p (service đọc dự án rồi sửa; nil = bỏ ghim, vd đổi địa chỉ mà tra không ra:
+// trước đây COALESCE giữ ghim cũ ở chỗ sai).
 func (r *ntRepository) UpdateProject(ctx context.Context, p *NTProject) error {
 	_, err := r.db.Exec(ctx, `UPDATE nt_projects SET name = $2, address = $3, kind = $4, status = $5, progress = $6, finished_on = $7,
 		started_on = LEAST(started_on, COALESCE($7::date, started_on)), -- dự án cũ hoàn thành năm trước: bắt đầu không sau hoàn thành
-		lat = COALESCE($8, lat), lng = COALESCE($9, lng), province = $10, ward = $11, street = $12, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`,
+		lat = $8, lng = $9, province = $10, ward = $11, street = $12, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`,
 		p.ID, p.Name, p.Address, p.Kind, p.Status, p.Progress, p.FinishedOn, p.Lat, p.Lng, p.Province, p.Ward, p.Street)
 	return err
 }
@@ -280,6 +286,25 @@ func (r *ntRepository) Logs(ctx context.Context, projectID int64) ([]NTLog, erro
 	return out, mr.Err()
 }
 
+func (r *ntRepository) LatestLogs(ctx context.Context, uid int64) (map[int64]int64, error) {
+	rows, err := r.db.Query(ctx, `SELECT DISTINCT ON (l.project_id) l.project_id, l.id FROM nt_logs l
+		JOIN nt_projects p ON p.id = l.project_id AND p.deleted_at IS NULL AND p.user_id = $1
+		ORDER BY l.project_id, l.taken_at DESC, l.id DESC`, uid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]int64{}
+	for rows.Next() {
+		var pid, lid int64
+		if err := rows.Scan(&pid, &lid); err != nil {
+			return nil, err
+		}
+		out[pid] = lid
+	}
+	return out, rows.Err()
+}
+
 func (r *ntRepository) CreateLog(ctx context.Context, l *NTLog) error {
 	if err := r.db.QueryRow(ctx, `INSERT INTO nt_logs (project_id, note, taken_at, lat, lng, address) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
 		l.ProjectID, l.Note, l.TakenAt, l.Lat, l.Lng, l.Address).Scan(&l.ID); err != nil {
@@ -310,6 +335,15 @@ func (r *ntRepository) AddMedia(ctx context.Context, m *NTMedia) error {
 		return ErrDuplicate
 	}
 	return err
+}
+
+func (r *ntRepository) LogOfMedia(ctx context.Context, projectID int64, sha string) (int64, error) {
+	var id int64
+	err := r.db.QueryRow(ctx, `SELECT COALESCE(log_id, 0) FROM nt_media WHERE project_id = $1 AND sha256 = $2`, projectID, sha).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return id, err
 }
 
 func (r *ntRepository) Media(ctx context.Context, id int64) (*NTMedia, error) {

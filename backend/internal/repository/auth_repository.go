@@ -16,6 +16,8 @@ type AuthRepository interface {
 	// FindByLogin: theo tên đăng nhập (SĐT của CTV, SĐT hoặc tên của nhân viên).
 	FindByLogin(ctx context.Context, login string) (*model.User, error)
 	FindByGoogle(ctx context.Context, sub string) (*model.User, error)
+	// PhoneDeleted: SĐT này từng có tài khoản tự xoá (đồng bộ Lark không tự tạo lại)
+	PhoneDeleted(ctx context.Context, phone string) (bool, error)
 	LinkGoogle(ctx context.Context, id int64, sub, email string) error
 	// SetInfo: khu vực / loại / ghi chú của CTV mới đăng ký (tổ đội: loại "Tổ đội", công ty + hạng mục ở ghi chú)
 	SetInfo(ctx context.Context, id int64, region, kind, note string) error
@@ -55,6 +57,12 @@ func (r *authRepository) CreateUser(ctx context.Context, u *model.User) error {
 
 func (r *authRepository) FindByLogin(ctx context.Context, login string) (*model.User, error) {
 	return scanUser(r.db.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE username = $1`, login))
+}
+
+func (r *authRepository) PhoneDeleted(ctx context.Context, phone string) (bool, error) {
+	var ok bool
+	err := r.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM deleted_phones WHERE phone_hash = encode(sha256(convert_to($1::text, 'UTF8')), 'hex'))`, phone).Scan(&ok)
+	return ok, err
 }
 
 func (r *authRepository) FindByGoogle(ctx context.Context, sub string) (*model.User, error) {

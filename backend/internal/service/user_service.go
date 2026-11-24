@@ -222,12 +222,15 @@ func randomSecret() string {
 
 // DeleteSelf: CTV tự xoá tài khoản (CH Play bắt buộc). Hồ sơ, phiếu chi giữ dưới tên ẩn danh để đối soát.
 func (s *userService) DeleteSelf(ctx context.Context, u *model.User) (string, error) {
-	if u.Role != model.RoleCTV {
+	if u.Role != model.RoleCTV && u.Role != model.RoleNhaThau { // CH Play: người dùng app tự xoá được tài khoản
 		return "", ErrForbidden
 	}
-	m, err := s.houses.CTVMoney(ctx, u.ID)
-	if err != nil {
-		return "", err
+	var m model.Money
+	if u.Role == model.RoleCTV {
+		var err error
+		if m, err = s.houses.CTVMoney(ctx, u.ID); err != nil {
+			return "", err
+		}
 	}
 	hash, err := hashPassword(randomSecret())
 	if err != nil {

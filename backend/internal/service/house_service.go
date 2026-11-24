@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"image"
 	"log"
 	"regexp"
 	"runtime"
@@ -33,6 +32,22 @@ import (
 type Upload struct {
 	Name string
 	Data []byte
+	// open: đọc file khi cần (ảnh tải lên nằm ở file tạm của multipart, xử lý tới ảnh nào mới đọc ảnh đó vào RAM;
+	// trước đây đọc hết 20 ảnh x 20MB vào RAM ngay từ đầu). nil: dùng Data.
+	open func() ([]byte, error)
+}
+
+// LazyUpload: file chỉ đọc vào RAM khi xử lý tới (Bytes).
+func LazyUpload(name string, open func() ([]byte, error)) Upload {
+	return Upload{Name: name, open: open}
+}
+
+// Bytes: nội dung file (đọc lúc này nếu là LazyUpload).
+func (u Upload) Bytes() ([]byte, error) {
+	if u.Data != nil || u.open == nil {
+		return u.Data, nil
+	}
+	return u.open()
 }
 
 // Meta: thông tin camera trong app gửi kèm mỗi ảnh (ảnh vẽ lại không có EXIF): giờ chụp, GPS, địa chỉ.
@@ -483,10 +498,14 @@ func (s *houseService) dupHouse(ctx context.Context, dhash string) (*int64, erro
 }
 
 func (s *houseService) CheckPhoto(ctx context.Context, u *model.User, f Upload, meta string) (*CheckResult, error) {
-	if len(f.Data) > MaxFileBytes {
+	data, err := f.Bytes()
+	if err != nil {
+		return nil, fail(ErrInvalidInput, "Không đọc được ảnh gửi lên.")
+	}
+	if len(data) > MaxFileBytes {
 		return &CheckResult{Problems: []string{"Ảnh quá 20MB"}}, nil
 	}
-	sha := shaOf(f.Data)
+	sha := shaOf(data)
 	if hid, err := s.photos.HouseOfSHA(ctx, sha); err != nil {
 		return nil, err
 	} else if hid > 0 {
@@ -496,19 +515,26 @@ func (s *houseService) CheckPhoto(ctx context.Context, u *model.User, f Upload, 
 	if err != nil {
 		return nil, err
 	}
-	img, info, _, err := imaging.Open(f.Data)
+	img, info, _, err := imaging.Open(data)
 	if err != nil {
 		release()
 		return &CheckResult{Problems: []string{err.Error()}}, nil
 	}
 	dh := imaging.DHash(img)
+	// ảnh nhỏ gửi AI làm luôn ở đây: việc AI chạy nền (tới 2 phút) chỉ giữ vài trăm KB, không giữ ảnh đã giải nén
+	// (~50MB / ảnh 12MP) như trước
+	var small []byte
+	if s.ai.Enabled() {
+		small, _ = imaging.SmallJPEG(img, SmallSide)
+	}
+	img = nil
 	release()
 	dhashes.put(sha, dh) // lúc nộp dùng lại, khỏi giải nén lần 2
 	dup, err := s.dupHouse(ctx, dh)
 	if err != nil {
 		return nil, err
 	}
-	read, aiOK := s.checkAI(ctx, sha, img)
+	read, aiOK := s.checkAI(ctx, sha, small)
 	var it ai.PhotoRead
 	hasIt := read != nil && len(read.Photos) > 0
 	if hasIt {
@@ -554,7 +580,7 @@ func (s *houseService) priceOf(ctx context.Context, st model.Settings, hid int64
 // AI vẫn đọc tiếp ở nền và lưu kết quả theo sha256, lúc nộp hồ sơ dùng lại không đọc lần nữa.
 const CheckAIWait = 10 * time.Second
 
-func (s *houseService) checkAI(ctx context.Context, sha string, img image.Image) (*ai.Read, bool) {
+func (s *houseService) checkAI(ctx context.Context, sha string, small []byte) (*ai.Read, bool) {
 	type res struct {
 		r  *ai.Read
 		ok bool
@@ -566,7 +592,7 @@ func (s *houseService) checkAI(ctx context.Context, sha string, img image.Image)
 		safe.Run("AI kiểm ảnh", func() {
 			bctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
-			r, ok := s.cachedOrRead(bctx, sha, img)
+			r, ok := s.cachedOrRead(bctx, sha, small)
 			ch <- res{r, ok}
 		})
 	}()
@@ -629,7 +655,8 @@ func takeSlot(ctx context.Context) (func(), error) {
 }
 
 // cachedOrRead: kết quả AI đọc 1 ảnh, dùng lại theo sha256 nếu đã đọc. Tắt AI / lỗi: nil, false.
-func (s *houseService) cachedOrRead(ctx context.Context, sha string, img image.Image) (*ai.Read, bool) {
+// small: ảnh đã thu nhỏ (SmallJPEG) để gửi AI; nil: chỉ dùng kết quả đã lưu.
+func (s *houseService) cachedOrRead(ctx context.Context, sha string, small []byte) (*ai.Read, bool) {
 	if c, err := s.photos.CacheGet(ctx, []string{sha}); err == nil {
 		if raw, ok := c[sha]; ok {
 			var r ai.Read
@@ -638,16 +665,7 @@ func (s *houseService) cachedOrRead(ctx context.Context, sha string, img image.I
 			}
 		}
 	}
-	if !s.ai.Enabled() {
-		return nil, false
-	}
-	release, err := takeSlot(ctx)
-	if err != nil {
-		return nil, false
-	}
-	small, err := imaging.SmallJPEG(img, SmallSide)
-	release()
-	if err != nil {
+	if !s.ai.Enabled() || len(small) == 0 {
 		return nil, false
 	}
 	actx, cancel := context.WithTimeout(ctx, 2*time.Minute)
@@ -753,7 +771,11 @@ func (s *houseService) takeFiles(ctx context.Context, houseID int64, files []Upl
 		if k < len(metas) {
 			m = metas[k]
 		}
-		why, err := s.savePhoto(ctx, houseID, f.Data, m, draft)
+		data, err := f.Bytes()
+		if err != nil {
+			return ok, msgs, fail(ErrInvalidInput, "Không đọc được ảnh gửi lên.")
+		}
+		why, err := s.savePhoto(ctx, houseID, data, m, draft)
 		if err != nil {
 			return ok, msgs, err
 		}

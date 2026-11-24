@@ -114,7 +114,7 @@ func New(d Deps) http.Handler {
 	mux.Handle("GET /api/v1/users/me", role(u.Me))
 	mux.Handle("PUT /api/v1/me/bank", role(u.UpdateBank, ctv))
 	mux.Handle("PUT /api/v1/me/password", role(u.ChangePassword))
-	mux.Handle("DELETE /api/v1/me", role(u.DeleteSelf, ctv))
+	mux.Handle("DELETE /api/v1/me", role(u.DeleteSelf, ctv, model.RoleNhaThau))
 
 	// CTV
 	mux.Handle("GET /api/v1/ctv/home", role(h.Home, ctv))

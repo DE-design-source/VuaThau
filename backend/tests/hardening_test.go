@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"vuathau/backend/internal/integration/lark"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/repository"
 )
@@ -206,5 +207,130 @@ func TestSubmitRejectsChangedMedia(t *testing.T) {
 	ps, _ = photos.ListByHouse(ctx, hid)
 	if err := houses.SubmitDraft(ctx, hid, 1, nil, nil, "", false, repository.SigOf(ps, nil)); err != nil {
 		t.Fatalf("gửi với bộ ảnh đúng: %v", err)
+	}
+}
+
+// Đợt 2: nhà thầu gửi lại nhật ký sau khi mất mạng (lần trước đã lưu xong mà app không nhận được trả lời):
+// trả lại nhật ký cũ, không báo lỗi, không tạo nhật ký thứ 2. File trùng lẫn file mới: lưu file mới như thường.
+func TestNhaThauLogRetry(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	admin := e.staff(t, model.RoleAdmin)
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/admin/nt", admin.AccessToken,
+		map[string]string{"phone": "0908777003", "name": "Anh Sáu", "company": "Xây dựng Sáu"}), http.StatusOK)
+	tok := ntLogin(t, e, "0908777003")
+	r := e.do(t, http.MethodPost, "/api/v1/nt/projects", tok, map[string]string{"name": "Nhà phố Gò Vấp", "address": "Gò Vấp"})
+	expectStatus(t, r, http.StatusCreated)
+	var cp struct {
+		Project struct {
+			ID int64 `json:"id"`
+		} `json:"project"`
+	}
+	decodeData(t, r, &cp)
+	path := fmt.Sprintf("/api/v1/nt/projects/%d/logs", cp.Project.ID)
+	files := [][]byte{photo(t, 7801), photo(t, 7802)}
+	type logRes struct {
+		Log struct {
+			ID int64 `json:"id"`
+		} `json:"log"`
+		Photos int `json:"photos"`
+	}
+	var first, again logRes
+	r = e.upload(t, path, tok, "files", files, map[string]string{"note": "Xây tường tầng 1"})
+	expectStatus(t, r, http.StatusCreated)
+	decodeData(t, r, &first)
+	r = e.upload(t, path, tok, "files", files, map[string]string{"note": "Xây tường tầng 1"})
+	expectStatus(t, r, http.StatusCreated)
+	decodeData(t, r, &again)
+	if again.Log.ID != first.Log.ID || again.Photos != 2 {
+		t.Fatalf("gửi lại: lần 1 %+v, lần 2 %s", first, r.Raw)
+	}
+	var n int
+	if err := e.db.QueryRow(context.Background(), `SELECT COUNT(*) FROM nt_logs WHERE project_id = $1`, cp.Project.ID).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("số nhật ký: %d %v", n, err)
+	}
+}
+
+// Đợt 2: CTV tự xoá tài khoản rồi đồng bộ form Lark chạy lại: không tạo lại tài khoản cho số đó.
+// Nhà thầu tự xoá được tài khoản (CH Play), trang công khai thôi hiện.
+func TestDeletedAccountsStayDeleted(t *testing.T) {
+	t.Parallel()
+	fl := &fakeLark{}
+	e := newTestEnv(t, func(s *envSettings) { s.lark = fl })
+	ctx := context.Background()
+	fl.recs = []lark.Record{larkRec(t, `{"record_id":"r1","fields":{"Họ và tên":"Lê Văn Xoá","Số điện thoại":"0985000111","Duyệt tham gia":true}}`)}
+	if n, _, err := e.user.SyncLarkCTVs(ctx); err != nil || n != 1 {
+		t.Fatalf("tạo CTV từ Lark: %d %v", n, err)
+	}
+	r := e.do(t, http.MethodPost, "/api/v1/auth/phone", "", map[string]string{"phone": "0985000111", "as": model.RoleCTV})
+	expectStatus(t, r, http.StatusOK)
+	var d struct {
+		AccessToken string `json:"access_token"`
+	}
+	decodeData(t, r, &d)
+	expectStatus(t, e.do(t, http.MethodDelete, "/api/v1/me", d.AccessToken, nil), http.StatusOK)
+	if n, _, err := e.user.SyncLarkCTVs(ctx); err != nil || n != 0 {
+		t.Fatalf("Lark tạo lại CTV đã xoá: %d %v", n, err)
+	}
+
+	admin := e.staff(t, model.RoleAdmin)
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/admin/nt", admin.AccessToken,
+		map[string]string{"phone": "0908777004", "name": "Anh Bảy", "company": "Xây dựng Bảy"}), http.StatusOK)
+	nt := ntLogin(t, e, "0908777004")
+	var pf struct {
+		Code string `json:"code"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/nt/portfolio", nt, nil), &pf)
+	expectStatus(t, e.do(t, http.MethodDelete, "/api/v1/me", nt, nil), http.StatusOK)
+	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/me", nt, nil), http.StatusUnauthorized)
+	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/public/nt/"+pf.Code, "", nil), http.StatusNotFound)
+}
+
+// Đợt 2: tải lại trang hồ sơ năng lực nhiều lần chỉ tính 1 lượt xem.
+func TestPortfolioViewsCountedOnce(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	admin := e.staff(t, model.RoleAdmin)
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/admin/nt", admin.AccessToken,
+		map[string]string{"phone": "0908777005", "name": "Chị Tám", "company": "Xây dựng Tám"}), http.StatusOK)
+	nt := ntLogin(t, e, "0908777005")
+	var pf struct {
+		Code string `json:"code"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/nt/portfolio", nt, nil), &pf)
+	for range 5 {
+		expectStatus(t, e.do(t, http.MethodGet, "/api/v1/public/nt/"+pf.Code, "", nil), http.StatusOK)
+	}
+	var views int
+	if err := e.db.QueryRow(context.Background(), `SELECT p.views FROM nt_profiles p JOIN users u ON u.id = p.user_id WHERE u.username = '0908777005'`).Scan(&views); err != nil || views != 1 {
+		t.Fatalf("lượt xem: %d %v", views, err)
+	}
+}
+
+// Đợt 2: đổi địa chỉ dự án mà không ghim lại, tra không ra toạ độ: bỏ ghim cũ (trước đây ghim cũ ở chỗ sai vẫn còn).
+func TestProjectAddressChangeClearsPin(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	admin := e.staff(t, model.RoleAdmin)
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/admin/nt", admin.AccessToken,
+		map[string]string{"phone": "0908777006", "name": "Anh Chín", "company": "Xây dựng Chín"}), http.StatusOK)
+	nt := ntLogin(t, e, "0908777006")
+	r := e.do(t, http.MethodPost, "/api/v1/nt/projects", nt, map[string]any{"name": "Nhà Thủ Đức", "address": "Thủ Đức", "lat": 10.85, "lng": 106.77})
+	expectStatus(t, r, http.StatusCreated)
+	var cp struct {
+		Project struct {
+			ID  int64    `json:"id"`
+			Lat *float64 `json:"lat"`
+		} `json:"project"`
+	}
+	decodeData(t, r, &cp)
+	if cp.Project.Lat == nil {
+		t.Fatalf("tạo dự án có ghim: %s", r.Raw)
+	}
+	expectStatus(t, e.do(t, http.MethodPut, fmt.Sprintf("/api/v1/nt/projects/%d", cp.Project.ID), nt,
+		map[string]any{"name": "Nhà Thủ Đức", "address": "Chỗ khác không tra được xyz"}), http.StatusOK)
+	var lat *float64
+	if err := e.db.QueryRow(context.Background(), `SELECT lat FROM nt_projects WHERE id = $1`, cp.Project.ID).Scan(&lat); err != nil || lat != nil {
+		t.Fatalf("ghim cũ còn: %v %v", lat, err)
 	}
 }

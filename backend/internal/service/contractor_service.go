@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"vuathau/backend/internal/integration/lark"
@@ -53,6 +54,7 @@ const (
 )
 
 type ContractorService struct {
+	syncMu sync.Mutex // 1 lượt đồng bộ Lark một lúc (vòng 15 phút và nút Đồng bộ của admin)
 	repo   repository.ContractorRepository
 	houses repository.HouseRepository
 	lark   LarkCTVSource // nil: không đồng bộ form
@@ -109,12 +111,15 @@ func (s *ContractorService) SyncLark(ctx context.Context) (int, error) {
 	if s.lark == nil {
 		return 0, nil
 	}
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
 	recs, err := s.lark.Records(ctx)
 	if err != nil {
 		return 0, err
 	}
 	n := 0
 	byPhone := map[string]*repository.RegContractor{}
+	sawCol, anyVerified := false, false // cột "Xác minh tham gia" có đọc được không
 	for _, r := range recs {
 		f := r.Fields
 		name := truncate(lark.Text(col(f, "ten cong ty")), 200)
@@ -134,6 +139,9 @@ func (s *ContractorService) SyncLark(ctx context.Context) (int, error) {
 			fields = append(fields, other)
 		}
 		vr := col(f, "xac minh")
+		if _, ok := f["Xác minh tham gia"]; ok || vr != nil {
+			sawCol = true
+		}
 		// ô "Xác minh tham gia": tích, hoặc chọn giá trị khác "chưa / không"
 		t := strings.ToLower(lark.Text(vr))
 		verified := lark.Checked(vr) || (t != "" && !strings.Contains(t, "chưa") && !strings.Contains(t, "không"))
@@ -155,6 +163,7 @@ func (s *ContractorService) SyncLark(ctx context.Context) (int, error) {
 			Note:     truncate(lark.Text(f["Ghi chú"]), 500),
 			JoinedAt: joined,
 		}
+		anyVerified = anyVerified || verified
 		if err := s.repo.UpsertLark(ctx, c); err != nil {
 			return n, err
 		}
@@ -166,6 +175,12 @@ func (s *ContractorService) SyncLark(ctx context.Context) (int, error) {
 			}
 		}
 	}
+	// Cột xác minh đổi tên / mất quyền đọc (mọi dòng đọc ra "chưa xác minh"): không khoá ai, tránh khoá cả loạt nhà thầu
+	// vì lỗi cấu hình bảng Lark
+	revokeOK := sawCol && anyVerified
+	if !revokeOK && len(byPhone) > 0 {
+		log.Printf("Nhà thầu từ form Lark: không đọc được cột Xác minh tham gia (hoặc không dòng nào được tích), bỏ qua bước khoá")
+	}
 	for _, c := range byPhone {
 		// lỗi 1 số (SĐT trùng kiểu lạ...) không chặn cả lượt đồng bộ
 		switch {
@@ -175,7 +190,7 @@ func (s *ContractorService) SyncLark(ctx context.Context) (int, error) {
 			} else if created {
 				log.Printf("Nhà thầu từ form Lark: tạo tài khoản app %s (%s)", c.Phone, c.Name)
 			}
-		case !c.Verified && s.revoke != nil:
+		case !c.Verified && s.revoke != nil && revokeOK:
 			if locked, err := s.revoke(ctx, c.Phone); err != nil {
 				log.Printf("Nhà thầu từ form Lark: không khoá được %s: %v", c.Phone, err)
 			} else if locked {
