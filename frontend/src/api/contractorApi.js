@@ -8,6 +8,9 @@ const contractorApi = {
   /** { ...row, profile: { contact, email, staff, fields, note... } | null, projects: [{ id, address, province_name, stage, at, cover_id, photos }] } */
   get: (key) => axiosClient.get(`/contractors/${encodeURIComponent(key)}`),
 
+  /** Xác minh nhà thầu tự đăng ký trong app (key = SĐT) và cấp tài khoản app: { message } */
+  verify: (key) => axiosClient.post(`/contractors/${encodeURIComponent(key)}/verify`),
+
   /** Đọc lại form Lark ngay: { synced } */
   sync: () => axiosClient.post('/contractors/sync'),
 }

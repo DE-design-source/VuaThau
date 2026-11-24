@@ -17,6 +17,8 @@ type AuthRepository interface {
 	FindByLogin(ctx context.Context, login string) (*model.User, error)
 	FindByGoogle(ctx context.Context, sub string) (*model.User, error)
 	LinkGoogle(ctx context.Context, id int64, sub, email string) error
+	// SetInfo: khu vực / loại / ghi chú của CTV mới đăng ký (tổ đội: loại "Tổ đội", công ty + hạng mục ở ghi chú)
+	SetInfo(ctx context.Context, id int64, region, kind, note string) error
 }
 
 type authRepository struct {
@@ -73,5 +75,10 @@ func (r *authRepository) LinkGoogle(ctx context.Context, id int64, sub, email st
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
+	return err
+}
+
+func (r *authRepository) SetInfo(ctx context.Context, id int64, region, kind, note string) error {
+	_, err := r.db.Exec(ctx, `UPDATE users SET region = $2, kind = $3, note = $4 WHERE id = $1`, id, region, kind, note)
 	return err
 }

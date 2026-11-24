@@ -4992,3 +4992,12 @@ details.card > summary strong {
   margin-top: 3px;
 }
 
+
+/* trang chi tiết nhà thầu: nhà thầu tự đăng ký trong app chờ admin xác minh */
+.nt-verify {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 8px;
+}

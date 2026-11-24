@@ -32,6 +32,8 @@ type ContractorRepository interface {
 	List(ctx context.Context) ([]RegContractor, error)
 	// UpsertLark: thêm / cập nhật theo mã dòng Lark.
 	UpsertLark(ctx context.Context, c *RegContractor) error
+	// SetVerified: admin xác minh nhà thầu tự đăng ký trong app (dòng lark_record "app-...")
+	SetVerified(ctx context.Context, id int64) error
 }
 
 type contractorRepository struct{ db *pgxpool.Pool }
@@ -75,5 +77,10 @@ func (r *contractorRepository) UpsertLark(ctx context.Context, c *RegContractor)
 				THEN now() ELSE contractors.updated_at END`,
 		c.LarkRecord, c.Name, c.Kind, c.Role, c.Contact, c.Phone, c.Email, c.Areas, c.Exp, c.Staff, c.ValueRange, c.Fields,
 		c.Verified, c.Note, c.JoinedAt)
+	return err
+}
+
+func (r *contractorRepository) SetVerified(ctx context.Context, id int64) error {
+	_, err := r.db.Exec(ctx, `UPDATE contractors SET verified = true, updated_at = now() WHERE id = $1`, id)
 	return err
 }

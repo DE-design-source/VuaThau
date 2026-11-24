@@ -11,6 +11,9 @@ const publicApi = {
   /** Báo cáo nhật ký thi công gửi chủ nhà (/bc/:code): { company, verified, project, address, note, taken_at, gps, photos: [url], videos, status, progress } */
   report: (code) => axiosClient.get(`/public/bc/${encodeURIComponent(code)}`),
 
+  /** Hồ sơ năng lực nhà thầu (/nt/:code): { company, regions, specialties, years, verified, phone, views, logs, projects: [...] } */
+  portfolio: (code) => axiosClient.get(`/public/nt/${encodeURIComponent(code)}`),
+
   /** Tìm địa điểm (chỉ địa điểm): { sites: [], places: [{name, lat, lng}] } */
   searchPlace: (q) => axiosClient.get('/public/geo/search', { params: { q } }),
 }

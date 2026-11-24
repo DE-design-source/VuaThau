@@ -141,7 +141,7 @@ func newTestEnv(t *testing.T, opts ...envOption) *testEnv {
 		Customers: repository.NewCustomerRepository(db), Leads: settings.leads})
 	paySvc := service.NewPaymentService(payRepo, houseRepo, photoRepo, userRepo, logRepo, settingsRepo, files)
 	ntApp := service.NewNTService(repository.NewNTRepository(db), authRepo, files, logRepo, cfg.JWTSecret).WithSites(houseSvc)
-	ntSvc := service.NewContractorService(repository.NewContractorRepository(db), houseRepo, settings.ntLark).WithAccounts(ntApp.EnsureFromLark, ntApp.RevokeFromLark)
+	ntSvc := service.NewContractorService(repository.NewContractorRepository(db), houseRepo, settings.ntLark).WithAccounts(ntApp.EnsureFromLark, ntApp.RevokeFromLark).WithUsers(authRepo)
 
 	deps := router.Deps{
 		Config:         cfg,

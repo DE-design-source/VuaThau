@@ -17,6 +17,7 @@ import (
 	"vuathau/backend/internal/integration/google"
 	"vuathau/backend/internal/model"
 	"vuathau/backend/internal/pkg/token"
+	"vuathau/backend/internal/province"
 	"vuathau/backend/internal/repository"
 )
 
@@ -31,6 +32,13 @@ type RegisterInput struct {
 	BankNo    string `json:"bank_no"`
 	BankOwner string `json:"bank_owner"`
 	IDToken   string `json:"id_token"`
+	// Màn Tạo tài khoản (góp ý slide 24/11): bạn là CTV / Tổ đội (nhà thầu đăng ký riêng, chờ xác minh)
+	Role       string   `json:"role"` // "ctv" (mặc định) | "todoi"
+	Company    string   `json:"company"`
+	Categories []string `json:"categories"` // hạng mục thực hiện: Nhà phố, Biệt thự, Sửa chữa...
+	Province   string   `json:"province"`
+	Ward       string   `json:"ward"`
+	Street     string   `json:"street"`
 }
 
 // PhoneResult: app đăng nhập bằng SĐT. Registered = false: SĐT chưa có tài khoản, app sang Đăng ký (điền sẵn SĐT).
@@ -263,7 +271,42 @@ func (s *authService) Register(ctx context.Context, in RegisterInput) (*AuthResu
 		}
 		return nil, fmt.Errorf("create user: %w", err)
 	}
+	if err := s.saveInfo(ctx, u.ID, in); err != nil {
+		return nil, err
+	}
 	return s.signIn(u, "Chào mừng bạn! Chụp công trình bằng camera Vua Thầu rồi nộp hồ sơ đầu tiên.")
+}
+
+// saveInfo: khu vực + loại (CTV / Tổ đội) + ghi chú (địa chỉ, công ty, hạng mục) từ màn Tạo tài khoản.
+func (s *authService) saveInfo(ctx context.Context, id int64, in RegisterInput) error {
+	kind := "CTV"
+	if in.Role == "todoi" {
+		kind = "Tổ đội"
+	}
+	prov, ward := strings.TrimSpace(in.Province), strings.TrimSpace(in.Ward)
+	if p, w, ok := province.Ward(prov, ward); ok {
+		prov, ward = p, w
+	}
+	notes := []string{}
+	if a := province.Join(truncate(in.Street, 200), ward, prov); a != "" {
+		notes = append(notes, "Địa chỉ: "+a)
+	}
+	if c := truncate(in.Company, 200); c != "" {
+		notes = append(notes, "Công ty: "+c)
+	}
+	cats := []string{}
+	for _, c := range in.Categories {
+		if c = truncate(c, 40); c != "" && len(cats) < 10 {
+			cats = append(cats, c)
+		}
+	}
+	if len(cats) > 0 {
+		notes = append(notes, "Hạng mục: "+strings.Join(cats, ", "))
+	}
+	if kind == "CTV" && len(notes) == 0 && prov == "" {
+		return nil // app cũ: không có gì thêm
+	}
+	return s.repo.SetInfo(ctx, id, truncate(prov, 100), kind, truncate(strings.Join(notes, " · "), 500))
 }
 
 func (s *authService) Google(ctx context.Context, idToken string) (*GoogleResult, error) {

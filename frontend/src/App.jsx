@@ -28,6 +28,7 @@ const PlanPage = lazy(() => import('@/pages/PlanPage'))
 const PublicMapPage = lazy(() => import('@/pages/PublicMapPage'))
 const PublicProjectPage = lazy(() => import('@/pages/PublicProjectPage'))
 const PublicReportPage = lazy(() => import('@/pages/PublicReportPage'))
+const PortfolioPage = lazy(() => import('@/pages/PortfolioPage'))
 const ContractorListPage = lazy(() => import('@/pages/ContractorListPage'))
 const ContractorPage = lazy(() => import('@/pages/ContractorPage'))
 const NtPage = lazy(() => import('@/pages/NtPage'))
@@ -88,6 +89,7 @@ export default function App() {
     <Routes>
       {/* báo cáo gửi chủ nhà: trang riêng, không menu quản lý */}
       <Route path="bc/:code" element={<Suspense fallback={<PageState err="" />}><PublicReportPage /></Suspense>} />
+      <Route path="nt/:code" element={<Suspense fallback={<PageState err="" />}><PortfolioPage /></Suspense>} />
       <Route element={<MainLayout />}>
         <Route index element={<Index />} />
         <Route path="ban-do" element={<PublicMap />} />

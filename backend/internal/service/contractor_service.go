@@ -32,6 +32,7 @@ type ContractorRow struct {
 	Total      int       `json:"total"` // số công trình CTV đã chụp
 	Status     string    `json:"status"`
 	Registered bool      `json:"registered"` // có đăng ký qua form
+	FromApp    bool      `json:"from_app"`   // tự đăng ký trong app (admin xác minh trên web)
 	Photo      bool      `json:"photo"`      // có công trình từ ảnh CTV
 	Joined     time.Time `json:"joined"`
 	Updated    time.Time `json:"updated"`
@@ -58,6 +59,7 @@ type ContractorService struct {
 	accounts func(ctx context.Context, c *repository.RegContractor) (bool, error)
 	// revoke: SĐT không còn dòng nào được tích xác minh -> khoá tài khoản (NTService.RevokeFromLark); nil: không khoá
 	revoke func(ctx context.Context, phone string) (bool, error)
+	users  repository.AuthRepository // nhà thầu tự đăng ký trong app: kiểm SĐT đã có tài khoản (nil: không kiểm)
 }
 
 // WithAccounts: mỗi lượt đồng bộ form, nhà thầu đã tích "Xác minh tham gia" tự có tài khoản app;
@@ -239,7 +241,7 @@ func (s *ContractorService) rows(ctx context.Context) ([]ContractorRow, map[stri
 			st = NTVerified
 		}
 		byKey[k] = &ContractorRow{Key: k, Name: c.Name, Kind: c.Kind, Role: c.Role, Phone: c.Phone, Areas: c.Areas, Exp: c.Exp,
-			ValueRange: c.ValueRange, Status: st, Registered: true, Joined: c.JoinedAt, Updated: c.UpdatedAt}
+			ValueRange: c.ValueRange, Status: st, Registered: true, FromApp: strings.HasPrefix(c.LarkRecord, appRecordPrefix), Joined: c.JoinedAt, Updated: c.UpdatedAt}
 		prof[k] = c
 		order = append(order, k)
 	}

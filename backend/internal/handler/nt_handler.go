@@ -152,6 +152,38 @@ func (h *NTHandler) Sites(w http.ResponseWriter, r *http.Request) {
 	ok(w, map[string]any{"rows": rows})
 }
 
+// Portfolio handles GET /api/v1/nt/portfolio: link hồ sơ năng lực công khai ({code, path})
+func (h *NTHandler) Portfolio(w http.ResponseWriter, r *http.Request) {
+	ok(w, h.svc.Portfolio(r.Context(), me(r)))
+}
+
+// PublicPortfolio handles GET /api/v1/public/nt/{code}
+func (h *NTHandler) PublicPortfolio(w http.ResponseWriter, r *http.Request) {
+	res, err := h.svc.PublicPortfolio(r.Context(), r.PathValue("code"))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	ok(w, res)
+}
+
+// PublicPortfolioPhoto handles GET /api/v1/public/nt/{code}/photos/{mid}?size=small
+func (h *NTHandler) PublicPortfolioPhoto(w http.ResponseWriter, r *http.Request) {
+	mid, valid := idOr400(w, r, "mid")
+	if !valid {
+		return
+	}
+	b, err := h.svc.PublicPortfolioPhoto(r.Context(), r.PathValue("code"), mid, r.URL.Query().Get("size") == "small")
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(b)
+}
+
 // ClaimSite handles POST /api/v1/nt/sites/{id}/claim: chụp nhật ký vào công trình CTV đã chụp -> dự án của nhà thầu ({project})
 func (h *NTHandler) ClaimSite(w http.ResponseWriter, r *http.Request) {
 	id, valid := idOr400(w, r, "id")

@@ -354,6 +354,45 @@ func TestNhaThauFormVaBaoCao(t *testing.T) {
 	} else {
 		_ = pr.Body.Close()
 	}
+
+	// hồ sơ năng lực công khai (nút Chia sẻ ở trang Dự án): công ty + dự án + báo cáo mới nhất, ảnh bìa xem được, đếm lượt xem
+	var pf struct {
+		Code string `json:"code"`
+		Path string `json:"path"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/nt/portfolio", tok, nil), &pf)
+	if pf.Code == "" || pf.Path != "/nt/"+pf.Code {
+		t.Fatalf("link hồ sơ: %+v", pf)
+	}
+	var pub struct {
+		Company  string `json:"company"`
+		Phone    string `json:"phone"`
+		Logs     int    `json:"logs"`
+		Projects []struct {
+			Name     string `json:"name"`
+			CoverURL string `json:"cover_url"`
+			Report   string `json:"report"`
+		} `json:"projects"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/public/nt/"+pf.Code, "", nil), &pub)
+	if pub.Company != "Smartcons" || pub.Phone != "0907555666" || len(pub.Projects) != 1 || pub.Projects[0].Report == "" || pub.Projects[0].CoverURL == "" {
+		t.Fatalf("hồ sơ công khai: %+v", pub)
+	}
+	if pr, err := http.Get(e.srv.URL + pub.Projects[0].CoverURL); err != nil || pr.StatusCode != http.StatusOK {
+		t.Fatalf("ảnh bìa hồ sơ: %v %+v", err, pr)
+	} else {
+		_ = pr.Body.Close()
+	}
+	var hv struct {
+		Stats struct {
+			Views int `json:"views"`
+		} `json:"stats"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/nt/home", tok, nil), &hv)
+	if hv.Stats.Views != 1 {
+		t.Fatalf("lượt xem: %d", hv.Stats.Views)
+	}
+	expectStatus(t, e.do(t, http.MethodGet, "/api/v1/public/nt/1-000000000000", "", nil), http.StatusNotFound)
 }
 
 // Nhà thầu có tài khoản app thấy công trình CTV đã chụp có bảng hiệu ghi SĐT của mình (0xxx hay 84xxx đều khớp),

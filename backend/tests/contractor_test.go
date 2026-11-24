@@ -282,3 +282,80 @@ func TestContractorLarkAccounts(t *testing.T) {
 		t.Fatalf("đồng bộ mở khoá của admin: %s", r.Raw)
 	}
 }
+
+// Màn Tạo tài khoản 3 lựa chọn (góp ý slide 24/11): Tổ đội đăng ký như CTV (vào ngay, loại "Tổ đội", công ty + hạng mục
+// ở ghi chú); Nhà thầu đăng ký -> chờ xác minh (đăng nhập báo đang xác minh), admin xác minh trên web -> có tài khoản.
+func TestRegisterRoles(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	admin := e.staff(t, model.RoleAdmin)
+	ctx := context.Background()
+
+	// tổ đội
+	td := e.newPhone()
+	body := map[string]any{"name": "Đội anh Tâm", "phone": td, "bank_name": "Vietcombank", "bank_no": "0123456789", "bank_owner": "NGUYEN VAN TAM",
+		"role": "todoi", "company": "Tổ đội Tâm", "categories": []string{"Nhà phố", "Sửa chữa"}, "province": "TP. Hồ Chí Minh", "ward": "Phường An Khánh", "street": "1 Lê Lợi"}
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/auth/register", "", body), http.StatusCreated)
+	var kind, region, note string
+	if err := e.db.QueryRow(ctx, `SELECT kind, region, note FROM users WHERE username = $1`, td).Scan(&kind, &region, &note); err != nil {
+		t.Fatal(err)
+	}
+	if kind != "Tổ đội" || region != "TP. Hồ Chí Minh" || !strings.Contains(note, "Công ty: Tổ đội Tâm") || !strings.Contains(note, "Hạng mục: Nhà phố, Sửa chữa") {
+		t.Fatalf("tổ đội: %q %q %q", kind, region, note)
+	}
+
+	// nhà thầu: đăng ký -> chờ xác minh
+	nt := e.newPhone()
+	reg := map[string]any{"name": "Anh Bình", "phone": nt, "company": "Cty xd Hồng Phát", "categories": []string{"Biệt thự"}, "province": "TP. Hồ Chí Minh"}
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/auth/register-nt", "", reg), http.StatusCreated)
+	var pd struct {
+		Registered bool `json:"registered"`
+		NTPending  bool `json:"nt_pending"`
+	}
+	decodeData(t, e.do(t, http.MethodPost, "/api/v1/auth/phone", "", map[string]string{"phone": nt, "as": "nhathau"}), &pd)
+	if pd.Registered || !pd.NTPending {
+		t.Fatalf("chờ xác minh: %+v", pd)
+	}
+	// danh sách nhà thầu của admin: có dòng tự đăng ký trong app
+	var list struct {
+		Rows []struct {
+			Key     string `json:"key"`
+			FromApp bool   `json:"from_app"`
+			Status  string `json:"status"`
+		} `json:"rows"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/contractors", admin.AccessToken, nil), &list)
+	found := false
+	for _, r := range list.Rows {
+		if r.Key == nt && r.FromApp {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("danh sách nhà thầu: %+v", list.Rows)
+	}
+	// admin xác minh -> vào được, hồ sơ công ty điền sẵn
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/contractors/"+nt+"/verify", admin.AccessToken, map[string]string{}), http.StatusOK)
+	r := e.do(t, http.MethodPost, "/api/v1/auth/phone", "", map[string]string{"phone": nt, "as": "nhathau"})
+	expectStatus(t, r, http.StatusOK)
+	var lg struct {
+		AccessToken string     `json:"access_token"`
+		User        model.User `json:"user"`
+	}
+	decodeData(t, r, &lg)
+	if lg.User.Role != model.RoleNhaThau || lg.User.Name != "Anh Bình" {
+		t.Fatalf("sau xác minh: %s", r.Raw)
+	}
+	var home struct {
+		Profile struct {
+			Company string `json:"company"`
+		} `json:"profile"`
+	}
+	decodeData(t, e.do(t, http.MethodGet, "/api/v1/nt/home", lg.AccessToken, nil), &home)
+	if home.Profile.Company != "Cty xd Hồng Phát" {
+		t.Fatalf("hồ sơ: %+v", home)
+	}
+	// đăng ký lại số đã có tài khoản -> 409; CTV không xác minh được
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/auth/register-nt", "", reg), http.StatusConflict)
+	expectStatus(t, e.do(t, http.MethodPost, "/api/v1/contractors/"+nt+"/verify", e.register(t, "CTV").AccessToken, map[string]string{}), http.StatusForbidden)
+}

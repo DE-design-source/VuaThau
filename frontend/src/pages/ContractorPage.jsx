@@ -3,6 +3,7 @@
 //   hồ sơ năng lực (vai trò, kinh nghiệm, quy mô, giá trị, khu vực, lĩnh vực) từ form đăng ký;
 //   danh sách dự án CTV đã chụp: tab Tất cả / Đang thi công / Hoàn thành, lọc theo bước thi công.
 import { useState } from 'react'
+import useAuth from '@/hooks/useAuth'
 import { Link, useParams } from 'react-router-dom'
 import usePage from '@/hooks/usePage'
 import contractorApi from '@/api/contractorApi'
@@ -29,6 +30,9 @@ export default function ContractorPage() {
   const { data: d, err, reload } = usePage(() => contractorApi.get(key), [key])
   const [tab, setTab] = useState('all')
   const [step, setStep] = useState('')
+  const { user } = useAuth()
+  const [verifying, setVerifying] = useState(false)
+  const [verifyMsg, setVerifyMsg] = useState('')
   if (!d) return <PageState err={err} retry={reload} />
   const pf = d.profile || {}
   const ps = d.projects || []
@@ -59,6 +63,32 @@ export default function ContractorPage() {
               {d.kind && <span>{d.kind}</span>}
               <span className="muted">{d.registered ? `Tham gia ${vnDate(d.joined).slice(3)}` : `CTV chụp từ ${vnDate(d.joined)}`}</span>
             </p>
+            {/* nhà thầu tự đăng ký trong app: admin xác minh ở đây (đăng ký qua form Lark thì tích trên Lark) */}
+            {d.from_app && d.status !== 'Đã xác minh' && user?.role === 'admin' && (
+              <p className="nt-verify">
+                <span className="muted">Tự đăng ký trong app, chờ xác minh.</span>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={verifying}
+                  onClick={async () => {
+                    setVerifying(true)
+                    try {
+                      const r = await contractorApi.verify(d.key)
+                      setVerifyMsg(r?.data?.message || 'Đã xác minh.')
+                      reload()
+                    } catch (e) {
+                      setVerifyMsg(e.message)
+                    } finally {
+                      setVerifying(false)
+                    }
+                  }}
+                >
+                  {verifying ? 'Đang xác minh…' : 'Xác minh & cấp tài khoản'}
+                </button>
+              </p>
+            )}
+            {verifyMsg && <p className="muted">{verifyMsg}</p>}
             <p className="nt-contact">
               {pf.contact && (
                 <span>

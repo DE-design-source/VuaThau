@@ -121,7 +121,7 @@ func run() error {
 	}
 	// tài khoản nhà thầu trên app; nhà thầu đã xác minh trên form Lark tự có tài khoản (mỗi lượt đồng bộ)
 	ntApp := service.NewNTService(repository.NewNTRepository(db), authRepo, files, logRepo, cfg.JWTSecret).WithGeo(geocoder)
-	ntSvc := service.NewContractorService(repository.NewContractorRepository(db), houseRepo, ntSrc).WithAccounts(ntApp.EnsureFromLark, ntApp.RevokeFromLark)
+	ntSvc := service.NewContractorService(repository.NewContractorRepository(db), houseRepo, ntSrc).WithAccounts(ntApp.EnsureFromLark, ntApp.RevokeFromLark).WithUsers(authRepo)
 	houseSvc := service.NewHouseService(service.HouseDeps{
 		Houses: houseRepo, Photos: photoRepo, Logs: logRepo, Users: userRepo, Payments: payRepo, Settings: settingsRepo,
 		Files: files, AI: ai.New(cfg.AIEnabled, cfg.AIModel, cfg.AIWorkspace), Geo: geocoder, OCR: ocr.New(),

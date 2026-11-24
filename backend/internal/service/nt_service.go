@@ -1004,7 +1004,8 @@ func (s *NTService) RevokeFromLark(ctx context.Context, phone string) (bool, err
 		return false, nil
 	}
 	rec, err := s.repo.LarkRecord(ctx, u.ID)
-	if err != nil || rec == "" {
+	// chưa gắn form, hoặc nhà thầu tự đăng ký trong app đã được admin xác minh ("app-..."): không khoá theo Lark
+	if err != nil || rec == "" || strings.HasPrefix(rec, appRecordPrefix) {
 		return false, err
 	}
 	ok, err := s.repo.SwapLock(ctx, u.ID, model.LockedNone, model.LockedUnverified)

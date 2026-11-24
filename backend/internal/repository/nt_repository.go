@@ -96,6 +96,8 @@ type NTRepository interface {
 	SwapLock(ctx context.Context, uid int64, from, to int) (bool, error)
 	// UserPhone: SĐT đăng nhập của nhà thầu (nút Gọi / Zalo trên báo cáo gửi chủ nhà)
 	UserPhone(ctx context.Context, uid int64) (string, error)
+	// AddView: +1 lượt xem hồ sơ năng lực (link công khai)
+	AddView(ctx context.Context, uid int64) error
 	// ProjectPhotos: ảnh dự án (không thuộc nhật ký), ảnh bìa trước
 	ProjectPhotos(ctx context.Context, projectID int64) ([]NTMedia, error)
 	// Log: 1 nhật ký kèm ảnh / video (báo cáo gửi chủ nhà)
@@ -394,4 +396,9 @@ func (r *ntRepository) UserPhone(ctx context.Context, uid int64) (string, error)
 		return "", nil
 	}
 	return p, err
+}
+
+func (r *ntRepository) AddView(ctx context.Context, uid int64) error {
+	_, err := r.db.Exec(ctx, `UPDATE nt_profiles SET views = views + 1 WHERE user_id = $1`, uid)
+	return err
 }
