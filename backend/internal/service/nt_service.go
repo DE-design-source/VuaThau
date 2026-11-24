@@ -187,12 +187,30 @@ func (s *NTService) locate(ctx context.Context, p *repository.NTProject) {
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	places, err := s.geo.Search(ctx, p.Address)
-	if err != nil || len(places) == 0 {
+	if err != nil {
 		return
 	}
-	lat, lng := places[0].Lat, places[0].Lng
-	if validLatLng(&lat, &lng) {
+	// Tra địa chỉ hay ra chỗ khác hẳn (vd "20 Nguyễn Thiện Thành, P. Tân Khánh" ra một chùa ở Cát Lái):
+	// chỉ nhận điểm trong đúng tỉnh đã chọn VÀ tên có phường hoặc tên đường đã nhập; không có thì để trống,
+	// nhật ký đầu tiên có GPS sẽ điền (ghim sai còn tệ hơn chưa có ghim).
+	wardKey := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(province.Key(p.Ward), "phuong "), "xa "), "dac khu "))
+	streetKey := strings.TrimSpace(strings.TrimLeft(province.Key(p.Street), "0123456789 "))
+	for _, pl := range places {
+		lat, lng := pl.Lat, pl.Lng
+		if !validLatLng(&lat, &lng) {
+			continue
+		}
+		if p.Province != "" {
+			if at := province.At(lat, lng); at == nil || !province.SameProvince(at.Name, p.Province) {
+				continue
+			}
+			name := " " + province.Key(pl.Name) + " "
+			if !(wardKey != "" && strings.Contains(name, " "+wardKey+" ")) && !(streetKey != "" && strings.Contains(name, " "+streetKey+" ")) {
+				continue
+			}
+		}
 		p.Lat, p.Lng = &lat, &lng
+		return
 	}
 }
 
@@ -532,7 +550,8 @@ func (s *NTService) AddLog(ctx context.Context, u *model.User, id int64, next fu
 		switch part.Field {
 		case "note":
 			b, _ := io.ReadAll(io.LimitReader(part.Body, 4000))
-			note = truncate(string(b), 1000)
+			// chữ sai bảng mã (máy gửi Windows-1252...) làm Postgres báo lỗi: bỏ ký tự hỏng thay vì lỗi 500
+			note = truncate(strings.ToValidUTF8(string(b), ""), 1000)
 			continue
 		case "meta":
 			b, _ := io.ReadAll(io.LimitReader(part.Body, 4000))

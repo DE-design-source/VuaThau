@@ -78,10 +78,11 @@ func phoneDigits(s string) string {
 	return d
 }
 
-var unaccent = transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
-
 // foldName: bỏ dấu, chữ thường, chỉ giữ chữ và số (đ → d).
+// Bộ chuyển tạo mới mỗi lần: transform.Chain giữ trạng thái bên trong, dùng chung 1 biến giữa nhiều request
+// cùng lúc làm panic "slice bounds out of range" (lỗi production 24/11/2026 khi mở nhiều ảnh cùng lúc).
 func foldName(s string) string {
+	unaccent := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
 	s, _, _ = transform.String(unaccent, strings.ToLower(s))
 	var b strings.Builder
 	for _, r := range s {

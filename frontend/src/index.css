@@ -1415,6 +1415,89 @@ details summary {
   margin-bottom: 4px;
 }
 
+/* chọn vai trò: Cộng tác viên | Nhà thầu | Quản lý */
+.role-pick {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.role-card {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  justify-items: start;
+  text-align: left;
+  padding: 12px 10px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.role-card:hover {
+  border-color: var(--color-field);
+}
+.role-card:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.role-card.on {
+  border: 2px solid var(--amber);
+  padding: 11px 9px;
+  background: #fff8e1;
+  box-shadow: 0 2px 8px rgb(245 183 10 / 0.25);
+}
+.role-card b {
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+.role-card small {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+.role-ico {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 4px;
+  border-radius: 10px;
+  background: var(--color-sunken);
+  color: var(--navy);
+}
+.role-card.on .role-ico {
+  background: var(--amber);
+  color: #3d2c00;
+}
+.role-note {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--tone-wait-bg);
+  font-size: 0.875rem;
+}
+.role-note span {
+  color: var(--color-muted);
+}
+@media (max-width: 420px) {
+  .role-pick {
+    grid-template-columns: 1fr;
+  }
+  .role-card {
+    grid-template-columns: auto 1fr;
+    column-gap: 10px;
+    align-items: center;
+  }
+  .role-card .role-ico {
+    grid-row: span 2;
+    margin-bottom: 0;
+  }
+}
+
 /* ---------- Bản đồ công trình ---------- */
 
 .site-map {
@@ -4821,4 +4904,169 @@ details.card > summary strong {
 }
 .radio-row input {
   margin-top: 3px;
+}
+
+/* ---------- Báo cáo thi công gửi chủ nhà (/bc/:code) ---------- */
+.bc {
+  min-height: 100dvh;
+  background: #f4f6fa;
+  color: #0b1b33;
+}
+.bc-empty {
+  display: grid;
+  place-items: center;
+  min-height: 60dvh;
+  padding: 24px;
+  color: var(--color-muted);
+  text-align: center;
+}
+.bc-hero {
+  position: relative;
+  min-height: 260px;
+  max-height: 46dvh;
+  aspect-ratio: 4 / 3;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  overflow: hidden;
+  background: #0b2340;
+}
+.bc-hero img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.bc-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(11 35 64 / 0) 30%, rgb(11 35 64 / 0.88) 100%);
+}
+.bc-hero-text {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 14px;
+  z-index: 1;
+  color: #fff;
+}
+.bc-eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #ffb81c;
+}
+.bc-hero h1 {
+  margin: 2px 0 2px;
+  font-size: 1.4rem;
+  line-height: 1.25;
+  color: #fff;
+}
+.bc-hero p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #c9d4e5;
+}
+.bc-body {
+  display: grid;
+  gap: 14px;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 14px 16px 32px;
+}
+.bc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 0.85rem;
+  color: #475569;
+}
+.bc-chip {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #eef2f7;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #475569;
+}
+.bc-chip.ok {
+  background: #e8f6ee;
+  color: #166534;
+}
+.bc-note {
+  padding: 12px 14px;
+  border: 1px solid #e3e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+.bc-note b {
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+.bc-note p {
+  margin: 4px 0 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+.bc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+}
+.bc-grid button {
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  aspect-ratio: 3 / 4;
+  background: #e3e8f0;
+  cursor: zoom-in;
+}
+.bc-grid img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.bc-foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e3e8f0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #64748b;
+}
+.bc-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 0.92);
+  cursor: zoom-out;
+}
+.bc-viewer img {
+  max-width: 100%;
+  max-height: 100dvh;
+  object-fit: contain;
+}
+.bc-count {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+@media (max-width: 420px) {
+  .bc-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

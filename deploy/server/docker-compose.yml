@@ -40,6 +40,9 @@ services:
     image: vtnt-api:latest
     container_name: vtnt-api
     restart: unless-stopped
+    # deploy / khởi động lại: API tự tắt êm (chờ tối đa 30s cho request đang chạy, vd CTV đang tải video);
+    # Docker mặc định chỉ đợi 10s rồi giết hẳn -> upload dở bị cắt (24/11/2026 CTV phải chụp lại hồ sơ)
+    stop_grace_period: 40s
     env_file: .env
     environment:
       APP_ENV: production

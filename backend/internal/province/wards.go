@@ -47,6 +47,18 @@ func Ward(prov, ward string) (p, w string, ok bool) {
 	return "", "", false
 }
 
+// SameProvince: 2 tên cùng 1 tỉnh ("TP. Hồ Chí Minh" = "Thành phố Hồ Chí Minh" = "Hồ Chí Minh").
+func SameProvince(a, b string) bool {
+	norm := func(s string) string {
+		k := Key(s)
+		for _, p := range []string{"thanh pho ", "tp ", "tinh "} {
+			k = strings.TrimPrefix(k, p)
+		}
+		return k
+	}
+	return a != "" && b != "" && norm(a) == norm(b)
+}
+
 // Join: địa chỉ đầy đủ "số nhà đường, phường, tỉnh" (bỏ phần trống).
 func Join(parts ...string) string {
 	out := make([]string, 0, len(parts))
