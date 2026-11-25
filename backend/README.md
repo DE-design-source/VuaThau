@@ -54,14 +54,14 @@ CTV (app)  -> GET /ctv/income, /batches/{id}    -> thấy tiền, mã giao dịc
 Cần Go (bản trong `go.mod`). Không cần Docker, Redis là tuỳ chọn (chỉ dùng cho `/health`).
 
 ```bash
-cp .env.example .env          # đặt JWT_SECRET (>= 32 ký tự)
+# tạo ../.env (chung ở gốc repo, KHÔNG có trong git: xin file mẫu từ admin); đặt JWT_SECRET (>= 32 ký tự)
 go run ./cmd/devdb            # cửa sổ 1: Postgres nhúng ở cổng 5432
 go run ./cmd/ntctl migrate    # tạo bảng
 go run ./cmd/ntctl adduser admin "Quản trị" admin <mật-khẩu-8-ký-tự>
 go run ./cmd/api              # API ở http://localhost:8080
 ```
 
-Web: `cd ../frontend && npm run dev` (Vite chuyển `/api` sang :8080). App: `flutter run --dart-define=API_URL=http://10.0.2.2:8080`.
+Web: `cd ../frontend && npm run dev` (Vite chuyển `/api` sang :8080). App: ghi `API_URL=http://10.0.2.2:8080` trong `.env` của repo app rồi `flutter run --dart-define-from-file=.env`.
 
 ## Test
 
@@ -83,7 +83,7 @@ Giữ nguyên id hồ sơ, phiếu chi; chép ảnh, biên lai; mật khẩu cũ
 
 ## Biến môi trường
 
-Xem `.env.example`. Bắt buộc: `JWT_SECRET`, `DATABASE_URL` (CSDL **UTF8**). Nghiệm thu: `DATA_DIR`, `STATIC_DIR`,
+File `.env` ở gốc repo (máy chủ: `/opt/vuathau-nt/.env`), không có trong git: xin file mẫu từ admin. Bắt buộc: `JWT_SECRET`, `DATABASE_URL` (CSDL **UTF8**). Nghiệm thu: `DATA_DIR`, `STATIC_DIR`,
 `ANTHROPIC_API_KEY` (bật AI), `GOOGLE_MAPS_API_KEY`, `GOOGLE_CLIENT_IDS`, `GDRIVE_*`.
 
 ## Thêm một tính năng mới

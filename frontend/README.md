@@ -42,7 +42,7 @@ Tài khoản CTV đăng nhập web sẽ bị từ chối (CTV dùng app).
 
 ```bash
 npm install
-cp .env.example .env   # tuỳ chọn
+# tuỳ chọn: ../.env chung ở gốc repo (Vite đọc ở đó; không có trong git)
 npm run dev            # http://localhost:5173, /api chuyển tới http://localhost:8080
 npm run lint
 npm run build          # ra dist/

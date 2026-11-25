@@ -22,7 +22,6 @@ vendor/
 # --- Environment ---
 .env
 .env.*
-!.env.example
 
 # --- Database backups ---
 backups/

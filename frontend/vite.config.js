@@ -6,6 +6,8 @@ import { fileURLToPath, URL } from 'node:url'
 export default defineConfig(() => {
   return {
     plugins: [react()],
+    // .env chung của repo nằm ở thư mục gốc (cạnh backend/, frontend/); Vite chỉ đưa biến VITE_* vào web
+    envDir: fileURLToPath(new URL('..', import.meta.url)),
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),

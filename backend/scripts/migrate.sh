@@ -3,7 +3,7 @@
 #
 # Usage:
 #   DATABASE_URL=postgres://user:pass@host:5432/db?sslmode=disable scripts/migrate.sh
-#   scripts/migrate.sh            # reads DATABASE_URL from backend/.env if not set
+#   scripts/migrate.sh            # reads DATABASE_URL from .env (repo root, or old backend/.env) if not set
 #
 # Migrations are written to be idempotent, so re-running this script is safe.
 set -euo pipefail
@@ -11,7 +11,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 MIGRATIONS_DIR="${ROOT_DIR}/migrations"
-ENV_FILE="${ROOT_DIR}/.env"
+ENV_FILE="${ROOT_DIR}/../.env" # .env chung ở gốc repo
+[[ -f "$ENV_FILE" ]] || ENV_FILE="${ROOT_DIR}/.env"
 
 # Load KEY=VALUE pairs from .env without overriding variables already set in
 # the environment. Parsed line by line (not sourced) so arbitrary .env

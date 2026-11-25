@@ -3,7 +3,7 @@
 #
 # Usage:
 #   DATABASE_URL=postgres://user:pass@host:5432/db?sslmode=disable scripts/backup.sh
-#   scripts/backup.sh             # reads DATABASE_URL from backend/.env if not set
+#   scripts/backup.sh             # reads DATABASE_URL from .env (repo root, or old backend/.env) if not set
 #
 # Restore:
 #   gunzip -c backups/<timestamp>.sql.gz | psql "$DATABASE_URL" -v ON_ERROR_STOP=1
@@ -12,7 +12,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BACKUP_DIR="${BACKUP_DIR:-${ROOT_DIR}/backups}"
-ENV_FILE="${ROOT_DIR}/.env"
+ENV_FILE="${ROOT_DIR}/../.env" # .env chung ở gốc repo
+[[ -f "$ENV_FILE" ]] || ENV_FILE="${ROOT_DIR}/.env"
 
 # Same .env loader as migrate.sh: parse, don't source; never override the
 # existing environment.

@@ -17,7 +17,9 @@ $app = Join-Path (Split-Path -Parent $root) "app-Vua-Thau-"
 $withApp = (-not $SkipApp) -and (Test-Path "$app\pubspec.yaml")
 if ($withApp) {
   Write-Host "== app CTV bản web (/app/)"
-  Push-Location $app; flutter build web --release --base-href /app/; if ($LASTEXITCODE) { throw "flutter build web lỗi" }; Pop-Location
+  # .env.production của app (nếu có) trỏ máy chủ khác; không có = máy chủ thật. KHÔNG dùng .env máy dev.
+  $appEnv = @(); if (Test-Path "$app\.env.production") { $appEnv = @("--dart-define-from-file=.env.production") }
+  Push-Location $app; flutter build web --release --base-href /app/ @appEnv; if ($LASTEXITCODE) { throw "flutter build web lỗi" }; Pop-Location
 }
 
 Write-Host "== api (linux/amd64)"

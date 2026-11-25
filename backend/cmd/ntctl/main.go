@@ -4,7 +4,7 @@
 //	go run ./cmd/ntctl adduser <đăng nhập> "<Họ tên>" admin|ketoan <mật khẩu>
 //	go run ./cmd/ntctl import-legacy -db /duong/dan/nghiemthu.db [-src thu_muc_chua_anh]
 //
-// Đọc DATABASE_URL, DATA_DIR từ môi trường hoặc file .env (như API).
+// Đọc DATABASE_URL, DATA_DIR từ môi trường hoặc file .env (như API: .env ở gốc repo, hoặc backend/.env cũ).
 package main
 
 import (
@@ -18,9 +18,9 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/joho/godotenv"
 	"golang.org/x/crypto/bcrypt"
 
+	"vuathau/backend/internal/config"
 	"vuathau/backend/internal/database"
 	"vuathau/backend/internal/legacy"
 )
@@ -43,7 +43,7 @@ func env(k, def string) string {
 }
 
 func main() {
-	_ = godotenv.Load()
+	config.LoadDotenv()
 	if len(os.Args) < 2 {
 		usage()
 	}

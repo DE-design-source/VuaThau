@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -85,10 +86,16 @@ type Config struct {
 	InboxSyncEvery    time.Duration
 }
 
-// Load reads configuration from the environment. A .env file in the working
-// directory is loaded first if present; real environment variables win.
+// LoadDotenv: nạp file .env: ở thư mục đang chạy (backend/.env cũ) rồi ở gốc repo (../.env, chỗ đặt .env chung
+// của backend + web từ 25/11/2026). Biến đã có trong môi trường luôn được giữ (máy chủ: env_file của docker compose).
+func LoadDotenv() {
+	_ = godotenv.Load(".env")
+	_ = godotenv.Load(filepath.Join("..", ".env"))
+}
+
+// Load reads configuration from the environment (sau khi nạp .env, xem LoadDotenv); real environment variables win.
 func Load() (*Config, error) {
-	_ = godotenv.Load()
+	LoadDotenv()
 	var err error
 
 	cfg := &Config{
