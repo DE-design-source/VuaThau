@@ -2,8 +2,9 @@
 # Dựng: xem deploy/server/README.md (deploy.ps1 build rồi chép bin/ và web/ vào đây).
 FROM alpine:3.20
 
-# tesseract: tìm SĐT trên ảnh công trình để che khi sale / CTV / Google Drive xem
-RUN apk add --no-cache ca-certificates tzdata tesseract-ocr tesseract-ocr-data-eng \
+# tesseract: tìm SĐT trên ảnh công trình để che khi sale / CTV / Google Drive xem; tiếng Việt (vie): đọc dải chữ
+# Timemark in trên ảnh Messenger (giờ, địa chỉ, toạ độ)
+RUN apk add --no-cache ca-certificates tzdata tesseract-ocr tesseract-ocr-data-eng tesseract-ocr-data-vie \
     && addgroup -S -g 10001 app \
     && adduser -S -u 10001 -G app -H -s /sbin/nologin app
 

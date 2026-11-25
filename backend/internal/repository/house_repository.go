@@ -117,6 +117,11 @@ type HouseRepository interface {
 	SetLatLng(ctx context.Context, id int64, lat, lng *float64) error
 	// SetDup: đổi dòng cảnh báo (bỏ nhãn "Chờ phân loại" khi admin đã điền địa chỉ).
 	SetDup(ctx context.Context, id int64, dup string) error
+	// HasExt: đã có hồ sơ mang ext_id này chưa.
+	HasExt(ctx context.Context, ext string) (bool, error)
+	// DeleteUntouchedLoose: xoá hồ sơ "Chờ phân loại" (ext_id msg:...) chưa ai xử lý: còn chờ duyệt / tự từ chối,
+	// lịch sử chỉ có thao tác hệ thống, không gắn dự án nhà thầu. Trả số hồ sơ đã xoá.
+	DeleteUntouchedLoose(ctx context.Context) (int, error)
 	Submit(ctx context.Context, id int64, amount int64, lat, lng *float64, dup string, queueDrive bool) error
 	// SubmitDraft: CTV gửi duyệt, chỉ khi bộ ảnh / video còn đúng sig (draft.go)
 	SubmitDraft(ctx context.Context, id int64, amount int64, lat, lng *float64, dup string, queueDrive bool, sig MediaSig) error
@@ -329,6 +334,22 @@ func (r *houseRepository) SetLatLng(ctx context.Context, id int64, lat, lng *flo
 func (r *houseRepository) SetDup(ctx context.Context, id int64, dup string) error {
 	_, err := r.db.Exec(ctx, `UPDATE houses SET dup = $2 WHERE id = $1`, id, dup)
 	return err
+}
+
+func (r *houseRepository) HasExt(ctx context.Context, ext string) (bool, error) {
+	var ok bool
+	err := r.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM houses WHERE ext_id = $1)`, ext).Scan(&ok)
+	return ok, err
+}
+
+func (r *houseRepository) DeleteUntouchedLoose(ctx context.Context) (int, error) {
+	tag, err := r.db.Exec(ctx, `DELETE FROM houses h WHERE h.ext_id LIKE 'msg:%' AND h.status IN ('cho_duyet', 'tu_choi')
+		AND NOT EXISTS (SELECT 1 FROM house_logs l WHERE l.house_id = h.id AND l.user_id IS NOT NULL)
+		AND NOT EXISTS (SELECT 1 FROM nt_projects n WHERE n.house_id = h.id)`)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 func (r *houseRepository) FillContractorIfEmpty(ctx context.Context, id int64, name, phone string) error {

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -45,7 +46,15 @@ func Disabled() Finder { return disabled{} }
 // slots: số lượt Tesseract chạy cùng lúc. Mỗi lượt (1 luồng, ảnh 1568px) tốn ~330MB RAM, ~2-4 giây.
 var slots = make(chan struct{}, 2)
 
-type tesseract struct{ bin string }
+type tesseract struct {
+	bin string
+	st  *stampState // ngôn ngữ đọc dải chữ (dò 1 lần)
+}
+
+type stampState struct {
+	once sync.Once
+	lang string
+}
 
 // New: dùng lệnh tesseract nếu có trong PATH, không có thì Disabled().
 func New() Finder {
@@ -53,7 +62,7 @@ func New() Finder {
 	if err != nil {
 		return Disabled()
 	}
-	return tesseract{bin: bin}
+	return tesseract{bin: bin, st: &stampState{}}
 }
 
 func (tesseract) Enabled() bool { return true }
