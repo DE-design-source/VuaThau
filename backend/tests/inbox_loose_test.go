@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -144,6 +145,25 @@ func TestInboxLoosePhotos(t *testing.T) {
 	var n int
 	if err := e.db.QueryRow(t.Context(), `SELECT count(*) FROM houses WHERE ext_id LIKE 'msg:%'`).Scan(&n); err != nil || n != 4 {
 		t.Fatalf("số hồ sơ chờ phân loại: %d %v", n, err)
+	}
+	// admin điền địa chỉ: ảnh không GPS lấy vị trí theo địa chỉ (hết "Không có vị trí"), bỏ nhãn chờ phân loại, (tiền tính lại theo ảnh đạt)
+	var hid int64
+	var amt0 int64
+	if err := e.db.QueryRow(t.Context(), `SELECT id, amount FROM houses WHERE ext_id = 'msg:ffffffff-0000-4000-8000-000000000001'`).Scan(&hid, &amt0); err != nil {
+		t.Fatal(err)
+	}
+	r := e.do(t, http.MethodPut, "/api/v1/houses/"+strconv.FormatInt(hid, 10)+"/info", admin.AccessToken,
+		map[string]any{"address": "25 Trần Hưng Đạo, Phường Phú Hội, Thành phố Huế"})
+	expectStatus(t, r, http.StatusOK)
+	// 3 ảnh đạt < số ảnh tối thiểu: tiền vẫn như cũ
+	var withAddr, dup string
+	var amt1 int64
+	if err := e.db.QueryRow(t.Context(), `SELECT (SELECT count(*) FROM photos p WHERE p.house_id = h.id AND p.address <> ''), h.dup, h.amount
+		FROM houses h WHERE h.id = $1`, hid).Scan(&withAddr, &dup, &amt1); err != nil {
+		t.Fatal(err)
+	}
+	if withAddr != "3" || dup != "" || amt1 != amt0 {
+		t.Fatalf("sau khi điền địa chỉ: %s ảnh có vị trí, dup %q, tiền %d -> %d", withAddr, dup, amt0, amt1)
 	}
 	if calls.Load() < 2 {
 		t.Fatalf("không gọi API tin có ảnh")

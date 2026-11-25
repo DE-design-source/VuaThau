@@ -53,6 +53,9 @@ type PhotoRepository interface {
 	Video(ctx context.Context, id int64) (*model.Video, error)
 	DeleteVideo(ctx context.Context, id, houseID int64) (*model.Video, error)
 	InboxHouses(ctx context.Context) (map[string]int64, error)
+	// FillAddress: ảnh không GPS mà chưa có địa chỉ (hoặc đang mang địa chỉ cũ old của hồ sơ) nhận địa chỉ addr
+	// admin điền cho hồ sơ. Trả số ảnh đã điền.
+	FillAddress(ctx context.Context, houseID int64, old, addr string) (int, error)
 }
 
 type photoRepository struct {
@@ -205,6 +208,15 @@ func (r *photoRepository) ApplyAI(ctx context.Context, id int64, aiTime, addr st
 	_, err := r.db.Exec(ctx, `UPDATE photos SET ai_time = $2, address = COALESCE(NULLIF($3, ''), address), is_site = $4,
 		lat = COALESCE(lat, $5), lng = COALESCE(lng, $6) WHERE id = $1`, id, aiTime, addr, isSite, lat, lng)
 	return err
+}
+
+func (r *photoRepository) FillAddress(ctx context.Context, houseID int64, old, addr string) (int, error) {
+	tag, err := r.db.Exec(ctx, `UPDATE photos SET address = $3 WHERE house_id = $1 AND lat IS NULL
+		AND (COALESCE(address, '') = '' OR ($2 <> '' AND address = $2))`, houseID, old, addr)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 func (r *photoRepository) CacheGet(ctx context.Context, shas []string) (map[string]json.RawMessage, error) {

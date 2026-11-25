@@ -1454,8 +1454,12 @@ func (s *houseService) EditInfo(ctx context.Context, by *model.User, id int64, f
 		return "", err
 	}
 	s.note(ctx, by, ActEdit, id, strings.Join(changed, ", "))
+	more := ""
+	if h.Source == "inbox" && nf.Address != "" && nf.Address != h.Address {
+		more = s.locateInbox(ctx, by, h, nf.Address)
+	}
 	s.assignProvince(ctx, id)
-	return "Đã sửa: " + strings.Join(changed, ", ") + ".", nil
+	return "Đã sửa: " + strings.Join(changed, ", ") + "." + more, nil
 }
 
 func (s *houseService) SetAmount(ctx context.Context, by *model.User, id int64, amount int64, reason string) (string, error) {

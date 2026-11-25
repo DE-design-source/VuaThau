@@ -113,6 +113,10 @@ type HouseRepository interface {
 	SetScope(ctx context.Context, id int64, scope string, amount int64) error
 	SetScopeAI(ctx context.Context, id int64, scope string) error
 	SetAddress(ctx context.Context, id int64, addr string) error
+	// SetLatLng: toạ độ hồ sơ (tra từ địa chỉ khi ảnh không có GPS).
+	SetLatLng(ctx context.Context, id int64, lat, lng *float64) error
+	// SetDup: đổi dòng cảnh báo (bỏ nhãn "Chờ phân loại" khi admin đã điền địa chỉ).
+	SetDup(ctx context.Context, id int64, dup string) error
 	Submit(ctx context.Context, id int64, amount int64, lat, lng *float64, dup string, queueDrive bool) error
 	// SubmitDraft: CTV gửi duyệt, chỉ khi bộ ảnh / video còn đúng sig (draft.go)
 	SubmitDraft(ctx context.Context, id int64, amount int64, lat, lng *float64, dup string, queueDrive bool, sig MediaSig) error
@@ -314,6 +318,16 @@ func (r *houseRepository) SetScopeAI(ctx context.Context, id int64, scope string
 // SetAddress: đổi địa chỉ (đồng bộ Messenger tìm được địa chỉ chi tiết hơn).
 func (r *houseRepository) SetAddress(ctx context.Context, id int64, addr string) error {
 	_, err := r.db.Exec(ctx, `UPDATE houses SET address = $2 WHERE id = $1`, id, addr)
+	return err
+}
+
+func (r *houseRepository) SetLatLng(ctx context.Context, id int64, lat, lng *float64) error {
+	_, err := r.db.Exec(ctx, `UPDATE houses SET lat = $2, lng = $3 WHERE id = $1`, id, lat, lng)
+	return err
+}
+
+func (r *houseRepository) SetDup(ctx context.Context, id int64, dup string) error {
+	_, err := r.db.Exec(ctx, `UPDATE houses SET dup = $2 WHERE id = $1`, id, dup)
 	return err
 }
 
