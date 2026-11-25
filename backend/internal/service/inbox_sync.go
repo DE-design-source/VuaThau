@@ -328,20 +328,28 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 		}
 		return false, false, nil
 	}
-	// Messenger không qua AI: mặc định "chỉ chụp ngoài", admin đổi khi duyệt
+	rejected, err = s.submitInbox(ctx, hid, lat, lng, "")
+	return err == nil, rejected, err
+}
+
+// submitInbox: gửi duyệt hồ sơ Messenger vừa nhận ảnh: mặc định "chỉ chụp ngoài" (không qua AI, admin đổi khi
+// duyệt), toạ độ lấy ảnh đạt đầu tiên có GPS (không thì lat/lng truyền vào), tính tiền, kiểm trùng công trình (trùng:
+// tự từ chối, rejected = true). label: ghi đầu dòng cảnh báo (vd "Chờ phân loại: ..."), nối với cảnh báo trùng nếu có.
+func (s *houseService) submitInbox(ctx context.Context, hid int64, lat, lng *float64, label string) (rejected bool, err error) {
 	if err := s.houses.SetScope(ctx, hid, model.ScopeOut, 0); err != nil {
-		return false, false, err
+		return false, err
 	}
-	if h, err = s.houses.Get(ctx, hid); err != nil {
-		return false, false, err
+	h, err := s.houses.Get(ctx, hid)
+	if err != nil {
+		return false, err
 	}
 	ps, err := s.photos.ListByHouse(ctx, hid)
 	if err != nil {
-		return false, false, err
+		return false, err
 	}
 	st, err := s.settings.Get(ctx)
 	if err != nil {
-		return false, false, err
+		return false, err
 	}
 	valid := FillProblems(ps, s.now())
 	for _, p := range ps {
@@ -352,28 +360,32 @@ func (s *houseService) syncOne(ctx context.Context, l inbox.Log) (added, rejecte
 	}
 	hit, err := s.checkSite(ctx, hid, lat, lng, h.ContractorPhone, false)
 	if err != nil {
-		return false, false, err
+		return false, err
 	}
-	warn := ""
-	if hit != nil && !hit.Block {
-		warn = truncate(hit.Warn, MaxReasonLen)
+	warn := label
+	if hit != nil && !hit.Block && hit.Warn != "" {
+		if warn != "" {
+			warn += ". "
+		}
+		warn += hit.Warn
 	}
+	warn = truncate(warn, MaxReasonLen)
 	amount, err := s.priceOf(ctx, st, hid, valid, model.ScopeOut)
 	if err != nil {
-		return false, false, err
+		return false, err
 	}
 	if err := s.houses.Submit(ctx, hid, amount, lat, lng, warn, s.drive != nil); err != nil {
-		return false, false, err
+		return false, err
 	}
 	s.assignProvince(ctx, hid)
 	if hit != nil && hit.Block {
 		if err := s.houses.MarkDuplicate(ctx, hid, hit.Of.ID, hit.Reason); err != nil {
-			return false, false, err
+			return false, err
 		}
-		s.note(ctx, sys, ActAutoDup, hid, hit.Reason)
-		return true, true, nil
+		s.note(ctx, &model.User{}, ActAutoDup, hid, hit.Reason)
+		return true, nil
 	}
-	return true, false, nil
+	return false, nil
 }
 
 // pickImages: tối đa max ảnh đầu (theo thứ tự gửi).
@@ -465,6 +477,9 @@ func (s *houseService) SyncInbox(ctx context.Context) (*SyncStatus, error) {
 	}
 	if err == nil {
 		err = s.syncAll(ctx, &res)
+	}
+	if err == nil {
+		err = s.syncLoose(ctx, &res)
 	}
 	if err == nil && x.prune {
 		x.prune = false

@@ -139,6 +139,45 @@ func (c *apiClient) Logs(ctx context.Context, afterAt time.Time, afterID string,
 	return out, nil
 }
 
+type apiPhotoMsg struct {
+	ID           string    `json:"id"`
+	ConvID       string    `json:"conversation_id"`
+	SentAt       time.Time `json:"sent_at"`
+	InProjectLog bool      `json:"in_project_log"`
+	Contact      struct {
+		ID      string     `json:"id"`
+		Name    string     `json:"name"`
+		Phone   string     `json:"phone"`
+		Profile apiProfile `json:"profile_fields"`
+	} `json:"contact"`
+	Images []struct {
+		Key  string `json:"key"`
+		Mime string `json:"mime"`
+	} `json:"images"`
+}
+
+func (c *apiClient) PhotoMessages(ctx context.Context, since, afterAt time.Time, afterID string, limit int) ([]PhotoMessage, error) {
+	q := url.Values{"since": {since.UTC().Format(time.RFC3339Nano)}, "limit": {fmt.Sprint(min(max(limit, 1), 500))},
+		"after_id": {afterID}}
+	if !afterAt.IsZero() {
+		q.Set("after_at", afterAt.UTC().Format(time.RFC3339Nano))
+	}
+	var res struct{ Items []apiPhotoMsg }
+	if err := c.getJSON(ctx, "photo-messages", q, &res); err != nil {
+		return nil, err
+	}
+	out := make([]PhotoMessage, 0, len(res.Items))
+	for _, x := range res.Items {
+		m := PhotoMessage{ID: x.ID, ConvID: x.ConvID, SentAt: x.SentAt, InLog: x.InProjectLog,
+			Contact: Contact{ID: x.Contact.ID, Name: x.Contact.Name, Phone: x.Contact.Phone, Profile: x.Contact.Profile.values()}}
+		for _, im := range x.Images {
+			m.Images = append(m.Images, Image{Key: im.Key, Mime: im.Mime, SentAt: x.SentAt})
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
 func (c *apiClient) Image(ctx context.Context, key string) ([]byte, error) {
 	res, err := c.get(ctx, c.files, "media", url.Values{"key": {key}})
 	if err != nil {

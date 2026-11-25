@@ -59,6 +59,22 @@ type Source interface {
 	Close()
 }
 
+// PhotoMessage: 1 tin có ảnh khách gửi trên fanpage CTV, kể cả tin chatbot KHÔNG ghi vào nhật ký công trình.
+type PhotoMessage struct {
+	ID      string
+	ConvID  string
+	SentAt  time.Time
+	InLog   bool // đã nằm trong 1 nhật ký công trình (nhập theo Logs)
+	Contact Contact
+	Images  []Image
+}
+
+// PhotoSource: nguồn liệt kê được mọi tin có ảnh trên fanpage CTV (chỉ API UniInbox có; nguồn đọc DB cũ thì không).
+type PhotoSource interface {
+	// PhotoMessages: tin gửi từ since, tăng dần theo (sent_at, id), sau mốc (afterAt, afterID), tối đa limit.
+	PhotoMessages(ctx context.Context, since, afterAt time.Time, afterID string, limit int) ([]PhotoMessage, error)
+}
+
 // ContactInfo: toàn bộ thông tin 1 người gửi bên dezon-inbox (khung "Thông tin khách").
 type ContactInfo struct {
 	Name      string            `json:"name"`

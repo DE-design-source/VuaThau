@@ -55,6 +55,9 @@ func fakeUniInbox(t *testing.T, img []byte) *httptest.Server {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"items": items})
 	}))
+	mux.HandleFunc("GET /integrations/vuathau/photo-messages", auth(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
+	}))
 	mux.HandleFunc("GET /integrations/vuathau/contacts", auth(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"items": map[string]any{
 			"dddddddd-0000-4000-8000-000000000001": map[string]any{"name": "Nguyễn Văn API", "phone": "0901234999", "tags": []string{"CTV"},
