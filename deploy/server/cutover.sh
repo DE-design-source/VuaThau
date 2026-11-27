@@ -54,7 +54,7 @@ if ! docker exec qspro-web-1 caddy reload --config /etc/caddy/Caddyfile --adapte
   docker exec qspro-web-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile || true
   docker start nghiemthu-web
   echo "!! Caddy không nhận cấu hình mới: đã trả lại bản cũ"
-  exit 1
+  exit 1Duy
 fi
 
 cat > "$BK/rollback.txt" <<EOF
