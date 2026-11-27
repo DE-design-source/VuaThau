@@ -98,6 +98,7 @@ function Form({ vals, reload }) {
 
 /** Quy tắc xếp thứ tự ảnh trong ảnh công trình (góp ý 23/11/2026). Ảnh đầu tiên là ảnh đại diện trên bản đồ / thẻ. */
 const PHOTO_ORDERS = [
+  ['cover_first', 'Ảnh đẹp nhất làm ảnh đại diện (AI chọn)', 'AI chấm từng ảnh: toàn cảnh công trình, rõ nét, đúng chiều, không bị che lên đầu; còn lại ảnh bảng hiệu trước rồi theo giờ chụp.'],
   ['sign_first', 'Ảnh bảng hiệu nhà thầu lên đầu', 'Ảnh có SĐT nhà thầu (bảng hiệu, bạt che) xếp đầu, còn lại theo giờ chụp.'],
   ['time', 'Theo giờ chụp', 'Ảnh chụp trước xếp trước.'],
   ['sent', 'Theo thứ tự CTV gửi', 'Giữ đúng thứ tự CTV chụp / gửi lên.'],
@@ -106,7 +107,7 @@ function PhotoOrderBox() {
   const { data: d, reload } = usePage(() => configApi.getAiRules())
   const [act, busy] = useAct(reload)
   if (!d) return null
-  const cur = d.photo_order || 'sign_first'
+  const cur = d.photo_order || 'cover_first'
   return (
     <div className="card stack">
       <h2>Quy tắc sắp xếp thứ tự ảnh công trình</h2>

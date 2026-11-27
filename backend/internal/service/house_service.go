@@ -360,7 +360,7 @@ func withStats(ctx context.Context, photos repository.PhotoRepository, rows []mo
 		rows[i].PhotosTotal = len(ps)
 		rows[i].PhotosValid = FillProblems(ps, now)
 		if len(ps) > 0 {
-			rows[i].CoverID = ptr(ps[0].ID)
+			rows[i].CoverID = ptr(ps[bestCover(ps)].ID)
 		}
 	}
 	return nil
@@ -1237,7 +1237,7 @@ func (s *houseService) runAI(ctx context.Context, hid int64) error {
 		if it.Lat != 0 || it.Lng != 0 {
 			lat, lng = ptr(it.Lat), ptr(it.Lng)
 		}
-		if err := s.photos.ApplyAI(ctx, pid, it.Time, truncate(it.Address, MaxAddressLen), it.IsSite, lat, lng); err != nil {
+		if err := s.photos.ApplyAI(ctx, pid, it.Time, truncate(it.Address, MaxAddressLen), it.IsSite, lat, lng, it.Cover); err != nil {
 			return err
 		}
 	}

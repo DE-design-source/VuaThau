@@ -41,7 +41,7 @@ type PhotoRepository interface {
 	// NoPhoneMask: ảnh chưa quét SĐT (mới nhất trước), kèm SĐT nhà thầu của hồ sơ.
 	NoPhoneMask(ctx context.Context, limit int) ([]MaskTodo, error)
 	// ApplyAI ghi kết quả AI đọc 1 ảnh (giờ in trên ảnh, địa chỉ, có phải công trình, toạ độ nếu còn trống).
-	ApplyAI(ctx context.Context, id int64, aiTime, addr string, isSite bool, lat, lng *float64) error
+	ApplyAI(ctx context.Context, id int64, aiTime, addr string, isSite bool, lat, lng *float64, cover int) error
 
 	CacheGet(ctx context.Context, shas []string) (map[string]json.RawMessage, error)
 	CachePut(ctx context.Context, sha string, data json.RawMessage) error
@@ -66,12 +66,12 @@ func NewPhotoRepository(db *pgxpool.Pool) PhotoRepository {
 	return &photoRepository{db: db}
 }
 
-const photoCols = `id, house_id, sha256, dhash, exif_time, ai_time, lat, lng, address, is_site, dup_of, mime, phone_mask, text_mask`
+const photoCols = `id, house_id, sha256, dhash, exif_time, ai_time, lat, lng, address, is_site, dup_of, mime, phone_mask, text_mask, cover_score`
 
 func scanPhoto(row pgx.Row) (*model.Photo, error) {
 	var p model.Photo
 	err := row.Scan(&p.ID, &p.HouseID, &p.SHA256, &p.DHash, &p.ExifTime, &p.AITime, &p.Lat, &p.Lng, &p.Address,
-		&p.IsSite, &p.DupOf, &p.Mime, &p.PhoneMask, &p.TextMask)
+		&p.IsSite, &p.DupOf, &p.Mime, &p.PhoneMask, &p.TextMask, &p.CoverScore)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -204,9 +204,10 @@ func (r *photoRepository) Count(ctx context.Context, houseID int64) (int, error)
 	return n, err
 }
 
-func (r *photoRepository) ApplyAI(ctx context.Context, id int64, aiTime, addr string, isSite bool, lat, lng *float64) error {
+func (r *photoRepository) ApplyAI(ctx context.Context, id int64, aiTime, addr string, isSite bool, lat, lng *float64, cover int) error {
+	cover = max(0, min(cover, 10))
 	_, err := r.db.Exec(ctx, `UPDATE photos SET ai_time = $2, address = COALESCE(NULLIF($3, ''), address), is_site = $4,
-		lat = COALESCE(lat, $5), lng = COALESCE(lng, $6) WHERE id = $1`, id, aiTime, addr, isSite, lat, lng)
+		lat = COALESCE(lat, $5), lng = COALESCE(lng, $6), cover_score = $7 WHERE id = $1`, id, aiTime, addr, isSite, lat, lng, cover)
 	return err
 }
 

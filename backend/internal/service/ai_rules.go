@@ -105,13 +105,14 @@ const photoOrderKey = "photo_order"
 
 // PhotoOrders: mã -> mô tả (trang Cấu hình hiện theo thứ tự PhotoOrderList).
 var PhotoOrders = map[string]string{
-	"sign_first": "Ảnh bảng hiệu (có SĐT nhà thầu) lên đầu, còn lại theo giờ chụp",
-	"time":       "Theo giờ chụp, cũ trước mới sau",
-	"sent":       "Theo thứ tự CTV gửi",
+	"cover_first": "Ảnh đẹp nhất (AI chọn: toàn cảnh, rõ nét, đúng chiều) làm ảnh đại diện, còn lại bảng hiệu trước rồi theo giờ chụp",
+	"sign_first":  "Ảnh bảng hiệu (có SĐT nhà thầu) lên đầu, còn lại theo giờ chụp",
+	"time":        "Theo giờ chụp, cũ trước mới sau",
+	"sent":        "Theo thứ tự CTV gửi",
 }
-var PhotoOrderList = []string{"sign_first", "time", "sent"}
+var PhotoOrderList = []string{"cover_first", "sign_first", "time", "sent"}
 
-const defaultPhotoOrder = "sign_first"
+const defaultPhotoOrder = "cover_first" // góp ý Lark 26/11/2026: ảnh đại diện phải là ảnh đẹp, toàn cảnh
 
 func (s *houseService) photoOrder(ctx context.Context) string {
 	if s.sync == nil {
@@ -152,7 +153,7 @@ func sortPhotos(ps []model.Photo, order string) {
 		return
 	}
 	sort.SliceStable(ps, func(i, j int) bool {
-		if order == "sign_first" {
+		if order == "sign_first" || order == "cover_first" {
 			si, sj := ps[i].Masked > 0, ps[j].Masked > 0
 			if si != sj {
 				return si
@@ -164,4 +165,22 @@ func sortPhotos(ps []model.Photo, order string) {
 		}
 		return ti < tj
 	})
+	if order == "cover_first" && len(ps) > 1 {
+		if b := bestCover(ps); b > 0 {
+			c := ps[b]
+			copy(ps[1:b+1], ps[:b])
+			ps[0] = c
+		}
+	}
+}
+
+// bestCover: vị trí ảnh hợp làm ảnh đại diện nhất (AI chấm cao nhất); chưa chấm / bằng nhau thì ảnh đầu.
+func bestCover(ps []model.Photo) int {
+	b := 0
+	for i, p := range ps {
+		if p.CoverScore > ps[b].CoverScore {
+			b = i
+		}
+	}
+	return b
 }

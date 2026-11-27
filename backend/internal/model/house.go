@@ -179,6 +179,8 @@ type Photo struct {
 	TextMask []byte `json:"-"`
 	// Masked: số SĐT đã che trên ảnh (admin thấy để biết)
 	Masked int `json:"masked"`
+	// CoverScore: AI chấm 0..10 độ hợp làm ảnh đại diện; 0 = chưa chấm (migration 031)
+	CoverScore int `json:"cover_score"`
 }
 
 // Log: 1 dòng lịch sử thao tác trên hồ sơ / phiếu chi.

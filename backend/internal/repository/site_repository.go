@@ -31,13 +31,14 @@ func (r *houseRepository) SiteDates(ctx context.Context) ([]SiteDate, error) {
 	return out, rows.Err()
 }
 
-// Covers: ảnh đầu tiên của mỗi hồ sơ (hồ sơ id -> ảnh id).
+// Covers: ảnh đại diện của mỗi hồ sơ (hồ sơ id -> ảnh id): ảnh AI chấm điểm đại diện cao nhất; bằng nhau / chưa chấm thì ảnh đầu.
 func (r *houseRepository) Covers(ctx context.Context, ids []int64) (map[int64]int64, error) {
 	out := map[int64]int64{}
 	if len(ids) == 0 {
 		return out, nil
 	}
-	rows, err := r.db.Query(ctx, `SELECT house_id, MIN(id) FROM photos WHERE house_id = ANY($1) GROUP BY house_id`, ids)
+	rows, err := r.db.Query(ctx, `SELECT DISTINCT ON (house_id) house_id, id FROM photos WHERE house_id = ANY($1)
+		ORDER BY house_id, cover_score DESC, id`, ids)
 	if err != nil {
 		return nil, err
 	}
