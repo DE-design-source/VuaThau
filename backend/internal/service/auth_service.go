@@ -262,15 +262,21 @@ func (s *authService) Register(ctx context.Context, in RegisterInput) (*AuthResu
 			return nil, fail(ErrConflict, "Số điện thoại này đã có tài khoản. Quay lại, nhập SĐT để đăng nhập.")
 		}
 	}
-	bank := BankFrom(in.BankName, in.BankNo, in.BankOwner)
+	// tài khoản nhận tiền không bắt buộc khi đăng ký nữa (app hỏi ở lần nộp hồ sơ đầu, góp ý Lark 26/11/2026);
+	// có nhập thì phải đủ 3 ô
+	bank := ""
+	if strings.TrimSpace(in.BankName+in.BankNo+in.BankOwner) != "" {
+		if bank = BankFrom(in.BankName, in.BankNo, in.BankOwner); bank == "" {
+			return nil, fail(ErrInvalidInput, "Tài khoản nhận tiền cần đủ ngân hàng, số tài khoản (chỉ số) và tên chủ tài khoản, hoặc bỏ trống cả 3 ô.")
+		}
+	}
 	// mật khẩu không bắt buộc nữa (app vào bằng SĐT); không nhập thì đặt mật khẩu ngẫu nhiên
 	pw := in.Password
 	if pw == "" {
 		pw = randomSecret()
 	}
-	if !ValidPhone(phone) || utf8.RuneCountInString(pw) < 6 || len(pw) > 72 || name == "" || bank == "" {
-		return nil, fail(ErrInvalidInput,
-			"Kiểm tra lại: SĐT hợp lệ, có họ tên, đủ ngân hàng, số tài khoản (chỉ số) và tên chủ tài khoản.")
+	if !ValidPhone(phone) || utf8.RuneCountInString(pw) < 6 || len(pw) > 72 || name == "" {
+		return nil, fail(ErrInvalidInput, "Kiểm tra lại: SĐT hợp lệ và có họ tên.")
 	}
 	hash, err := hashPassword(pw)
 	if err != nil {
