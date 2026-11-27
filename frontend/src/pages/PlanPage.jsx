@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import L from 'leaflet'
+import { stepWheelZoom } from '@/utils/wheelZoom'
 import 'leaflet/dist/leaflet.css'
 import mapApi from '@/api/mapApi'
 import Icon from '@/components/ui/Icon'
@@ -182,6 +183,7 @@ export default function PlanPage() {
     const z = Number(sp.get('z'))
     const m = L.map(el.current, { zoomControl: false, minZoom: 9, maxZoom: 20 }).setView(lat && lng ? [lat, lng] : HCM, z || 17)
     L.control.zoom({ position: 'topright' }).addTo(m)
+    stepWheelZoom(m) // mỗi lần cuộn chuột chỉ 1 mức zoom
     L.tileLayer('/tiles/{z}/{x}/{y}.png', {
       maxZoom: 20,
       maxNativeZoom: 19,

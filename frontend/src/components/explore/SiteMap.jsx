@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import L from 'leaflet'
+import { stepWheelZoom } from '@/utils/wheelZoom'
 import 'leaflet/dist/leaflet.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { maplibreGL } from '@maplibre/maplibre-gl-leaflet'
@@ -154,6 +155,7 @@ export default function SiteMap({ points, provinces = [], selected, onProvince, 
   useEffect(() => {
     const m = L.map(el.current, { zoomControl: false, minZoom: 5 }).setView(VN_CENTER, 6)
     L.control.zoom({ position: 'topright' }).addTo(m)
+    stepWheelZoom(m) // mỗi lần cuộn chuột chỉ 1 mức zoom
     // Nền vector: Vietmap nếu máy chủ có key (pickBasemap), không thì OpenFreeMap tô lại màu (/map-style.json, cùng file với app CTV).
     // Máy không vẽ được (không có WebGL) hoặc tải kiểu lỗi: quay về nền OSM qua máy chủ mình (/tiles).
     const osm = () =>
